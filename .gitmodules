@@ -1,0 +1,20 @@
+[submodule "generators/sifive-cache"]
+	path = generators/sifive-cache
+	url = https://github.com/chipsalliance/rocket-chip-inclusive-cache.git
+	ignore = dirty
+[submodule "sim/verilator"]
+	path = buildtools/verilator
+	url = https://github.com/verilator/verilator.git
+	branch = stable
+[submodule "generators/riscv-boom"]
+	path = generators/riscv-boom
+	url = https://github.com/riscv-boom/riscv-boom.git
+	branch = master
+[submodule "generators/saturn-vectors"]
+	path = generators/saturn-vectors
+	url = https://github.com/ucb-bar/saturn-vectors.git
+	branch = master
+[submodule "generators/shuttle"]
+	path = generators/shuttle
+	url = https://github.com/ucb-bar/shuttle.git
+	branch = master
