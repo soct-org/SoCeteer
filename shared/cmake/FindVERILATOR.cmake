@@ -16,6 +16,7 @@ set(VERILATOR_MINOR_REQUIRED 0) # Minor version must be at least this TODO: vali
 
 # The verilator shipped with the project (as a submodule)
 set(VERILATOR_PROJECT_PATH "${CMAKE_CURRENT_LIST_DIR}/../verilator")
+file(REAL_PATH ${VERILATOR_PROJECT_PATH} VERILATOR_PROJECT_PATH)
 
 # 1.
 if (DEFINED VERILATOR_ROOT)
@@ -47,6 +48,15 @@ endif ()
 #####################################
 function(_check_verilator_version exe result_var)
     if (EXISTS "${exe}")
+        # Check if exe is in VERILATOR_PROJECT_PATH, to avoid checking version of self-installed Verilator
+        string(LENGTH "${VERILATOR_PROJECT_PATH}" parent_len)
+        string(SUBSTRING "${exe}" 0 ${parent_len} exe_prefix)
+        if (exe_prefix STREQUAL VERILATOR_PROJECT_PATH)
+            message(STATUS "Found Verilator executable from project submodule; skipping version check.")
+            set(${result_var} TRUE PARENT_SCOPE)
+            return()
+        endif()
+
         execute_process(
                 COMMAND "${exe}" --version
                 OUTPUT_VARIABLE _verilator_version_output

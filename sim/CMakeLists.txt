@@ -30,10 +30,11 @@ message(STATUS "LD: ${CMAKE_LINKER}")
 # Find project installation of Verilator
 ########################################
 list(PREPEND CMAKE_MODULE_PATH "${SOCETEER_ROOT}/shared/cmake")
-
-find_package(VERILATOR MODULE REQUIRED)
+find_package(VERILATOR MODULE REQUIRED) # Installs/locates Verilator & provides VERILATOR_ROOT
+find_package(VERILATOR REQUIRED HINTS ${VERILATOR_ROOT}) # Provides verilate() function (includes verilator-config.cmake)
 
 message(STATUS "VERILATOR_ROOT: ${VERILATOR_ROOT}")
+
 ##################################################
 # Find the configurations and include sub-projects
 ##################################################
@@ -47,14 +48,14 @@ file(GLOB CONFIGS RELATIVE "${CONFIGS_IN_DIR}" "${CONFIGS_IN_DIR}/*")
 
 # Risc-v ISA simulator files
 if(NOT DEFINED RV_ISA_SIM_DIR)
-    set(RV_ISA_SIM_DIR ${SOCETEER_ROOT}/buildtools/risc-v-isa-sim)
+    set(RV_ISA_SIM_DIR ${SOCETEER_ROOT}/shared/risc-v-isa-sim)
 endif()
 
 message(STATUS "RV_ISA_SIM_DIR: ${RV_ISA_SIM_DIR}")
 set(RV_ISA_SIM_INCLUDE_DIRS
         ${RV_ISA_SIM_DIR}/riscv
         ${RV_ISA_SIM_DIR}/softfloat
-        ${SOCETEER_ROOT}/buildtools/libgloss/include/htif
+        ${SOCETEER_ROOT}/shared/libgloss/include/htif
         ${RV_ISA_SIM_DIR}/fesvr
 )
 file(GLOB DISASM_SRCS "${RV_ISA_SIM_DIR}/disasm/*.cc")

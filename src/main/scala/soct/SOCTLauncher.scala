@@ -26,17 +26,17 @@ object SOCTLauncher {
   object Targets {
     case object Vivado extends Targets {
       val name: String = "vivado"
-      val defaultBootrom: String = "bootrom/sd-boot"
+      val defaultBootrom: String = "sd-boot"
     }
 
     case object Yosys extends Targets {
       val name: String = "yosys"
-      val defaultBootrom: String = "bootrom/sd-boot"
+      val defaultBootrom: String = "sd-boot"
     }
 
     case object Verilator extends Targets {
       val name: String = "verilator"
-      val defaultBootrom: String = "bootrom/testchipip-boot"
+      val defaultBootrom: String = "testchipip-boot"
     }
 
     val values: Seq[Targets] = Seq(Vivado, Yosys, Verilator)
@@ -60,6 +60,7 @@ object SOCTLauncher {
                        mabi32: String = "ilp32",
                        mabi64: String = "lp64",
                        target: Targets = Targets.Verilator,
+                       bootrom: Option[String] = None,
                        // Firtool options
                        firtoolPath: Option[Path] = None,
                        firtoolVersion: String = chisel3.BuildInfo.firtoolVersion.flatMap {
@@ -97,7 +98,7 @@ object SOCTLauncher {
     opt[String]('d', "dir").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated files. Default is ${SOCTArgs().workspaceDir}.")
     opt[String]('c', "base-config").action((x, c) => c.copy(baseConfig = x)).text(s"The base config to build - can include additional configs (i.e. Parameters) to add parts to the system. Comma separated list that. Default is ${SOCTArgs().baseConfig}.")
     opt[String]('t', "target").action((x, c) => c.copy(target = Targets.parse(x))).text(s"Whether to simulate or synthesize the design using various backends. Available options: ${Targets.values.map(_.name).mkString(", ")}. Default is ${SOCTArgs().target}.")
-    opt[String]("bootrom").action((x, c) => c.copy()).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
+    opt[String]("bootrom").action((x, c) => c.copy(bootrom = Some(x))).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
       s" ${Targets.values.map(t => s"${t.name} -> ${t.defaultBootrom}").mkString(", ")}.")
     opt[Int]("xlen").action((x, c) => c.copy(xlen = x)).text(s"The xlen to use. Default is ${SOCTArgs().xlen}.")
     opt[String]("log-level")

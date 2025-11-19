@@ -60,7 +60,7 @@ We recommend using the latest firtool that is shipped with chisel (the default f
 
 
 #### Experimenting with Circt
-To install circt, run [this script](scripts/install-circt.sh).
+To install circt, run [this script](../scripts/install-deps/install-circt.sh).
 Make sure you have `clang`, `libstdc++-12-dev` (or any other fairly new version) and `ldd` installed.
-The script will build circt from source and install it in the `buildtools/circt` directory.
-You can then use the `firtool` binary in the `buildtools/circt/build-Release/install/bin` directory to generate Verilog.
+The script will build circt from source and install it in the `shared/circt` directory.
+You can then use the `firtool` binary in the `shared/circt/build-Release/install/bin` directory to generate Verilog.

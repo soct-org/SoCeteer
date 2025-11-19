@@ -31,39 +31,40 @@ endif ()
 
 project(RV_Binaries C CXX ASM)
 
+set(ELF_DIR "${SOCETEER_ROOT}/binaries/elfs" CACHE STRING "Directory where to place the compiled programs/bootroms.")
+
 ###########################################################################################
 # This Cmake can build both programs and bootroms.
 # Set BOOTROM_MODE to build bootroms, otherwise programs to execute on the board/simulator.
 ###########################################################################################
 if (DEFINED BOOTROM_MODE)
     message(NOTICE "Configured to build RISC-V bootroms.")
-
     # Required variables for bootroms:
     set(MARCH "" CACHE STRING "RISCV ISA (e.g. rv64imac)")
     set(MABI "" CACHE STRING "RISCV ABI (e.g. lp64)")
     set(DTS_PATH "" CACHE STRING "Path to the device tree source file")
-    set(DTB_PATH "" CACHE STRING "Path where to write the compiled device tree blob")
-    set(BOOTROM_IMG_PATH "" CACHE STRING "Path where to write the bootrom image")
-    set(BOOTROM_ELF_PATH "" CACHE STRING "Path where to write the bootrom ELF file")
-
-    require_vars(MARCH MABI DTS_PATH DTB_PATH BOOTROM_IMG_PATH BOOTROM_ELF_PATH)
-
-    # Optional variable for bootroms:
+    set(IMG_PATH "" CACHE STRING "Path where to dump the bootrom image")
     set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary (dtc). If not set, looks for dtc in PATH.")
 
+    require_vars(MARCH MABI DTS_PATH IMG_PATH)
+
     # Device tree building:
+    get_filename_component(DTS_NAME ${DTS_PATH} NAME_WE)
+    set(DTB_PATH "${CMAKE_CURRENT_BINARY_DIR}/${DTS_NAME}.dtb")
     add_custom_command(
             OUTPUT "${DTB_PATH}"
             COMMAND ${DTC} -I dts -O dtb -@ -A -o "${DTB_PATH}" "${DTS_PATH}"
             DEPENDS "${DTS_PATH}"
             COMMENT "Building DTB from ${DTS_PATH}"
     )
+    add_custom_target(device_tree ALL DEPENDS "${DTB_PATH}")
+
+    # Optional variable for bootroms:
+    set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary (dtc). If not set, looks for dtc in PATH.")
 
     file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}/bootroms" "${CMAKE_CURRENT_LIST_DIR}/bootroms/*/")
 else () # PROGRAM MODE
     message(NOTICE "Configured to build RISC-V programs.")
-
-    set(ELF_DIR "${SOCETEER_ROOT}/binaries/elfs" CACHE STRING "Directory where to place the compiled programs.")
 
     # For convenience, this project builds both 32-bit and 64-bit binaries by default.
     if (NOT DEFINED MARCH64)

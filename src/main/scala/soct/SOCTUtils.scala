@@ -115,10 +115,31 @@ object SOCTUtils {
     dp(a.length)(b.length)
   }
 
+
+  private def runCMakeCommand(command: Seq[String], definesMap: Map[String, String], workingDir: Path = SOCTPaths.projectRoot): Unit = {
+    val defines = definesMap.flatMap { case (k, v) => Seq("-D", s"$k=$v") }.toSeq
+    val fullCommand = Seq("cmake") ++ defines ++ command
+    log.debug(s"Running CMake command: ${fullCommand.mkString(" ")} in directory: $workingDir")
+    val processBuilder = new ProcessBuilder(fullCommand: _*)
+      .directory(workingDir.toFile)
+      .redirectErrorStream(true)
+      .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+
+    val process = processBuilder.start()
+    val exitCode = process.waitFor()
+    if (exitCode != 0) {
+      throw new RuntimeException(s"CMake command failed with exit code $exitCode")
+    }
+  }
+
+
+  /**
+   * Compile the bootrom for the given configuration and artifacts using CMake
+   */
   def compileBootrom(paths: SOCTPaths, artifacts: Set[Path], config: SOCTLauncher.Config,
                              boardDTS: Option[String] = None, boardParams: Option[BoardParams] = None): Path = {
     val rocketDTS = artifacts.find(_.getFileName.toString.endsWith(".dts")).getOrElse {
-      throw new RuntimeException("No dts file found in artifacts")
+      throw new InternalBugException("No dts file found in artifacts") // This should never happen
     }
     var fullDTS = Files.readAllLines(rocketDTS).toArray.mkString("\n")
     if (boardDTS.isDefined && boardParams.isDefined) {
@@ -130,19 +151,24 @@ object SOCTUtils {
     val march = DTSExtractor.extractMarch(fullDTS)
 
     // Compile bootrom using CMake
-    val env = Map(
+    val defs = Map(
+      "BOOTROM_MODE" -> "ON",
       "MARCH" -> march,
       "MABI" -> config.mabi,
       "DTS_PATH" -> paths.dtsFile.toString,
-      "DTB_PATH" -> paths.dtbFile.toString,
-      "BOOTROM_IMG_PATH" -> paths.bootromImgFile,
-      "BOOTROM_ELF_PATH" -> paths.bootromElfFile
+      "IMG_PATH" -> paths.bootromImgFile.toString,
     )
 
+    val sourceDir = SOCTPaths.get("binaries")
+    val buildDir = SOCTPaths.get("binaries-build")
+    val target = config.args.bootrom.getOrElse(config.args.target.defaultBootrom)
 
-    assert(paths.bootromImgFile.toFile.exists())
+    // Init CMake
+    log.info("Building bootrom using CMake")
+    runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
+    runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
 
-
+    assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
     paths.bootromImgFile
   }
 
@@ -230,9 +256,21 @@ object SOCTUtils {
     }))
   }
 
+  def disableStdOut(): Unit = {
+    // Disable standard output
+    System.setOut(new java.io.PrintStream(new java.io.OutputStream() {
+      override def write(b: Int): Unit = {}
+    }))
+  }
+
   def enableStdErr(): Unit = {
     // Enable standard error output
     System.setErr(System.err)
+  }
+
+  def enableStdOut(): Unit = {
+    // Enable standard output
+    System.setOut(System.out)
   }
 
   def listFilesWithExtension(startDir: Path, extension: String): List[java.io.File] = {

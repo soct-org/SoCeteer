@@ -47,15 +47,16 @@ object SOCTPaths {
    */
   def get(name: String): Path = name match {
     case "syn" => SOCTPaths.projectRoot.resolve("syn")
+    case "binaries" => SOCTPaths.projectRoot.resolve("binaries")
+    case "shared" => SOCTPaths.projectRoot.resolve("shared")
+    case "vhdlsrcs" => SOCTPaths.projectRoot.resolve("src").resolve("main").resolve("resources") // TODO move to syn?
     case "boards" => get("syn").resolve("boards")
     case "tclsrcs" => get("syn").resolve("tclsrcs")
     case "vsrcs" => get("syn").resolve("vsrcs")
-    case "vhdlsrcs" => SOCTPaths.projectRoot.resolve("src").resolve("main").resolve("resources")
-    case "shared" => SOCTPaths.projectRoot.resolve("shared")
     case "FindVerilator.cmake" => get("shared").resolve("cmake").resolve("FindVerilator.cmake")
+    case "binaries-build" => get("binaries").resolve("cmake-build-bootrom")
     case _ => throw new InternalBugException(s"Unknown path name: $name")
   }
-
 }
 
 /**
@@ -100,19 +101,9 @@ abstract class SOCTPaths(args: SOCTArgs) {
   def dtsFile: Path = systemDir.resolve(s"${SOCTPaths.systemName}.dts")
 
   /**
-   * Path to the generated device tree blob file (the compiled dts)
-   */
-  def dtbFile: Path = systemDir.resolve(s"${SOCTPaths.systemName}.dtb")
-
-  /**
    * Path to the generated bootrom image file (contains the plain instructions to be loaded at boot)
    */
   def bootromImgFile: Path = systemDir.resolve("bootrom.img")
-
-  /**
-   * Path to the generated bootrom elf file (contains the full elf binary with sections and symbols - mainly used for debugging)
-   */
-  def bootromElfFile: Path = systemDir.resolve("bootrom.elf")
 
   // Custom to string for easier debugging (thanks ChatGPT)
   override def toString: String = {
@@ -129,9 +120,7 @@ abstract class SOCTPaths(args: SOCTArgs) {
        |  firrtlFile: $firrtlFile
        |  annoFile: $annoFile
        |  dtsFile: $dtsFile
-       |  dtbFile: $dtbFile
        |  bootromImgFile: $bootromImgFile
-       |  bootromElfFile: $bootromElfFile
        |""".stripMargin
   }
 }

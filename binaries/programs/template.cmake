@@ -21,7 +21,7 @@ set(PROGRAM_SIM_NAMES "")
 set(PROGRAM_BOARD_NAMES "")
 
 set(BASE_CFLAGS -mcmodel=medany -nostartfiles -DBAREMETAL -fno-common -Wall -Wextra)
-set(BASE_LINKFLAGS -mcmodel=medany -DBAREMETAL -static -fno-common -Wall -Wextra)
+set(BASE_LFLAGS -mcmodel=medany -DBAREMETAL -static -fno-common -Wall -Wextra)
 
 message(STATUS "Adding Program: ${PROGRAM_NAME}")
 
@@ -32,11 +32,11 @@ if (NOT DEFINED NO_SIM)
         add_executable(${PROGRAM_SIM_NAME_64} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS})
         target_link_libraries(${PROGRAM_SIM_NAME_64} PRIVATE libgloss64_htif)
         target_compile_options(${PROGRAM_SIM_NAME_64} PRIVATE ${BASE_CFLAGS} -march=${MARCH64} -mabi=${MABI64} ${LGLOSS_HTIF_CFLAGS_64})
-        target_link_options(${PROGRAM_SIM_NAME_64} PRIVATE ${BASE_LINKFLAGS} -march=${MARCH64} -mabi=${MABI64} ${LGLOSS_HTIF_LDFLAGS_64})
+        target_link_options(${PROGRAM_SIM_NAME_64} PRIVATE ${BASE_LFLAGS} -march=${MARCH64} -mabi=${MABI64} ${LGLOSS_HTIF_LDFLAGS_64})
         target_include_directories(${PROGRAM_SIM_NAME_64} PRIVATE ${LIBGLOSS_DIR}/include)
         set_target_properties(${PROGRAM_SIM_NAME_64} PROPERTIES
                 OUTPUT_NAME boot-sim.elf
-                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/${PROGRAM_NAME})
+                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/programs/${PROGRAM_NAME})
     endif ()
 
     if (NOT DEFINED NO_32)
@@ -44,11 +44,11 @@ if (NOT DEFINED NO_SIM)
         add_executable(${PROGRAM_SIM_NAME_32} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS})
         target_link_libraries(${PROGRAM_SIM_NAME_32} PRIVATE libgloss32_htif)
         target_compile_options(${PROGRAM_SIM_NAME_32} PRIVATE ${BASE_CFLAGS} -march=${MARCH32} -mabi=${MABI32} ${LGLOSS_HTIF_CFLAGS_32})
-        target_link_options(${PROGRAM_SIM_NAME_32} PRIVATE ${BASE_LINKFLAGS} -march=${MARCH32} -mabi=${MABI32} ${LGLOSS_HTIF_LDFLAGS_32})
+        target_link_options(${PROGRAM_SIM_NAME_32} PRIVATE ${BASE_LFLAGS} -march=${MARCH32} -mabi=${MABI32} ${LGLOSS_HTIF_LDFLAGS_32})
         target_include_directories(${PROGRAM_SIM_NAME_32} PRIVATE ${LIBGLOSS_DIR}/include)
         set_target_properties(${PROGRAM_SIM_NAME_32} PROPERTIES
                 OUTPUT_NAME boot-sim-32.elf
-                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/${PROGRAM_NAME})
+                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/programs/${PROGRAM_NAME})
     endif ()
 endif()
 
@@ -59,11 +59,11 @@ if (NOT DEFINED NO_BOARD)
         add_executable(${PROGRAM_BOARD_NAME_64} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS})
         target_link_libraries(${PROGRAM_BOARD_NAME_64} PRIVATE libgloss64_board)
         target_compile_options(${PROGRAM_BOARD_NAME_64} PRIVATE ${BASE_CFLAGS} -march=${MARCH64} -mabi=${MABI64} ${LGLOSS_BOARD_CFLAGS_64})
-        target_link_options(${PROGRAM_BOARD_NAME_64} PRIVATE ${BASE_LINKFLAGS} -march=${MARCH64} -mabi=${MABI64} ${LGLOSS_BOARD_LDFLAGS_64})
+        target_link_options(${PROGRAM_BOARD_NAME_64} PRIVATE ${BASE_LFLAGS} -march=${MARCH64} -mabi=${MABI64} ${LGLOSS_BOARD_LDFLAGS_64})
         target_include_directories(${PROGRAM_BOARD_NAME_64} PRIVATE ${LIBGLOSS_DIR}/include)
         set_target_properties(${PROGRAM_BOARD_NAME_64} PROPERTIES
                 OUTPUT_NAME boot-board.elf
-                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/${PROGRAM_NAME})
+                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/programs/${PROGRAM_NAME})
     endif ()
 
     if (NOT DEFINED NO_32)
@@ -71,11 +71,11 @@ if (NOT DEFINED NO_BOARD)
         add_executable(${PROGRAM_BOARD_NAME_32} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS})
         target_link_libraries(${PROGRAM_BOARD_NAME_32} PRIVATE libgloss32_board)
         target_compile_options(${PROGRAM_BOARD_NAME_32} PRIVATE ${BASE_CFLAGS} -march=${MARCH32} -mabi=${MABI32} ${LGLOSS_BOARD_CFLAGS_32})
-        target_link_options(${PROGRAM_BOARD_NAME_32} PRIVATE ${BASE_LINKFLAGS} -march=${MARCH32} -mabi=${MABI32} ${LGLOSS_BOARD_LDFLAGS_32})
+        target_link_options(${PROGRAM_BOARD_NAME_32} PRIVATE ${BASE_LFLAGS} -march=${MARCH32} -mabi=${MABI32} ${LGLOSS_BOARD_LDFLAGS_32})
         target_include_directories(${PROGRAM_BOARD_NAME_32} PRIVATE ${LIBGLOSS_DIR}/include)
         set_target_properties(${PROGRAM_BOARD_NAME_32} PROPERTIES
                 OUTPUT_NAME boot-board-32.elf
-                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/${PROGRAM_NAME})
+                RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/programs/${PROGRAM_NAME})
     endif ()
 endif()
 
