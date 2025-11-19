@@ -29,9 +29,11 @@ message(STATUS "LD: ${CMAKE_LINKER}")
 ########################################
 # Find project installation of Verilator
 ########################################
-find_package(VERILATOR REQUIRED HINTS ${SOCETEER_ROOT}/buildtools/verilator NO_CMAKE_SYSTEM_PATH)
+list(PREPEND CMAKE_MODULE_PATH "${SOCETEER_ROOT}/shared/cmake")
 
-message(STATUS "Verilator Root: ${VERILATOR_ROOT}")
+find_package(VERILATOR MODULE REQUIRED)
+
+message(STATUS "VERILATOR_ROOT: ${VERILATOR_ROOT}")
 ##################################################
 # Find the configurations and include sub-projects
 ##################################################

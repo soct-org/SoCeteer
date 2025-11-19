@@ -5,12 +5,9 @@ import soct.rocket.WrapVHDL
 import java.nio.file.{Files, Path, Paths}
 import scala.io.Source
 
-object Vivado {
+object SOCTVivado {
 
   def generateHeader(systemDir: Path, boardName: String, baseConfig: String, boardParams: BoardParams): String = {
-    val vsrcsDir = Utils.synPath().resolve("vsrcs")
-    val vhdlsrcsDir = Utils.projectRoot().resolve("src").resolve("main").resolve("resources")
-
     var header =
       s"""
          |set vivado_board_name "$boardName"
@@ -25,11 +22,11 @@ object Vivado {
     // add the paths:
     header +=
       s"""
-         |set vsrcs_dir "${vsrcsDir.toAbsolutePath}"
-         |set vhdlsrcs_dir "${vhdlsrcsDir.toAbsolutePath}"
-         |set tclsrcs_dir "${Utils.tclSrcsPath().toAbsolutePath}"
+         |set vsrcs_dir "${SOCTPaths.get("vsrcs")}"
+         |set vhdlsrcs_dir "${SOCTPaths.get("vhdlsrcs")}"
+         |set tclsrcs_dir "${SOCTPaths.get("tclsrcs")}"
          |set workspace_dir "${systemDir.toAbsolutePath}"
-         |set boards_dir "${Utils.boardsPath().toAbsolutePath}"
+         |set boards_dir "${SOCTPaths.get("boards")}"
     """
 
     header.stripMargin
@@ -37,7 +34,7 @@ object Vivado {
 
   def generateTCLScript(systemDir: Path, boardName: String, baseConfig: String, boardParams: BoardParams): Path = {
     val tclFile = systemDir.resolve("system.tcl")
-    val template = Source.fromFile(Paths.get(s"${Utils.tclSrcsPath()}/vivado.template.tcl").toFile)
+    val template = Source.fromFile(SOCTPaths.get("tclsrcs").resolve("vivado.template.tcl").toFile)
     val header = generateHeader(systemDir, boardName, baseConfig, boardParams)
     val full = header + "\n" + template.mkString
     // write to file
@@ -86,18 +83,18 @@ object Vivado {
       outFile
     } else {
       println("Verilator binary not found or not executable. Using unprocessed Verilog file instead.")
-      Utils.disableStdErr()
+      SOCTUtils.disableStdErr()
       WrapVHDL.main(Array("-m", baseConfig, "-o", outFile.toString, verilogFile.toAbsolutePath.toString))
-      Utils.enableStdErr()
+      SOCTUtils.enableStdErr()
       outFile
     }
   }
 
   def generateProject(tclFile: Path, vivado: Path, vivadoSettings: Option[Path]): Unit = {
     // On windows, it should be a .bat file
-    if (Utils.isWindows) {
+    if (SOCTUtils.isWindows) {
       println("Not implemented yet")
-    } else if (Utils.isUnix) {
+    } else if (SOCTUtils.isUnix) {
       var cmd = s"${vivado.toAbsolutePath} -mode batch -source ${tclFile.toAbsolutePath}"
       if (vivadoSettings.isDefined) {
         cmd = s"source ${vivadoSettings.get} && $cmd"

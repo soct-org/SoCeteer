@@ -14,10 +14,6 @@
 	path = generators/shuttle
 	url = https://github.com/ucb-bar/shuttle.git
 	branch = master
-[submodule "buildtools/verilator"]
-	path = buildtools/verilator
-	url = https://github.com/verilator/verilator.git
-	branch = stable
 [submodule "generators/gemmini"]
 	path = generators/gemmini
 	url = https://github.com/soct-org/gemmini.git
@@ -30,3 +26,7 @@
 	path = generators/rocket-chip-chisel3
 	url = https://github.com/soct-org/rocket-chip.git
 	branch = chisel3
+[submodule "shared/verilator"]
+	path = shared/verilator
+	url = https://github.com/verilator/verilator.git
+	branch = stable

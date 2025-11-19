@@ -67,8 +67,8 @@ RUN git clone --branch ${VERILATOR_TAG} https://github.com/verilator/verilator.g
 FROM base AS riscv-builder
 
 COPY --chmod=0755 /scripts/install-deps/install-rv-compiler.sh /tmp/scripts/install-rv-compiler.sh
-COPY /buildtools/cmake/riscv-toolchain-shipped.cmake /tmp/scripts/riscv-toolchain-shipped.cmake
-COPY /buildtools/cmake/_riscv-toolchain.cmake /tmp/scripts/_riscv-toolchain.cmake
+COPY /shared/cmake/riscv-toolchain-shipped.cmake /tmp/scripts/riscv-toolchain-shipped.cmake
+COPY /shared/cmake/_riscv-toolchain.cmake /tmp/scripts/_riscv-toolchain.cmake
 
 RUN cmake -DVENDOR_DIR=${HOME}/tools/vendor -DSCRIPTS_DIR=/tmp/scripts -P /tmp/scripts/riscv-toolchain-shipped.cmake
 

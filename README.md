@@ -104,7 +104,7 @@ choco install dtc-msys2
 ---
 ### Verilator (for Simulation)
 * Required to simulate the generated Verilog.
-* A maintained, compatible submodule is provided at [buildtools/verilator](buildtools/verilator).
+* A maintained, compatible submodule is provided at [shared/verilator](shared/verilator).
 * Requires `flex` and `bison`:
 ```bash
 # Ubuntu/Debian
@@ -117,16 +117,11 @@ brew install flex bison
 choco install winflexbison3
 ```
 ---
-* To install, run from the repository root:
-```bash
-scripts/install-deps/install-verilator.sh buildtools/verilator
-```
-* For Ubuntu/Debian, you can pass `--install-deps` to install dependencies automatically, `--no-sudo` to skip `sudo` usage.
 
 #### On Windows:
 By default, [CMakeLists.txt](sim/CMakeLists.txt) builds Verilator. However, manual build is often more reliable (ensure `WIN_FLEX_BISON` points to the correct directory). The recommended compiler is [MSVC](https://visualstudio.microsoft.com/downloads/).
 ```bash
-cd buildtools/verilator
+cd shared/verilator
 cmake -E make_directory build
 cd build
 cmake .. -DWIN_FLEX_BISON="C:\\ProgramData\\chocolatey\\lib\\winflexbison3\\tools" -DCMAKE_BUILD_TYPE=Release
@@ -151,7 +146,7 @@ cmake --install . --prefix ../install
 6. Open the [sim](sim) directory as a separate project in CLion or VSCode. Build the simulator using CMake. 
    * Make sure to select the Release build type for **significantly better performance** (left of the configuration selector in CLion, Debug by default).
    * [Here](#building-the-simulator) is a list of available CMake options for building the simulator.
-7. Open the [examples](examples) directory as a separate project in CLion or VSCode. Build one of the example programs using CMake.
+7. Open the [examples](binaries) directory as a separate project in CLion or VSCode. Build one of the example programs using CMake.
 8. Run the simulator and pass the compiled ELF binary as an argument.
 
 ---
@@ -184,7 +179,7 @@ mkdir build && cd build
 cmake ..
 cmake --build programs/hello-cpp # or any other program in examples/programs
 ```
-Compiled ELF binaries are placed by default in [examples/elfs](examples/elfs).
+Compiled ELF binaries are placed by default in [examples/elfs](binaries/elfs).
 6. Run the simulator and pass the compiled ELF binary as an argument:
 ```bash
 ./sim/build/RocketB1-64 examples/elfs/hello-cpp/boot-sim.elf 
@@ -193,7 +188,7 @@ Compiled ELF binaries are placed by default in [examples/elfs](examples/elfs).
 
 ## Compiling RISC-V Programs
 
-Compiled ELF binaries are placed in [examples/elfs](examples/elfs).
+Compiled ELF binaries are placed in [examples/elfs](binaries/elfs).
 
 ---
 
@@ -238,7 +233,7 @@ Windows support is available but not prioritized. Some features may not function
 * Use **WSL2** for a more Unix-like environment.
 * (Simulation) Native Windows builds are possible with **CLion** or **Visual Studio** using MinGW. CLion includes a bundled MinGW toolchain, make sure it is selected in `File -> Settings -> Build, Execution, Deployment -> Toolchains`.
 
-⚠️ Some simulation features (e.g., [syscall_device.cpp](buildtools/risc-v-isa-sim/fesvr/syscall_device.cpp)) are not fully implemented on Windows.
+⚠️ Some simulation features (e.g., [syscall_device.cpp](shared/risc-v-isa-sim/fesvr/syscall_device.cpp)) are not fully implemented on Windows.
 
 ---
 ### Caches and Build Directories
@@ -246,7 +241,7 @@ Several tools used in this project maintain caches or build directories that may
 
 * **SBT**: `sbt clean`
 * **CMake**: remove build directories and re-run
-* **Verilator**: remove `buildtools/verilator/bin/verilator_bin` and rebuild
+* **Verilator**: remove `verilator_bin` and rebuild
 * **ccache**: `ccache -C`
 
 ---

@@ -13,7 +13,7 @@ class WithGemmini(mesh_size: Int, bus_bits: Int) extends Config((site, here, up)
       implicit val q = p
       implicit val v = implicitly[ValName]
       val config = GemminiConfigs.defaultConfig.copy(meshRows = mesh_size, meshColumns = mesh_size, dma_buswidth = bus_bits)
-      Utils.copyGemminiSoftware(config.generateHeader())
+      SOCTUtils.copyGemminiSoftware(config.generateHeader())
       LazyModule(new Gemmini(config))
     }
   )
@@ -26,7 +26,7 @@ class WithGemminiFp(mesh_size: Int, bus_bits: Int) extends Config((site, here, u
       implicit val q = p
       implicit val v = implicitly[ValName]
       val config = GemminiFPConfigs.FP32DefaultConfig.copy(meshRows = mesh_size, meshColumns = mesh_size, dma_buswidth = bus_bits)
-      Utils.copyGemminiSoftware(config.generateHeader())
+      SOCTUtils.copyGemminiSoftware(config.generateHeader())
       LazyModule(new Gemmini(config))
     }
   )

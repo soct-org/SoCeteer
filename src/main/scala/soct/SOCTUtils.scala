@@ -2,15 +2,13 @@ package soct
 
 import firtoolresolver.FirtoolBinary
 import org.chipsalliance.cde.config.Config
-import org.json4s.{CustomSerializer, JString}
+import org.json4s.{CustomSerializer, JNull, JString}
 
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.util.Comparator
 import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
-import scala.util.chaining.scalaUtilChainingOps
-import scala.util.matching.Regex
-import soct.RocketLauncher.currentSoCPaths
+import soct.SOCTLauncher.{Targets, currentSoCPaths}
 
 import java.nio.charset.StandardCharsets
 
@@ -54,101 +52,29 @@ case class BoardParams(
   }
 }
 
-object DTSExtractor {
-
-  def extractMarch(dts: String, key: String = "riscv,isa", invalid: Seq[String] = Seq("b", "_xrocket")): String = {
-    val pattern = s"""(?s)$key = "(.*?)"""".r
-    val matches = pattern.findAllMatchIn(dts).toSeq
-    if (matches.isEmpty) {
-      throw new IllegalArgumentException(s"Key '$key' not found in DTS")
-    }
-    var march = matches.head.group(1)
-    invalid.foreach(invalidKey => march = march.replaceFirst(invalidKey, ""))
-    if (march.isEmpty) {
-      throw new IllegalArgumentException(s"Key '$key' not found in DTS")
-    }
-    march
-  }
-}
-
-object DTSModifier {
-
-  // Replace 32-bit memory address range
-  private def updateMemoryRange32(dts: String, memoryAddrRange32: String): String = {
-    val pattern: Regex = """reg = <0x80000000 *0x.*?>""".r
-    pattern.replaceAllIn(dts, s"reg = <$memoryAddrRange32>")
-  }
-
-  // Replace 64-bit memory address range
-  private def updateMemoryRange64(dts: String, memoryAddrRange64: String): String = {
-    val pattern: Regex = """reg = <0x0 0x80000000 *0x.*?>""".r
-    pattern.replaceAllIn(dts, s"reg = <$memoryAddrRange64>")
-  }
-
-  // Update clock frequency
-  private def updateClockFrequency(dts: String, rocketClockFreq: String): String = {
-    val pattern: Regex = """clock-frequency = <[0-9]+>""".r
-    pattern.replaceAllIn(dts, s"clock-frequency = <$rocketClockFreq>")
-  }
-
-  // Update timebase frequency
-  private def updateTimebaseFrequency(dts: String, rocketTimebaseFreq: String): String = {
-    val pattern: Regex = """timebase-frequency = <[0-9]+>""".r
-    pattern.replaceAllIn(dts, s"timebase-frequency = <$rocketTimebaseFreq>")
-  }
-
-  // Update Ethernet MAC address (if defined)
-  private def updateEtherMacAddress(dts: String, etherMac: Option[String]): String = {
-    etherMac match {
-      case Some(mac) =>
-        val pattern: Regex = """local-mac-address = \[.*?]""".r
-        pattern.replaceAllIn(dts, s"local-mac-address = [$mac]")
-      case None => dts
-    }
-  }
-
-  // Update Ethernet PHY mode (if defined)
-  private def updateEtherPhyMode(dts: String, etherPhy: Option[String]): String = {
-    etherPhy match {
-      case Some(phy) =>
-        val pattern: Regex = """phy-mode = ".*?" """.r
-        pattern.replaceAllIn(dts, s"""phy-mode = "$phy" """)
-      case None => dts
-    }
-  }
-
-  // Remove unwanted interrupt settings
-  private def removeInterruptsExtended(dts: String): String = {
-    val pattern: Regex = """\s*interrupts-extended = <&.*? 65535>;\s*\n?""".r
-    pattern.replaceAllIn(dts, "")
-  }
-
-  // Apply all modifications
-  def modifyDTS(dts: String, params: BoardParams): String = {
-    val (rocketClockFreq, rocketTimebaseFreq) = params.calculateFrequencies()
-    val (memoryAddrRange32, memoryAddrRange64) = params.calculateMemoryAddressRange()
-
-    val updatedDTS = updateMemoryRange32(dts, memoryAddrRange32)
-      .pipe(updateMemoryRange64(_, memoryAddrRange64))
-      .pipe(updateClockFrequency(_, rocketClockFreq.toString))
-      .pipe(updateTimebaseFrequency(_, rocketTimebaseFreq.toString))
-      .pipe(updateEtherMacAddress(_, params.ETHER_MAC))
-      .pipe(updateEtherPhyMode(_, params.ETHER_PHY))
-      .pipe(removeInterruptsExtended)
-
-    updatedDTS
-  }
-}
-
 // JSON4S serializer for java.nio.file.Path
-object PathSerializer extends CustomSerializer[Path](format => (
+object PathSerializer extends CustomSerializer[Path](_ => (
   { case JString(s) => Paths.get(s) },
-  { case p: Path => JString(p.toString) }
+  { case p: Path => JString(p.toString)}
 ))
 
+object TargetsSerializer extends CustomSerializer[Targets]( _ => (
+  { case JString(s) => Targets.parse(s)
+    case JNull      => Targets.Verilator},
+  {
+    case t: Targets => JString(t.name)
+  }
+))
 
-object Utils {
+// Internal Bug exception with stacktrace and message
+class InternalBugException(message: String) extends Exception(message) {
+  override def toString: String = s"InternalBugException: $message\n${getStackTrace.mkString("\n")}"
+}
 
+
+object SOCTUtils {
+
+  // Instantiate a Config subclass by name with error suggestion
   def instantiateConfig(currentName: String): Config = {
     try {
       Class.forName(currentName).getDeclaredConstructor().newInstance().asInstanceOf[Config]
@@ -189,27 +115,47 @@ object Utils {
     dp(a.length)(b.length)
   }
 
-  def projectRoot(): Path = {
-    // Check if defined in environment variable
-    val envVar = System.getenv("SOCETEER_ROOT")
-    if (envVar != null) {
-      val path = Paths.get(envVar)
-      if (Files.exists(path)) {
-        return path
-      }
+  def compileBootrom(paths: SOCTPaths, artifacts: Set[Path], config: SOCTLauncher.Config,
+                             boardDTS: Option[String] = None, boardParams: Option[BoardParams] = None): Path = {
+    val rocketDTS = artifacts.find(_.getFileName.toString.endsWith(".dts")).getOrElse {
+      throw new RuntimeException("No dts file found in artifacts")
     }
-    Paths.get("").toAbsolutePath
+    var fullDTS = Files.readAllLines(rocketDTS).toArray.mkString("\n")
+    if (boardDTS.isDefined && boardParams.isDefined) {
+      fullDTS = DTSModifier.modifyDTS(s"$fullDTS\n${boardDTS.get}", boardParams.get)
+    }
+
+    Files.write(paths.dtsFile, fullDTS.getBytes)
+    // Obtain the architecture from the dts
+    val march = DTSExtractor.extractMarch(fullDTS)
+
+    // Compile bootrom using CMake
+    val env = Map(
+      "MARCH" -> march,
+      "MABI" -> config.mabi,
+      "DTS_PATH" -> paths.dtsFile.toString,
+      "DTB_PATH" -> paths.dtbFile.toString,
+      "BOOTROM_IMG_PATH" -> paths.bootromImgFile,
+      "BOOTROM_ELF_PATH" -> paths.bootromElfFile
+    )
+
+
+    assert(paths.bootromImgFile.toFile.exists())
+
+
+    paths.bootromImgFile
   }
 
+  // Copy Gemmini software files to the system directory
   def copyGemminiSoftware(header: String): Unit = {
-    val srcDir = Utils.projectRoot().resolve("generators").resolve("gemmini").resolve("software").resolve("gemmini-rocc-tests")
+    val srcDir = SOCTPaths.projectRoot.resolve("generators").resolve("gemmini").resolve("software").resolve("gemmini-rocc-tests")
     val srcInclude = srcDir.resolve("include")
 
     val destDir = currentSoCPaths.get.systemDir.resolve("gemmini-rocc-tests")
     val destInclude = destDir.resolve("include")
     // Create include directory if it doesn't exist
     Files.createDirectories(destInclude)
-    Utils.recCopy(srcInclude, destInclude)
+    SOCTUtils.recCopy(srcInclude, destInclude)
 
     val destParams = destInclude.resolve("gemmini_params.h")
     Files.write(destParams, header.getBytes(StandardCharsets.UTF_8))
@@ -219,18 +165,6 @@ object Utils {
     val destXCustom = destDir.resolve("rocc-software").resolve("src").resolve("xcustom.h")
     Files.createDirectories(destXCustom.getParent)
     Files.copy(srcXCustom, destXCustom, StandardCopyOption.REPLACE_EXISTING)
-  }
-
-  def synPath(): Path = {
-    Utils.projectRoot().resolve("syn")
-  }
-
-  def boardsPath(): Path = {
-    Utils.synPath().resolve("boards")
-  }
-
-  def tclSrcsPath(): Path = {
-    Utils.synPath().resolve("tclsrcs")
   }
 
   def isWindows: Boolean = {
@@ -301,36 +235,6 @@ object Utils {
     System.setErr(System.err)
   }
 
-  /**
-   * Install the RISC-V toolchain using CMake and return the absolute path and the prefix (without the final "-")
-   *
-   * @return Path to the RISC-V toolchain and the prefix
-   * @throws Exception if the installation fails or the output cannot be parsed
-   */
-  def installRiscVToolchain(): String = {
-    // We use CMake in scripting mode to install the RISC-V toolchain - no need to do the work twice and have multiple copies of filepaths
-    val cmd = new ProcessBuilder("cmake", "-P", projectRoot().resolve("buildtools").resolve("cmake").resolve("riscv-toolchain-shipped.cmake").toString)
-      .directory(projectRoot().toFile)
-      .redirectErrorStream(true)
-      .start()
-    val exitCode = cmd.waitFor()
-    if (exitCode != 0) {
-      throw new Exception(s"Failed to install RISC-V toolchain - exit code: $exitCode")
-    }
-    val searchString = "RISC-V toolchain prefix: "
-    val output = scala.io.Source.fromInputStream(cmd.getInputStream).getLines()
-    // Read the output line by line and find the line that contains the search string
-    val lineOpt = output.find(_.contains(searchString))
-    if (lineOpt.isDefined) {
-      val line = lineOpt.get
-      val prefix = line.substring(line.indexOf(searchString) + searchString.length).trim
-      log.info(s"$searchString$prefix")
-      prefix
-    } else {
-      throw new Exception(s"Failed to install RISC-V toolchain - output: $output")
-    }
-  }
-
   def listFilesWithExtension(startDir: Path, extension: String): List[java.io.File] = {
     Files.walk(startDir)
       .iterator()
@@ -342,8 +246,8 @@ object Utils {
 
   def findVerilator(): Option[Path] = {
     // We use Cmake in scripting mode to find the Verilator installation - no need to do the work twice and have multiple copies of filepaths
-    val cmd = new ProcessBuilder("cmake", "-P", projectRoot().resolve("buildtools").resolve("cmake").resolve("FindVerilator.cmake").toString)
-      .directory(projectRoot().toFile)
+    val cmd = new ProcessBuilder("cmake", "-P", SOCTPaths.get("FindVerilator.cmake").toString)
+      .directory(SOCTPaths.projectRoot.toFile)
       .redirectErrorStream(true)
       .start()
     val exitCode = cmd.waitFor()
@@ -351,7 +255,7 @@ object Utils {
       log.error("Failed to find Verilator - exit code: " + exitCode)
       return None
     }
-    val searchString = "Verilator installation: "
+    val searchString = "VERILATOR_EXE: "
     // Read the output line by line and find the line that contains the search string
     val output = scala.io.Source.fromInputStream(cmd.getInputStream).getLines()
     // Read the output line by line and find the line that contains the search string
@@ -362,7 +266,7 @@ object Utils {
       log.info(s"Verilator installation found at $prefix")
       Some(Paths.get(prefix))
     } else {
-      log.error("Failed to find Verilator - output: " + output.mkString("\n"))
+      log.warn("Failed to find Verilator - output: " + output.mkString("\n"))
       None
     }
   }

@@ -2,7 +2,6 @@ package soct
 
 import chisel3.RawModule
 import chisel3.stage.ChiselGeneratorAnnotation
-import soct.RocketLauncher.SocPaths
 import firrtl.AnnotationSeq
 import firrtl.annotations.{Annotation, JsonProtocol}
 import firrtl.stage.{FirrtlFileAnnotation, FirrtlStage, OutputFileAnnotation}
@@ -16,14 +15,14 @@ import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import scala.collection.mutable
 import scala.annotation.unused
 
-abstract case class Transpiler() extends RocketLauncher.transpiles {
+abstract case class Transpiler() {
 }
 
 object Transpiler  {
 
   val stage = new FirrtlStage
 
-  def evalDesign(top: String, c: RocketLauncher.Config, paths: SocPaths, bootromPath: Path): Set[Path] = {
+  def evalDesign(top: String, c: SOCTLauncher.Config, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
     val gen = () => Class
       .forName(top)
       .getConstructor(classOf[Parameters])
@@ -31,7 +30,7 @@ object Transpiler  {
         new WithBootROMFile(bootromPath.toString) ++
           new Config(c.configs.foldRight(Parameters.empty) {
             case (currentName, config) =>
-              val currentConfig = Utils.instantiateConfig(currentName)
+              val currentConfig = SOCTUtils.instantiateConfig(currentName)
               currentConfig ++ config
           }))
     match {
@@ -70,7 +69,7 @@ object Transpiler  {
     artifacts.toSet
   }
 
-  def emitLowFirrtl(c: RocketLauncher.Config, paths: SocPaths): Unit = {
+  def emitLowFirrtl(c: SOCTLauncher.Config, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate low-firrtl")
     require(paths.annoFile.toFile.exists(), s"Annotation file ${paths.annoFile} does not exist but is required for chisel3")
     require(paths.firrtlFile.toFile.exists(), s"Firrtl file ${paths.firrtlFile} does not exist but is required.")
@@ -82,7 +81,7 @@ object Transpiler  {
     stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=low-opt"), firrtlAnnos)
   }
 
-  def emitVerilog(c: RocketLauncher.Config, paths: SocPaths, @unused firtoolPlugins: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, @unused firtoolPlugins: Seq[String]): Unit = {
     log.info("Using firrtl to generate verilog")
     val verilogAnnos: Seq[Annotation] = Seq(
       OutputFileAnnotation(paths.verilogFile.toString),

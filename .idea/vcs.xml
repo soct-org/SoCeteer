@@ -2,7 +2,6 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/buildtools/verilator" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/gemmini" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/gemmini/software/gemmini-rocc-tests" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/gemmini/software/gemmini-rocc-tests/riscv-tests" vcs="Git" />
@@ -70,5 +69,6 @@
     <mapping directory="$PROJECT_DIR$/generators/saturn-vectors/riscv-vector-tests/env/riscv-test-env" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/shuttle" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/sifive-cache" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/shared/verilator" vcs="Git" />
   </component>
 </project>

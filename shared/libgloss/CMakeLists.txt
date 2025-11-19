@@ -4,23 +4,11 @@ project(libgloss C ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_ASM_COMPILE_OPTIONS_SYSROOT "") # Prevent sysroot from being passed to assembler
 
-# Default ISA/mabi if not set
-if (NOT DEFINED MARCH64)
-    set(MARCH64 rv64imafdc_zifencei)
-    message(WARNING "Using default MARCH64: ${MARCH64}. This may be COMPLETELY WRONG for your target system. Set via -DMARCH64=...")
+# Require MARCH and MABI to be set by parent project
+if(NOT DEFINED MARCH64 OR NOT DEFINED MABI64 OR NOT DEFINED MARCH32 OR NOT DEFINED MABI32)
+    message(FATAL_ERROR "MARCH64, MABI64, MARCH32, and MABI32 must be defined to build libgloss.")
 endif()
-if (NOT DEFINED MABI64)
-    set(MABI64 lp64d)
-    message(WARNING "Using default MABI64: ${MABI64}. This may be COMPLETELY WRONG for your target system. Set via -DMABI64=...")
-endif()
-if (NOT DEFINED MARCH32)
-    set(MARCH32 rv32imac_zifencei_zicsr)
-    message(WARNING "Using default MARCH32: ${MARCH32}. This may be COMPLETELY WRONG for your target system. Set via -DMARCH32=...")
-endif()
-if (NOT DEFINED MABI32)
-    set(MABI32 ilp32)
-    message(WARNING "Using default MABI32: ${MABI32}. This may be COMPLETELY WRONG for your target system. Set via -DMABI32=...")
-endif()
+
 
 set(LIBGLOSS_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(INCLUDE_DIRS ${LIBGLOSS_DIR}/include)

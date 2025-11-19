@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 # This file can be included from each program's CMakeLists.txt file to set up. Feel free to just copy-paste and modify
 # Input sources: CMAKE_CXX_SRCS, CMAKE_C_SRCS
 # Input flags: NO_SIM - if set, do not build the simulation target. NO_BOARD - if set, do not build the board target.
+#              NO_32 - if set, do not build the 32-bit target. NO_64 - if set, do not build the 64-bit target.
 # ELF_DIR - directory to place output ELF files
 # Other input flags: MARCH64, MABI64, MARCH32, MABI32
 

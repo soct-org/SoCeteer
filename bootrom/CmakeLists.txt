@@ -1,0 +1,125 @@
+cmake_minimum_required(VERSION 3.20)
+project(bootrom LANGUAGES C CXX ASM)
+
+#
+# === User Options ===
+#
+set(CROSS_COMPILE "" CACHE STRING "Prefix for RISCV cross tools (e.g. riscv64-unknown-elf-)")
+set(MARCH         "" CACHE STRING "RISCV ISA (e.g. rv64imac)")
+set(MABI          "" CACHE STRING "RISCV ABI (e.g. lp64)")
+set(DTS_PATH      "" CACHE STRING "Input .dts file")
+set(DTB_PATH      "" CACHE STRING "Output .dtb file")
+
+foreach(V CROSS_COMPILE MARCH MABI DTS_PATH DTB_PATH)
+    if(NOT DEFINED ${V} OR "${${V}}" STREQUAL "")
+        message(FATAL_ERROR "Missing required -D${V}= value")
+    endif()
+endforeach()
+
+#
+# === Compiler + Tools ===
+#
+set(CMAKE_C_COMPILER   "${CROSS_COMPILE}gcc")
+set(CMAKE_ASM_COMPILER "${CROSS_COMPILE}gcc")
+set(OBJCOPY            "${CROSS_COMPILE}objcopy")
+set(OBJDUMP            "${CROSS_COMPILE}objdump")
+set(DTC                "dtc")
+
+#
+# C FLAGS common to both bootroms
+#
+set(COMMON_CFLAGS
+    "-march=${MARCH}"
+    "-mabi=${MABI}"
+    "-mcmodel=medany"
+    "-Os"
+    "-Wall"
+)
+
+#
+# Directory structure
+#
+set(TESTCHIPIP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sim/testchipip")
+set(SDBOOT_DIR     "${CMAKE_CURRENT_SOURCE_DIR}/board/sd-boot")
+
+#
+# === Device Tree Build ===
+#
+add_custom_command(
+    OUTPUT "${DTB_PATH}"
+    COMMAND ${DTC} -I dts -O dtb -@ -A -o "${DTB_PATH}" "${DTS_PATH}"
+    DEPENDS "${DTS_PATH}"
+    COMMENT "Building DTB from ${DTS_PATH}"
+)
+
+add_custom_target(device_tree ALL DEPENDS "${DTB_PATH}")
+
+#
+# === TESTCHIPIP BOOTROM ===
+#
+add_executable(bootrom_testchipip
+    "${TESTCHIPIP_DIR}/bootrom.S"
+)
+
+target_include_directories(bootrom_testchipip PRIVATE "${TESTCHIPIP_DIR}")
+
+target_compile_options(bootrom_testchipip PRIVATE ${COMMON_CFLAGS})
+
+target_link_options(bootrom_testchipip PRIVATE
+    "-static"
+    "-nostartfiles"
+    "-T${TESTCHIPIP_DIR}/linker.ld"
+)
+
+add_dependencies(bootrom_testchipip device_tree)
+
+# Generate .img from ELF
+add_custom_command(
+    TARGET bootrom_testchipip POST_BUILD
+    COMMAND ${OBJCOPY}
+            -O binary
+            --change-addresses=-0x10000
+            $<TARGET_FILE:bootrom_testchipip>
+            $<TARGET_FILE_DIR:bootrom_testchipip>/bootrom_testchipip.img
+    COMMENT "Generating bootrom_testchipip.img"
+)
+
+#
+# === SD-BOOT BOOTROM ===
+#
+add_executable(bootrom_sdboot
+    "${SDBOOT_DIR}/head.S"
+    "${SDBOOT_DIR}/kprintf.c"
+    "${SDBOOT_DIR}/bootrom.c"
+    "${SDBOOT_DIR}/ff.c"
+    "${SDBOOT_DIR}/ffunicode.c"
+)
+
+target_include_directories(bootrom_sdboot PRIVATE "${SDBOOT_DIR}")
+
+target_compile_options(bootrom_sdboot PRIVATE
+    ${COMMON_CFLAGS}
+    -ffunction-sections
+    -fno-pic
+    -fno-common
+    -g
+    "-DDEVICE_TREE=\"${DTB_PATH}\""
+)
+
+target_link_options(bootrom_sdboot PRIVATE
+    "-static"
+    "-nostartfiles"
+    "-T${SDBOOT_DIR}/bootrom.lds"
+    "-Wl,--gc-sections"
+)
+
+add_dependencies(bootrom_sdboot device_tree)
+
+add_custom_command(
+    TARGET bootrom_sdboot POST_BUILD
+    COMMAND ${OBJCOPY}
+            -O binary
+            $<TARGET_FILE:bootrom_sdboot>
+            $<TARGET_FILE_DIR:bootrom_sdboot>/bootrom_sdboot.img
+    COMMENT "Generating bootrom_sdboot.img"
+)

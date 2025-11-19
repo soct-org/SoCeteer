@@ -2,7 +2,7 @@ package soct
 
 import chisel3.RawModule
 import circt.stage.ChiselStage
-import soct.RocketLauncher.SocPaths
+import soct.SOCTLauncher.SOCTPaths
 import freechips.rocketchip.subsystem.WithBootROMFile
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
@@ -10,12 +10,12 @@ import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.collection.mutable
 
-abstract case class Transpiler() extends RocketLauncher.transpiles {
+abstract case class Transpiler() {
 }
 
 object Transpiler {
 
-  def evalDesign(top: String, c: RocketLauncher.Config, paths: SocPaths, bootromPath: Path): Set[Path] = {
+  def evalDesign(top: String, c: SOCTLauncher.Config, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
     // Contains a callable that returns a chisel model and that is used to generate the firrtl
     val gen = () => Class
       .forName(top)
@@ -24,7 +24,7 @@ object Transpiler {
         new WithBootROMFile(bootromPath.toString) ++
           new Config(c.configs.foldRight(Parameters.empty) {
             case (currentName, config) =>
-              val currentConfig = Utils.instantiateConfig(currentName)
+              val currentConfig = SOCTUtils.instantiateConfig(currentName)
               currentConfig ++ config
           }))
     match {
@@ -55,11 +55,11 @@ object Transpiler {
     artifacts.toSet
   }
 
-  def emitLowFirrtl(c: RocketLauncher.Config, paths: SocPaths): Unit = {
+  def emitLowFirrtl(c: SOCTLauncher.Config, paths: SOCTPaths): Unit = {
     // Only used for Chisel 3 compiler
   }
 
-  def emitVerilog(c: RocketLauncher.Config, paths: SocPaths, firtoolArgs: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, firtoolArgs: Seq[String]): Unit = {
     log.info(s"Using Firtool at ${paths.firtoolBinary} to generate Verilog")
     val outPath = paths.systemDir.resolve(paths.systemName)
     val verilogArgs = if (c.args.singleVerilogFile) {
