@@ -24,7 +24,7 @@ add_dependencies(${BOOTROM_NAME} device_tree)
 
 # Define DEVICE_TREE to point to the compiled DTB
 target_compile_definitions(${BOOTROM_NAME} PRIVATE DEVICE_TREE=\"${DTB_PATH}\")
-
+target_include_directories(${BOOTROM_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(${BOOTROM_NAME} PRIVATE ${ALL_CFLAGS})
 target_link_options(${BOOTROM_NAME} PRIVATE ${ALL_LFLAGS})
 

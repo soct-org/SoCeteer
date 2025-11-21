@@ -40,12 +40,9 @@ set(ELF_DIR "${SOCETEER_ROOT}/binaries/elfs" CACHE STRING "Directory where to pl
 if (DEFINED BOOTROM_MODE)
     message(NOTICE "Configured to build RISC-V bootroms.")
     # Required variables for bootroms:
-    set(MARCH "" CACHE STRING "RISCV ISA (e.g. rv64imac)")
-    set(MABI "" CACHE STRING "RISCV ABI (e.g. lp64)")
-    set(DTS_PATH "" CACHE STRING "Path to the device tree source file")
-    set(IMG_PATH "" CACHE STRING "Path where to dump the bootrom image")
     set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary (dtc). If not set, looks for dtc in PATH.")
 
+    # Validate required variables
     require_vars(MARCH MABI DTS_PATH IMG_PATH)
 
     # Device tree building:
@@ -94,9 +91,6 @@ else () # PROGRAM MODE
 
     file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}/programs" "${CMAKE_CURRENT_LIST_DIR}/programs/*/")
 endif ()
-
-
-set(CMAKE_VERBOSE_MAKEFILE ON)
 
 
 # Add each program and bootrom as a subdirectory
