@@ -26,12 +26,8 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
   with DontTouch
 
 
-class WithDebugProgBuf(prog_buf_words: Int, imp_break: Boolean) extends Config((site, here, up) => {
-  case DebugModuleKey => up(DebugModuleKey).map(_.copy(nProgramBufferWords = prog_buf_words, hasImplicitEbreak = imp_break))
-})
-
-/*----------------- RocketChip inspired test harness for HDL simulation ---------------*/
-class SoctSimTop()(implicit p: Parameters) extends Module {
+/*----------------- RocketChip test harness for HDL simulation ---------------*/
+class SOCTSimTop()(implicit p: Parameters) extends Module {
   val io = IO(new Bundle {
     val success = Output(Bool())
   })

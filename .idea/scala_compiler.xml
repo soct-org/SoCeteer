@@ -3,7 +3,7 @@
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
     <profile name="sbt 1" modules="SoCeteer,SoCeteer.cde,SoCeteer.cde~1,SoCeteer.compat,SoCeteer.diplomacy,SoCeteer.diplomacy~1,SoCeteer.dummy-midas,SoCeteer.dummy-midas.main,SoCeteer.dummy-midas.test,SoCeteer.gemmini,SoCeteer.hardfloat,SoCeteer.hardfloat~1,SoCeteer.hardloat,SoCeteer.hardloat~1,SoCeteer.nail,SoCeteer.nailgun,SoCeteer.riscv-boom,SoCeteer.rocket-chip,SoCeteer.rocket-chip-chisel3,SoCeteer.rocket-chip~1,SoCeteer.rocket-macros,SoCeteer.rocket-macros~1,SoCeteer.saturn-vectors,SoCeteer.shuttle,SoCeteer.sifive-cache" />
-    <profile name="sbt 2" modules="SoCeteer.cde~1.main,SoCeteer.cde~1.test,SoCeteer.diplomacy~1.main,SoCeteer.diplomacy~1.test,SoCeteer.hardfloat~1.main,SoCeteer.hardfloat~1.test,SoCeteer.hardloat~1.main,SoCeteer.hardloat~1.test,SoCeteer.nail.main,SoCeteer.nail.test,SoCeteer.rocket-chip.main,SoCeteer.rocket-chip.test,SoCeteer.rocket-chip~1.main,SoCeteer.rocket-chip~1.test,SoCeteer.rocket-macros~1.main,SoCeteer.rocket-macros~1.test">
+    <profile name="sbt 2" modules="SoCeteer.cde~1.main,SoCeteer.cde~1.test,SoCeteer.compat.main,SoCeteer.compat.test,SoCeteer.diplomacy~1.main,SoCeteer.diplomacy~1.test,SoCeteer.gemmini.main,SoCeteer.gemmini.test,SoCeteer.hardfloat~1.main,SoCeteer.hardfloat~1.test,SoCeteer.hardloat~1.main,SoCeteer.hardloat~1.test,SoCeteer.main,SoCeteer.nail.main,SoCeteer.nail.test,SoCeteer.riscv-boom.main,SoCeteer.riscv-boom.test,SoCeteer.rocket-chip.main,SoCeteer.rocket-chip.test,SoCeteer.rocket-chip~1.main,SoCeteer.rocket-chip~1.test,SoCeteer.rocket-macros~1.main,SoCeteer.rocket-macros~1.test,SoCeteer.sifive-cache.main,SoCeteer.sifive-cache.test,SoCeteer.test">
       <option name="deprecationWarnings" value="true" />
       <option name="uncheckedWarnings" value="true" />
       <plugins>
@@ -14,7 +14,7 @@
       <option name="deprecationWarnings" value="true" />
       <option name="uncheckedWarnings" value="true" />
     </profile>
-    <profile name="sbt 4" modules="SoCeteer.cde.main,SoCeteer.cde.test,SoCeteer.compat.main,SoCeteer.compat.test,SoCeteer.diplomacy.main,SoCeteer.diplomacy.test,SoCeteer.gemmini.main,SoCeteer.gemmini.test,SoCeteer.hardfloat.main,SoCeteer.hardfloat.test,SoCeteer.hardloat.main,SoCeteer.hardloat.test,SoCeteer.main,SoCeteer.riscv-boom.main,SoCeteer.riscv-boom.test,SoCeteer.rocket-chip-chisel3.main,SoCeteer.rocket-chip-chisel3.test,SoCeteer.rocket-macros.main,SoCeteer.rocket-macros.test,SoCeteer.sifive-cache.main,SoCeteer.sifive-cache.test,SoCeteer.test">
+    <profile name="sbt 4" modules="SoCeteer.cde.main,SoCeteer.cde.test,SoCeteer.diplomacy.main,SoCeteer.diplomacy.test,SoCeteer.hardfloat.main,SoCeteer.hardfloat.test,SoCeteer.hardloat.main,SoCeteer.hardloat.test,SoCeteer.rocket-chip-chisel3.main,SoCeteer.rocket-chip-chisel3.test,SoCeteer.rocket-macros.main,SoCeteer.rocket-macros.test">
       <option name="deprecationWarnings" value="true" />
       <option name="uncheckedWarnings" value="true" />
       <plugins>

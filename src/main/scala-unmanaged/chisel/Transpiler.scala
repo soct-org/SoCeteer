@@ -2,12 +2,11 @@ package soct
 
 import chisel3.RawModule
 import circt.stage.ChiselStage
-import soct.SOCTLauncher.SOCTPaths
 import freechips.rocketchip.subsystem.WithBootROMFile
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
 abstract case class Transpiler() {
@@ -42,7 +41,7 @@ object Transpiler {
     }
 
     // First pass contains default rocket bootrom, we don't need to emit anything
-    if (bootromPath == paths.rocketBootrom) {
+    if (bootromPath == SOCTPaths.rocketBootrom) {
       ChiselStage.elaborate(gen(), Array(s"-ll=${c.args.logLevel}"))
     } else {
       // Second pass generates verilog and dump firrtl
@@ -61,7 +60,7 @@ object Transpiler {
 
   def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, firtoolArgs: Seq[String]): Unit = {
     log.info(s"Using Firtool at ${paths.firtoolBinary} to generate Verilog")
-    val outPath = paths.systemDir.resolve(paths.systemName)
+    val outPath = paths.systemDir.resolve(SOCTPaths.systemName)
     val verilogArgs = if (c.args.singleVerilogFile) {
       Seq("--verilog", "--disable-layers=Verification", s"-o=$outPath.sv") // verilog outputs system verilog
     } else {

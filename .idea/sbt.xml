@@ -10,11 +10,11 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/generators/gemmini/src" />
             <option value="$PROJECT_DIR$/generators/riscv-boom/src" />
-            <option value="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/cde" />
-            <option value="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/diplomacy" />
-            <option value="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/hardfloat/hardfloat/src" />
-            <option value="$PROJECT_DIR$/generators/rocket-chip-chisel3/macros/src" />
-            <option value="$PROJECT_DIR$/generators/rocket-chip-chisel3/src" />
+            <option value="$PROJECT_DIR$/generators/rocket-chip/dependencies/cde" />
+            <option value="$PROJECT_DIR$/generators/rocket-chip/dependencies/diplomacy" />
+            <option value="$PROJECT_DIR$/generators/rocket-chip/dependencies/hardfloat/hardfloat/src" />
+            <option value="$PROJECT_DIR$/generators/rocket-chip/macros/src" />
+            <option value="$PROJECT_DIR$/generators/rocket-chip/src" />
             <option value="$PROJECT_DIR$/generators/saturn-vectors/src" />
             <option value="$PROJECT_DIR$/generators/shuttle/src" />
             <option value="$PROJECT_DIR$/generators/sifive-cache" />

@@ -4,7 +4,14 @@ import scala.util.matching.Regex
 import scala.util.chaining.scalaUtilChainingOps
 
 object DTSExtractor {
-
+  /**
+   * Extract the RISC-V architecture string from a Device Tree Source (DTS) content.
+   * @param dts The content of the DTS file as a string.
+   * @param key The key to search for in the DTS (default is "riscv,isa").
+   * @param invalid A sequence of invalid substrings to remove from the extracted architecture string.
+   *                Default is "b" which represents big-endian and "_xrocket" which is specific to Rocket cores ("CEASE" instruction).
+   * @return
+   */
   def extractMarch(dts: String, key: String = "riscv,isa", invalid: Seq[String] = Seq("b", "_xrocket")): String = {
     val pattern = s"""(?s)$key = "(.*?)"""".r
     val matches = pattern.findAllMatchIn(dts).toSeq

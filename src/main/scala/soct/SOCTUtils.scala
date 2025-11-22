@@ -161,6 +161,9 @@ object SOCTUtils {
 
     val sourceDir = SOCTPaths.get("binaries")
     val buildDir = SOCTPaths.get("binaries-build")
+    // Delete the cache to force reconfiguration
+    val cacheFile = buildDir.resolve("CMakeCache.txt")
+    cacheFile.toFile.delete()
     val target = config.args.bootrom.getOrElse(config.args.target.defaultBootrom)
 
     // Init CMake

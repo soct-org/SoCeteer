@@ -74,7 +74,7 @@ object SOCTLauncher {
                        }.getOrElse("1.75.0"), // Default to the version
                        firtoolArgs: Seq[String] = Seq.empty,
                        // Simulation options
-                       simTop: String = "soct.SoctSimTop",
+                       simTop: String = "soct.SOCTSimTop",
                        overrideSimFiles: Boolean = true,
                        // Synthesis options
                        synTop: String = "soct.RocketSystem",

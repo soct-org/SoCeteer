@@ -11,6 +11,9 @@ get_filename_component(BOOTROM_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 
 message(STATUS "Adding bootrom: ${BOOTROM_NAME}")
 
+set(BOOTROM_ELF ${BOOTROM_NAME}_elf)
+set(BOOTROM_IMG ${BOOTROM_NAME}_img)
+
 set(ALL_CFLAGS -march=${MARCH} -mabi=${MABI} -mcmodel=medany -nostartfiles -Os -fno-pic -fno-common -g -Wall -Wextra)
 set(ALL_LFLAGS -march=${MARCH} -mabi=${MABI} -static -nostartfiles -Wall -Wextra)
 
@@ -18,23 +21,31 @@ list(APPEND ALL_CFLAGS ${CFLAGS})
 list(APPEND ALL_LFLAGS ${LFLAGS})
 
 # Build the bootrom ELF
-add_executable(${BOOTROM_NAME} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS} ${CMAKE_ASM_SRCS})
+add_executable(${BOOTROM_ELF} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS} ${CMAKE_ASM_SRCS})
 
-add_dependencies(${BOOTROM_NAME} device_tree)
+add_dependencies(${BOOTROM_ELF} device_tree)
 
 # Define DEVICE_TREE to point to the compiled DTB
-target_compile_definitions(${BOOTROM_NAME} PRIVATE DEVICE_TREE=\"${DTB_PATH}\")
-target_include_directories(${BOOTROM_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_options(${BOOTROM_NAME} PRIVATE ${ALL_CFLAGS})
-target_link_options(${BOOTROM_NAME} PRIVATE ${ALL_LFLAGS})
+target_compile_definitions(${BOOTROM_ELF} PRIVATE DEVICE_TREE=\"${DTB_PATH}\")
+target_include_directories(${BOOTROM_ELF} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(${BOOTROM_ELF} PRIVATE ${ALL_CFLAGS})
+target_link_options(${BOOTROM_ELF} PRIVATE ${ALL_LFLAGS})
 
-set_target_properties(${BOOTROM_NAME} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/bootroms/${BOOTROM_NAME}
+set_target_properties(${BOOTROM_ELF} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/bootroms/${BOOTROM_ELF}
         OUTPUT_NAME bootrom.elf
 )
 
-add_custom_command(TARGET ${BOOTROM_NAME} POST_BUILD
-        COMMAND ${CMAKE_OBJCOPY} -O binary --change-addresses=-0x10000 $<TARGET_FILE:${BOOTROM_NAME}> ${IMG_PATH}
-        COMMENT "Generating bootrom image at ${IMG_PATH}"
+# Build the bootrom image
+add_custom_target(${BOOTROM_IMG} ALL
+        COMMAND ${CMAKE_COMMAND} -E remove -f ${IMG_PATH}
+        COMMAND ${CMAKE_OBJCOPY} -O binary --change-addresses=-0x10000 $<TARGET_FILE:${BOOTROM_ELF}> ${IMG_PATH}
+        DEPENDS ${BOOTROM_ELF}
+        COMMENT "Always generating bootrom image at ${IMG_PATH}"
         VERBATIM
+)
+
+# Final target to build both ELF and IMG
+add_custom_target(${BOOTROM_NAME} ALL
+        DEPENDS ${BOOTROM_ELF} ${BOOTROM_IMG}
 )
