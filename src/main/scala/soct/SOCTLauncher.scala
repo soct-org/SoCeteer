@@ -77,7 +77,7 @@ object SOCTLauncher {
                        simTop: String = "soct.SOCTSimTop",
                        overrideSimFiles: Boolean = true,
                        // Synthesis options
-                       synTop: String = "soct.RocketSystem",
+                       synTop: String = "soct.SOCTSynTop",
                        // Vivado specific options
                        vivadoSettings: Option[Path] = None,
                        vivado: Option[Path] = None,
@@ -176,7 +176,7 @@ object SOCTLauncher {
     } else {
       config.configs :+= "soct.ExtMem64Bit"
     }
-    config.configs :+= "soct.RocketBaseConfig"
+    config.configs :+= "soct.RocketSynBaseConfig"
 
     if (SOCTUtils.rmrfOpt(boardPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${boardPaths.systemDir}")
@@ -223,7 +223,7 @@ object SOCTLauncher {
     } else {
       config.configs :+= "soct.ExtMem64Bit"
     }
-    config.configs :+= "soct.RocketBaseConfig"
+    config.configs :+= "soct.RocketSynBaseConfig"
 
     if (SOCTUtils.rmrfOpt(yosysPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${yosysPaths.systemDir}")

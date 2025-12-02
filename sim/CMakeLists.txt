@@ -67,7 +67,7 @@ list(APPEND RV_ISA_SIM_SRCS ${FESVR_SRCS} ${DISASM_SRCS})
 # Set up Verilator params
 #########################
 if (NOT DEFINED VL_TOP_MODULE)
-    set(VL_TOP_MODULE "SoctSimTop")
+    set(VL_TOP_MODULE "SOCTSimTop")
 endif ()
 
 # The name used in the C++ code to include VL_PREFIX.h

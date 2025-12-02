@@ -51,15 +51,11 @@
     <mapping directory="$PROJECT_DIR$/generators/riscv-boom" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/cde" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/chisel" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/diplomacy" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/hardfloat" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/hardfloat/berkeley-softfloat-3" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip-chisel3/dependencies/hardfloat/berkeley-testfloat-3" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/generators/rocket-chip/dependencies/cde" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip/dependencies/chisel" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/generators/rocket-chip/dependencies/diplomacy" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip/dependencies/hardfloat" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip/dependencies/hardfloat/berkeley-softfloat-3" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/generators/rocket-chip/dependencies/hardfloat/berkeley-testfloat-3" vcs="Git" />

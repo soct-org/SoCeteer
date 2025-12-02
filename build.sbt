@@ -1,5 +1,5 @@
-// 7.3.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
-val fallbackChiselVersion = "7.3.0"
+// 7.4.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
+val fallbackChiselVersion = "7.4.0"
 
 val params = sys.env.get("SOCT_CHISEL_VERSION") match {
   case Some(v) => Seq(v.startsWith("3."), v)
@@ -39,7 +39,7 @@ def freshProject(name: String, dir: File): Project = {
 
 lazy val commonSettings = Seq(
   version := "1.0.0",
-  scalaVersion := (if (useChisel3) "2.13.14" else "2.13.17"),
+  scalaVersion := (if (useChisel3) "2.13.14" else "2.13.18"),
   Global / parallelExecution := true,
   scalacOptions ++= Seq("-deprecation", "-unchecked"),
   libraryDependencies += "org.json4s" %% "json4s-jackson" % "4.0.7",

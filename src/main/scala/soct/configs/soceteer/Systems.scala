@@ -1,12 +1,12 @@
 package soct
 
 import chisel3._
-import freechips.rocketchip.devices.debug.{Debug, DebugModuleKey}
+import freechips.rocketchip.devices.debug.Debug
 import freechips.rocketchip.devices.tilelink.{BootROM, BootROMLocated}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.system.SimAXIMem
 import freechips.rocketchip.util.{AsyncResetReg, DontTouch}
-import org.chipsalliance.cde.config.{Config, Parameters}
+import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 class RocketSystem(implicit p: Parameters) extends RocketSubsystem
@@ -26,7 +26,16 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
   with DontTouch
 
 
-/*----------------- RocketChip test harness for HDL simulation ---------------*/
+/**
+ * Top-level module for synthesis of the RocketSystem within SOCT
+ */
+class SOCTSynTop(implicit p: Parameters) extends RocketSystem
+
+
+
+/**
+ * Top-level module for simulation of the RocketSystem within SOCT
+ */
 class SOCTSimTop()(implicit p: Parameters) extends Module {
   val io = IO(new Bundle {
     val success = Output(Bool())
