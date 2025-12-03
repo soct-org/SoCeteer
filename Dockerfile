@@ -74,8 +74,8 @@ RUN cmake -DRISCV_TOOLS_VERSION=${XPACK_TAG} \
 FROM base AS final
 
 # Circt
-COPY --chown=soct:soct --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
-ENV CIRCT_INSTALL_DIR=${CIRCT_ROOT}/build-Release/install
+#COPY --chown=soct:soct --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
+#ENV CIRCT_INSTALL_DIR=${CIRCT_ROOT}/build-Release/install
 
 # Verilator
 COPY --chown=soct:soct --from=verilator-builder ${VERILATOR_ROOT} ${VERILATOR_ROOT}
