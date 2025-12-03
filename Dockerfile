@@ -57,8 +57,8 @@ ARG VERILATOR_TAG=v5.042
 COPY --chown=soct:soct /shared/cmake/install-verilator.cmake ${SCRIPTS_DIR}/install-verilator.cmake
 
 RUN git clone --branch ${VERILATOR_TAG} --depth=1 https://github.com/verilator/verilator.git ${VERILATOR_ROOT} \
-    && cmake -DVERILATOR_SOURCE_DIR=${VERILATOR_ROOT}  \
-    -DVERILATOR_INSTALL_DIR=${VERILATOR_ROOT}/artifact \
+    && cmake -DVERILATOR_SOURCE=${VERILATOR_ROOT}  \
+    -DVERILATOR_INSTALL=${VERILATOR_ROOT}/artifact \
     -P ${SCRIPTS_DIR}/install-verilator.cmake
 
 # RISC-V compiler download stage
