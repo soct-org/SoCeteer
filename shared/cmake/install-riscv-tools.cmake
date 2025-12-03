@@ -1,32 +1,27 @@
-###############################
-# This script locates or installs the RISC-V toolchain.
-# It has the following precedence for finding the toolchain:
-# 1. User-defined RISCV_TOOLS variable (-DRISCV_TOOLS=...)
-# 2. RISCV_TOOLS environment variable
-# 3. Default path relative to the project (tries to download it)
-###############################
+###################################################
+# Function to install RISC-V Tools
+# Requires:
+# RISCV_TOOLS - path where to install the RISC-V toolchain (must not exist or be empty).
+# RISCV_TOOLS_VERSION - version of the RISC-V toolchain to install.
+# The directory will be created if it does not exist already.
+# Outputs:
+# Nothing
+###################################################
+cmake_minimum_required(VERSION 3.20)
 
-if (NOT DEFINED RISCV_TOOLS_DOWNLOAD_DIR)
-    get_filename_component(RISCV_TOOLS_DOWNLOAD_DIR "${CMAKE_CURRENT_LIST_DIR}/../vendor" ABSOLUTE)
-endif ()
+function(install_riscv_tools)
+    # Validate RISCV_TOOLS directory
+    if (NOT DEFINED RISCV_TOOLS)
+        message(FATAL_ERROR "RISCV_TOOLS variable is not defined. Please set it to the path where to install the RISC-V toolchain.")
+    endif ()
+    if (EXISTS ${RISCV_TOOLS})
+        file(GLOB _existing_files "${RISCV_TOOLS}/*")
+        if (_existing_files)
+            message(FATAL_ERROR "RISCV_TOOLS directory ${RISCV_TOOLS} already exists and is not empty. Please set RISCV_TOOLS to an empty or non-existing directory.")
+        endif ()
+    endif ()
 
-set(RISCV_TOOLS_PROJECT_PATH "${RISCV_TOOLS_DOWNLOAD_DIR}/riscv-none-elf-gcc")
 
-set(RISCV_TOOLS_VERSION "15.2.0-1") # Version to download if not found
-
-# 1.
-if (DEFINED RISCV_TOOLS)
-    message(STATUS "Using user-defined RISCV_TOOLS: ${RISCV_TOOLS}")
-    # 2.
-elseif (DEFINED ENV{RISCV_TOOLS})
-    set(RISCV_TOOLS $ENV{RISCV_TOOLS})
-    message(STATUS "Using RISCV_TOOLS from environment: ${RISCV_TOOLS}")
-    # 3.
-elseif (EXISTS "${RISCV_TOOLS_PROJECT_PATH}")
-    get_filename_component(RISCV_TOOLS "${RISCV_TOOLS_PROJECT_PATH}" ABSOLUTE)
-    message(STATUS "Using project-relative RISCV_TOOLS: ${RISCV_TOOLS}")
-else ()
-    message(STATUS "Using default RISCV_TOOLS_DOWNLOAD_DIR: ${RISCV_TOOLS_DOWNLOAD_DIR}. To override, set RISCV_TOOLS_DOWNLOAD_DIR.")
     # Determine the platform (linux-arm, linux-arm64, linux-x64, darwin-x64, darwin-arm64, windows-x64)
     if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
         if (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -48,16 +43,16 @@ else ()
         message(FATAL_ERROR "Unsupported platform: ${CMAKE_HOST_SYSTEM_NAME} ${CMAKE_HOST_SYSTEM_PROCESSOR}")
     endif ()
 
-    # Create vendor directory if it doesn't exist
-    file(MAKE_DIRECTORY ${RISCV_TOOLS_DOWNLOAD_DIR})
-
     # Download the toolchain
+    cmake_path(GET RISCV_TOOLS PARENT_PATH RISCV_TOOLS_DOWNLOAD_DIR)
     set(RISCV_TOOLS_FULL_NAME "xpack-riscv-none-elf-gcc-${RISCV_TOOLS_VERSION}") # Also the name of the extracted archive
     set(RISCV_TOOLS_ARCHIVE_NAME "${RISCV_TOOLS_FULL_NAME}-${PLATFORM}.tar.gz")
     set(RISCV_TOOLS_URL "https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v${RISCV_TOOLS_VERSION}/${RISCV_TOOLS_ARCHIVE_NAME}")
     set(RISCV_TOOLS_URL_SHA ${RISCV_TOOLS_URL}.sha)
 
-    message(STATUS "Downloading RISC-V toolchain from ${RISCV_TOOLS_URL}")
+    file(MAKE_DIRECTORY ${RISCV_TOOLS_DOWNLOAD_DIR})
+
+    message(STATUS "Downloading RISC-V toolchain from ${RISCV_TOOLS_URL} to ${RISCV_TOOLS_DOWNLOAD_DIR}")
 
     set(_archive_path "${RISCV_TOOLS_DOWNLOAD_DIR}/riscv-none-elf-gcc.tar.gz")
     set(_sha_path "${_archive_path}.sha256")
@@ -108,17 +103,17 @@ else ()
 
     # Rename the extracted directory to a consistent name (has the same name as the archive without .tar.gz)
     set(_extracted_dir_path "${RISCV_TOOLS_DOWNLOAD_DIR}/${RISCV_TOOLS_FULL_NAME}")
-    file(RENAME ${_extracted_dir_path} ${RISCV_TOOLS_PROJECT_PATH})
-
-    get_filename_component(RISCV_TOOLS "${RISCV_TOOLS_PROJECT_PATH}" ABSOLUTE)
+    file(RENAME ${_extracted_dir_path} ${RISCV_TOOLS})
 
     # Clean up
     file(REMOVE ${_archive_path})
     file(REMOVE ${_sha_path})
+endfunction()
+
+# If run in Script mode, run installation
+if (CMAKE_SCRIPT_MODE_FILE)
+    if (NOT DEFINED RISCV_TOOLS_VERSION)
+        message(FATAL_ERROR "RISCV_TOOLS_VERSION variable is not defined. Please set it to the version of the RISC-V toolchain to install.")
+    endif ()
+    install_riscv_tools()
 endif ()
-
-
-# Where to find the compiler toolchain.
-set(RV_PREFIX ${RISCV_TOOLS}/bin/riscv-none-elf-)
-
-include(${CMAKE_CURRENT_LIST_DIR}/_riscv-toolchain.cmake)

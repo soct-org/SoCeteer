@@ -8,29 +8,25 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# Install base and build tooling
+# Install build tools and dependencies common to all stages, with the necessary locale and timezone setup
+# Last line of the installation are the packages required for building and running Verilator, see 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tzdata locales \
-    git wget curl \
-    build-essential \
-    clang lld \
-    cmake make \
-    device-tree-compiler \
-    openjdk-21-jdk \
-    g++ \
-    python3-dev \
-    pkg-config \
-    autoconf \
-    help2man perl flex bison ccache mold libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev zlib1g zlib1g-dev \
- && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
- && locale-gen \
- && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
- && rm -rf /var/lib/apt/lists/*
+    ca-certificates tzdata locales wget curl \
+    git build-essential clang lld cmake make g++ python3-dev pkg-config autoconf ccache \
+    help2man perl mold libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev zlib1g zlib1g-dev flex bison \
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create unprivileged user with home
+# Create unprivileged user with home for subsequent stages
 RUN groupadd -g 1000 soct && useradd -m -u 1000 -g 1000 -s /bin/bash soct
-ENV HOME=/home/soct
 USER soct
+ENV HOME=/home/soct \
+    SCRIPTS_DIR=/home/soct/scripts \
+    RISCV_TOOLS=/home/soct/tools/vendor/riscv-none-elf-gcc \
+    VERILATOR_ROOT=/home/soct/tools/verilator \
+    CIRCT_ROOT=/home/soct/tools/circt
 
 # Install Java/Scala via Coursier (user-local)
 FROM base AS scala-builder
@@ -47,47 +43,54 @@ RUN set -eux; \
     yes | ./cs setup
 
 # CIRCT Build Stage
-FROM base AS circt-builder
-ARG CIRCT_TAG=firtool-1.136.0
-COPY --chmod=0755 /scripts/install-deps/install-circt.sh /tmp/scripts/install-circt.sh
+#FROM base AS circt-builder
+#ARG CIRCT_TAG=firtool-1.136.0
+#COPY --chown=soct:soct /scripts/install-deps/install-circt.sh ${SCRIPTS_DIR}/install-circt.sh
 
 # Install CIRCT
-RUN git clone --branch ${CIRCT_TAG} --depth=1 --recurse-submodules https://github.com/llvm/circt.git ${HOME}/tools/circt
-RUN bash /tmp/scripts/install-circt.sh ${HOME}/tools/circt Release
+#RUN git clone --branch ${CIRCT_TAG} --depth=1 --recurse-submodules https://github.com/llvm/circt.git ${CIRCT_ROOT}
+#RUN bash ${SCRIPTS_DIR}/install-circt.sh ${CIRCT_ROOT} Release
 
 # Verilator Build Stage
 FROM base AS verilator-builder
 ARG VERILATOR_TAG=v5.042
-COPY --chmod=0755 /scripts/install-deps/install-verilator.sh /tmp/scripts/install-verilator.sh
+COPY --chown=soct:soct /shared/cmake/install-verilator.cmake ${SCRIPTS_DIR}/install-verilator.cmake
 
-RUN git clone --branch ${VERILATOR_TAG} https://github.com/verilator/verilator.git ${HOME}/tools/verilator \
- && bash /tmp/scripts/install-verilator.sh ${HOME}/tools/verilator --quiet
+RUN git clone --branch ${VERILATOR_TAG} --depth=1 https://github.com/verilator/verilator.git ${VERILATOR_ROOT} \
+    && cmake -DVERILATOR_SOURCE_DIR=${VERILATOR_ROOT}  \
+    -DVERILATOR_INSTALL_DIR=${VERILATOR_ROOT}/artifact \
+    -P ${SCRIPTS_DIR}/install-verilator.cmake
 
 # RISC-V compiler download stage
 FROM base AS riscv-builder
+ARG XPACK_TAG=15.2.0-1
+COPY --chown=soct:soct /shared/cmake/install-riscv-tools.cmake ${SCRIPTS_DIR}/install-riscv-tools.cmake
 
-COPY --chmod=0755 /scripts/install-deps/install-rv-compiler.sh /tmp/scripts/install-rv-compiler.sh
-COPY /shared/cmake/riscv-toolchain-shipped.cmake /tmp/scripts/riscv-toolchain-shipped.cmake
-COPY /shared/cmake/_riscv-toolchain.cmake /tmp/scripts/_riscv-toolchain.cmake
-
-RUN cmake -DVENDOR_DIR=${HOME}/tools/vendor -DSCRIPTS_DIR=/tmp/scripts -P /tmp/scripts/riscv-toolchain-shipped.cmake
+RUN cmake -DRISCV_TOOLS_VERSION=${XPACK_TAG} \
+    -DRISCV_TOOLS=${RISCV_TOOLS} \
+    -P ${SCRIPTS_DIR}/install-riscv-tools.cmake
 
 # Main Build Stage
 FROM base AS final
 
 # Circt
-COPY --chown=soct:soct --from=circt-builder ${HOME}/tools/circt ${HOME}/tools/circt
-ENV CIRCT_INSTALL_DIR=${HOME}/tools/circt/build-Release/install
+COPY --chown=soct:soct --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
+ENV CIRCT_INSTALL_DIR=${CIRCT_ROOT}/build-Release/install
 
 # Verilator
-COPY --chown=soct:soct --from=verilator-builder ${HOME}/tools/verilator ${HOME}/tools/verilator
-ENV VERILATOR_ROOT=${HOME}/tools/verilator
+COPY --chown=soct:soct --from=verilator-builder ${VERILATOR_ROOT} ${VERILATOR_ROOT}
 
 # RISC-V compiler
-COPY --chown=soct:soct --from=riscv-builder ${HOME}/tools/vendor/riscv-none-elf-gcc ${HOME}/tools/vendor/riscv-none-elf-gcc
-ENV RISCV_TOOLS=${HOME}/tools/vendor/riscv-none-elf-gcc
+COPY --chown=soct:soct --from=riscv-builder ${RISCV_TOOLS} ${RISCV_TOOLS}
 
 # Scala
 COPY --chown=soct:soct --from=scala-builder ${HOME}/.local/share/coursier ${HOME}/.local/share/coursier
 COPY --chown=soct:soct --from=scala-builder ${HOME}/.cache/coursier ${HOME}/.cache/coursier
 ENV PATH=${HOME}/.local/share/coursier/bin:${PATH}
+
+# Add Packages only needed at runtime here:
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-21-jdk device-tree-compiler \
+    && rm -rf /var/lib/apt/lists/*
+USER soct

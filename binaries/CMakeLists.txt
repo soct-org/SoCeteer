@@ -4,16 +4,10 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # Parse the git root:
 if (NOT DEFINED SOCETEER_ROOT)
-    execute_process(
-            COMMAND git rev-parse --show-toplevel
-            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-            OUTPUT_VARIABLE SOCETEER_ROOT
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+    cmake_path(GET CMAKE_CURRENT_LIST_DIR PARENT_PATH SOCETEER_ROOT)
 endif ()
 
 message(STATUS "SOCETEER_ROOT: ${SOCETEER_ROOT}")
-
 
 macro(require_vars)
     foreach (var ${ARGN})
@@ -23,7 +17,7 @@ macro(require_vars)
     endforeach ()
 endmacro()
 
-set(DEFAULT_TOOLCHAIN_FILE "${SOCETEER_ROOT}/shared/cmake/riscv-toolchain-shipped.cmake")
+set(DEFAULT_TOOLCHAIN_FILE "${SOCETEER_ROOT}/shared/cmake/toolchain-riscv.cmake")
 if (NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     message(STATUS "Using default toolchain file: ${DEFAULT_TOOLCHAIN_FILE}. To override, set CMAKE_TOOLCHAIN_FILE.")
     include(${DEFAULT_TOOLCHAIN_FILE})
