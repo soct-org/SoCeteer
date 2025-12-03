@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Last line of the installation are the packages required for building and running Verilator, see 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata locales wget curl \
-    git build-essential clang lld cmake make g++ python3-dev pkg-config autoconf ccache \
+    git build-essential clang lld cmake make g++ python3-dev pkg-config autoconf ccache openjdk-21-jdk \
     help2man perl mold libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev zlib1g zlib1g-dev flex bison \
     && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen \
@@ -91,6 +91,6 @@ ENV PATH=${HOME}/.local/share/coursier/bin:${PATH}
 # Add Packages only needed at runtime here:
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-21-jdk device-tree-compiler \
+    device-tree-compiler \
     && rm -rf /var/lib/apt/lists/*
 USER soct
