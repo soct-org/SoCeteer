@@ -13,6 +13,7 @@ env:
   IMAGE_NAME: soceteer
   REGISTRY: ghcr.io
   IMAGE_TAG: ${{ github.sha }}
+  BUILDX_NO_DEFAULT_ATTESTATIONS: 1 # Prevents unknown/unknown package, see https://github.com/orgs/community/discussions/45969
 
 jobs:
   build:
