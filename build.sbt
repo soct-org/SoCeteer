@@ -38,7 +38,14 @@ def freshProject(name: String, dir: File): Project = {
 }
 
 lazy val commonSettings = Seq(
-  version := "1.0.0",
+  version := {
+    val versionFile = baseDirectory.value / "VERSION"
+    if (versionFile.exists()) {
+      IO.read(versionFile).trim
+    } else {
+      "unknown"
+    }
+  },
   scalaVersion := (if (useChisel3) "2.13.14" else "2.13.18"),
   Global / parallelExecution := true,
   scalacOptions ++= Seq("-deprecation", "-unchecked"),

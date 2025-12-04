@@ -1,4 +1,12 @@
-# This toolchain file must not be included directly!
+###################################################
+# Sets up the RISC-V toolchain for CMake builds.
+# Requires:
+# RV_PREFIX - prefix to the RISC-V toolchain binaries (e.g., /path/to/riscv-none-elf-gcc/bin/riscv-none-elf-).
+
+# Outputs:
+# Nothing
+###################################################
+cmake_minimum_required(VERSION 3.20)
 
 # Function to parse the version of a tool
 function(get_tool_version tool variable)
@@ -7,7 +15,9 @@ function(get_tool_version tool variable)
             OUTPUT_VARIABLE version_output
             OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    if (version_output MATCHES ".* ([0-9]+\\.[0-9]+\\.[0-9]+).*")
+    # First match group captures version number like "10.2.0".
+    # Second match group captures version number from strings like 2.45.
+    if (version_output MATCHES ".* ([0-9]+\\.[0-9]+\\.[0-9]+).*" OR version_output MATCHES ".* ([0-9]+\\.[0-9]+).*")
         set(${variable} "${CMAKE_MATCH_1}" PARENT_SCOPE)
     else ()
         set(${variable} "unknown" PARENT_SCOPE)
@@ -64,15 +74,16 @@ endif ()
 # Set the sysroot
 execute_process(
         COMMAND ${CMAKE_C_COMPILER} -print-sysroot
-        OUTPUT_VARIABLE CMAKE_SYSROOT
+        OUTPUT_VARIABLE _output_sysroot
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
+cmake_path(SET CMAKE_SYSROOT NORMALIZE "${_output_sysroot}")
 message(STATUS "Using sysroot: ${CMAKE_SYSROOT}")
 
 # Set the system name and processor
 set(CMAKE_SYSTEM_NAME Generic)
-set(CMAKE_SYSTEM_PROCESSOR riscv${XLEN})
+set(CMAKE_SYSTEM_PROCESSOR riscv64) # The project is configured to build both 32-bit and 64-bit binaries
 
 # Set the find root path
 set(CMAKE_FIND_ROOT_PATH ${SYSROOT})

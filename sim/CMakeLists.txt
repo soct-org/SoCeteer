@@ -4,13 +4,9 @@ cmake_minimum_required(VERSION 3.20)
 # Debug prints
 ##############
 if (NOT DEFINED SOCETEER_ROOT)
-    execute_process(
-            COMMAND git rev-parse --show-toplevel
-            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-            OUTPUT_VARIABLE SOCETEER_ROOT
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+    cmake_path(GET CMAKE_CURRENT_LIST_DIR PARENT_PATH SOCETEER_ROOT)
 endif ()
+
 
 message(STATUS "SOCETEER_ROOT: ${SOCETEER_ROOT}")
 
