@@ -14,6 +14,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.ACTIONS_PUSH_TOKEN }}  # use PAT instead of GITHUB_TOKEN
 
       - name: Extract version from tag
         id: version
@@ -29,6 +30,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Commit and push VERSION
+        env:
+          ACTIONS_PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH_TOKEN }}
         run: |
           if git diff --quiet VERSION; then
             echo "VERSION file already up to date, nothing to commit."
