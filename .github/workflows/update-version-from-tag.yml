@@ -21,7 +21,7 @@ jobs:
         run: |
           RAW_TAG="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
           VERSION="${RAW_TAG#v}"
-          echo "VERSION=${VERSION}" | tee VERSION
+          echo "${VERSION}" | tee VERSION
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Configure git user
