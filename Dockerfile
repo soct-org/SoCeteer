@@ -26,7 +26,9 @@ ENV HOME=/home/soct \
     SCRIPTS_DIR=/home/soct/scripts \
     RISCV_TOOLS=/home/soct/tools/vendor/riscv-none-elf-gcc \
     VERILATOR_ROOT=/home/soct/tools/verilator \
-    CIRCT_ROOT=/home/soct/tools/circt
+    CIRCT_ROOT=/home/soct/tools/circt \
+    CIRCT_BUILD=/home/soct/tools/circt/build-Release \
+    CIRCT_INSTALL=/home/soct/tools/circt/build-Release/install
 
 # Install Java/Scala via Coursier (user-local)
 FROM base AS scala-builder
@@ -42,15 +44,6 @@ RUN set -eux; \
     chmod +x cs; \
     yes | ./cs setup
 
-# CIRCT Build Stage
-#FROM base AS circt-builder
-#ARG CIRCT_TAG=firtool-1.136.0
-#COPY --chown=soct:soct /scripts/install-deps/install-circt.sh ${SCRIPTS_DIR}/install-circt.sh
-
-# Install CIRCT
-#RUN git clone --branch ${CIRCT_TAG} --depth=1 --recurse-submodules https://github.com/llvm/circt.git ${CIRCT_ROOT}
-#RUN bash ${SCRIPTS_DIR}/install-circt.sh ${CIRCT_ROOT} Release
-
 # Verilator Build Stage
 FROM base AS verilator-builder
 ARG VERILATOR_TAG=v5.042
@@ -60,6 +53,49 @@ RUN git clone --branch ${VERILATOR_TAG} --depth=1 https://github.com/verilator/v
     && cmake -DVERILATOR_SOURCE=${VERILATOR_ROOT}  \
     -DVERILATOR_INSTALL=${VERILATOR_ROOT}/artifact \
     -P ${SCRIPTS_DIR}/install-verilator.cmake
+
+# CIRCT Build Stage
+FROM base AS circt-builder
+ARG CIRCT_TAG=firtool-1.136.0
+RUN git clone --branch ${CIRCT_TAG} --depth=1 --recurse-submodules https://github.com/llvm/circt.git ${CIRCT_ROOT} && \
+    mkdir -p ${CIRCT_BUILD}/circt ${CIRCT_BUILD}/llvm ${CIRCT_INSTALL}
+
+# Build LLVM
+WORKDIR ${CIRCT_BUILD}/llvm
+RUN cmake "${CIRCT_DIR}/llvm/llvm" \
+    -DCMAKE_BUILD_TYPE="Release" \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_INSTALL_PREFIX=${CIRCT_INSTALL}\
+    -DLLVM_BUILD_EXAMPLES=OFF \
+    -DLLVM_ENABLE_ASSERTIONS=OFF \
+    -DLLVM_ENABLE_BINDINGS=OFF \
+    -DLLVM_ENABLE_OCAMLDOC=OFF \
+    -DLLVM_ENABLE_PROJECTS='mlir' \
+    -DLLVM_INSTALL_UTILS=ON \
+    -DLLVM_OPTIMIZED_TABLEGEN=ON \
+    -DLLVM_STATIC_LINK_CXX_STDLIB=ON \
+    -DLLVM_TARGETS_TO_BUILD="host" \
+    -DLLVM_ENABLE_LLD=ON \
+    -DLLVM_BUILD_SHARED_LIBS=ON \
+    -DLLVM_ENABLE_RTTI=ON && \
+    cmake --build ${CIRCT_BUILD}/llvm --target install --parallel $(nproc)
+
+# Build CIRCT
+WORKDIR ${CIRCT_BUILD}/circt
+RUN cmake "${CIRCT_DIR}" \
+    -DCMAKE_BUILD_TYPE="Release" \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_INSTALL_PREFIX=${CIRCT_INSTALL}  \
+    -DLLVM_ENABLE_ASSERTIONS=OFF \
+    -DMLIR_DIR=${CIRCT_BUILD}/llvm/lib/cmake/mlir \
+    -DLLVM_DIR=${CIRCT_BUILD}/llvm/lib/cmake/llvm \
+    -DLLVM_STATIC_LINK_CXX_STDLIB=ON \
+    -DVERILATOR_DISABLE=ON \
+    -DLLVM_EXTERNAL_LIT=${CIRCT_BUILD}/llvm/bin \
+    -DLLVM_ENABLE_LLD=ON && \
+    cmake --build ${CIRCT_BUILD}/circt --target install --parallel "${NPROC}"
 
 # RISC-V compiler download stage
 FROM base AS riscv-builder
@@ -74,8 +110,7 @@ RUN cmake -DRISCV_TOOLS_VERSION=${XPACK_TAG} \
 FROM base AS final
 
 # Circt
-#COPY --chown=soct:soct --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
-#ENV CIRCT_INSTALL_DIR=${CIRCT_ROOT}/build-Release/install
+COPY --chown=soct:soct --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
 
 # Verilator
 COPY --chown=soct:soct --from=verilator-builder ${VERILATOR_ROOT} ${VERILATOR_ROOT}
