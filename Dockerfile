@@ -62,7 +62,7 @@ RUN git clone --branch ${CIRCT_TAG} --depth=1 --recurse-submodules https://githu
 
 # Build LLVM
 WORKDIR ${CIRCT_BUILD}/llvm
-RUN cmake "${CIRCT_DIR}/llvm/llvm" \
+RUN cmake "${CIRCT_ROOT}/llvm/llvm" \
     -DCMAKE_BUILD_TYPE="Release" \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++ \
@@ -81,9 +81,8 @@ RUN cmake "${CIRCT_DIR}/llvm/llvm" \
     -DLLVM_ENABLE_RTTI=ON && \
     cmake --build ${CIRCT_BUILD}/llvm --target install --parallel $(nproc)
 
-# Build CIRCT
 WORKDIR ${CIRCT_BUILD}/circt
-RUN cmake "${CIRCT_DIR}" \
+RUN cmake "${CIRCT_ROOT}" \
     -DCMAKE_BUILD_TYPE="Release" \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++ \
@@ -95,7 +94,7 @@ RUN cmake "${CIRCT_DIR}" \
     -DVERILATOR_DISABLE=ON \
     -DLLVM_EXTERNAL_LIT=${CIRCT_BUILD}/llvm/bin \
     -DLLVM_ENABLE_LLD=ON && \
-    cmake --build ${CIRCT_BUILD}/circt --target install --parallel "${NPROC}"
+    cmake --build ${CIRCT_BUILD}/circt --target install --parallel $(nproc)
 
 # RISC-V compiler download stage
 FROM base AS riscv-builder
