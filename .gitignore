@@ -38,4 +38,5 @@ build/
 .bsp/
 
 ## SoCeteer ##
-shared/vendor
+cmake-build-*
+/workspace/
