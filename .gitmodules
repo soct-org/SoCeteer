@@ -1,7 +1,7 @@
 [submodule "generators/sifive-cache"]
 	path = generators/sifive-cache
 	url = https://github.com/chipsalliance/rocket-chip-inclusive-cache.git
-	ignore = dirty
+	ignore = all
 [submodule "generators/riscv-boom"]
 	path = generators/riscv-boom
 	url = https://github.com/riscv-boom/riscv-boom.git
@@ -14,6 +14,7 @@
 	path = generators/shuttle
 	url = https://github.com/ucb-bar/shuttle.git
 	branch = master
+	ignore = all
 [submodule "generators/gemmini"]
 	path = generators/gemmini
 	url = https://github.com/soct-org/gemmini.git
@@ -22,10 +23,12 @@
 	path = generators/rocket-chip
 	url = https://github.com/soct-org/rocket-chip.git
 	branch = master
+	ignore = all
 [submodule "generators/rocket-chip-chisel3"]
 	path = generators/rocket-chip-chisel3
 	url = https://github.com/soct-org/rocket-chip.git
 	branch = chisel3
+	ignore = all
 [submodule "shared/verilator"]
 	path = shared/verilator
 	url = https://github.com/verilator/verilator.git
