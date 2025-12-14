@@ -8,7 +8,7 @@ import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.util.Comparator
 import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
-import soct.SOCTLauncher.{Targets, currentSoCPaths}
+import soct.SOCTLauncher.currentSoCPaths
 
 import java.nio.charset.StandardCharsets
 

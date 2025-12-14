@@ -38,14 +38,6 @@ def freshProject(name: String, dir: File): Project = {
 }
 
 lazy val commonSettings = Seq(
-  version := {
-    val versionFile = baseDirectory.value / "VERSION"
-    if (versionFile.exists()) {
-      IO.read(versionFile).trim
-    } else {
-      "unknown"
-    }
-  },
   scalaVersion := (if (useChisel3) "2.13.14" else "2.13.18"),
   Global / parallelExecution := true,
   scalacOptions ++= Seq("-deprecation", "-unchecked"),
@@ -54,6 +46,7 @@ lazy val commonSettings = Seq(
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % (if (useChisel3) "3.9.5" else "3.9.6"), // For logging
   libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.5.20", // For logging backend
   libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
   libraryDependencies += "org.antlr" % "antlr4" % "4.9.3" // Forced by firrtl
 )
 
@@ -90,7 +83,7 @@ lazy val saturn = freshProject("saturn-vectors", file("generators/saturn-vectors
   .dependsOn(rocketchip, shuttle)
   .settings(commonSettings)
 
-lazy val hardfloat = freshProject("hardloat", rocketChipDir / "dependencies/hardfloat/hardfloat")
+lazy val hardfloat = freshProject("hardfloat", rocketChipDir / "dependencies/hardfloat/hardfloat")
   .settings(berkeley_org)
   .settings(commonSettings)
   .settings(chiselSettings)
@@ -158,6 +151,15 @@ lazy val sifiveCache = Project("sifive-cache", base = file("generators/sifive-ca
 
 // ------------------- Root project -------------------
 lazy val soceteer = (project in file("."))
+  .settings(
+    version := {
+      val versionFile = baseDirectory.value / "VERSION"
+      if (versionFile.exists()) {
+        IO.read(versionFile).trim
+      } else {
+        "unknown"
+      }
+    })
   .settings(soct_org)
   .dependsOn(cde, rocketchip, sifiveCache, gemmini, boom, saturn)
   .settings(commonSettings)
@@ -189,6 +191,15 @@ lazy val soceteer = (project in file("."))
       else Seq(baseDirectory.value / "src/main/scala-unmanaged/chisel")
     }
   ).settings(name := "SoCeteer")
+
+buildInfoPackage := "soct.build"
+// Add SoCeteer name, version and Scala version to BuildInfo
+buildInfoKeys := Seq[BuildInfoKey](
+  name,
+  version,
+  scalaVersion,
+  sbtVersion
+)
 
 // This task generates the Verilog parser using ANTLR. This is required to wrap VHDL around the Verilog from Chisel
 // The files emitted from this task are committed to the repository, so this task is not run by default.

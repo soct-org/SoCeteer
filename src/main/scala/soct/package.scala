@@ -1,13 +1,29 @@
 // Scala
-import ch.qos.logback.classic.{Level, Logger => LBLogger, LoggerContext}
+import ch.qos.logback.classic.{Level, LoggerContext, Logger => LBLogger}
 import ch.qos.logback.classic.encoder.PatternLayoutEncoder
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.ConsoleAppender
 import org.slf4j.LoggerFactory
+import soct.build.BuildInfo
 
 package object soct {
 
+  // Default parameters for the launcher
+  val logLevels = Seq("debug", "info", "warn", "error")
+
+  // Logger instance
   val log = com.typesafe.scalalogging.Logger("SOCT")
+
+  // The version of the SOCT tool - prefer BuildInfo (available during sbt run/compile),
+  // fall back to the JAR manifest `Implementation-Version`, otherwise "unknown"
+  val version: String = {
+    val bi = scala.util.Try(BuildInfo.version).getOrElse("")
+    if (bi != null && bi.nonEmpty && bi != "unknown") bi
+    else {
+      val impl = getClass.getPackage.getImplementationVersion
+      if (impl != null) impl else "unknown"
+    }
+  }
 
   def configureLogging(level: String = "DEBUG",
                        pattern: String = "[%-5level] %logger{36} - %msg%n"

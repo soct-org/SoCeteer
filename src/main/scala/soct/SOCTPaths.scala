@@ -1,6 +1,6 @@
 package soct
 
-import soct.SOCTLauncher.{Config, SOCTArgs}
+import soct.SOCTLauncher.Config
 
 import java.nio.file.{Files, Path, Paths}
 
@@ -47,6 +47,8 @@ object SOCTPaths {
    */
   def get(name: String): Path = name match {
     case "syn" => SOCTPaths.projectRoot.resolve("syn")
+    case "sim" => SOCTPaths.projectRoot.resolve("sim")
+    case "workspace" => SOCTPaths.projectRoot.resolve("workspace")
     case "binaries" => SOCTPaths.projectRoot.resolve("binaries")
     case "shared" => SOCTPaths.projectRoot.resolve("shared")
     case "vhdlsrcs" => SOCTPaths.projectRoot.resolve("src").resolve("main").resolve("resources") // TODO move to syn?
@@ -55,6 +57,7 @@ object SOCTPaths {
     case "vsrcs" => get("syn").resolve("vsrcs")
     case "FindVerilator.cmake" => get("shared").resolve("cmake").resolve("FindVerilator.cmake")
     case "binaries-build" => get("binaries").resolve("cmake-build-bootrom")
+    case "programs-build" => get("binaries").resolve("cmake-build-programs")
     case _ => throw new InternalBugException(s"Unknown path name: $name")
   }
 }
