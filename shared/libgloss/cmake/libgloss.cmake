@@ -1,25 +1,25 @@
 include_guard(GLOBAL)
 cmake_minimum_required(VERSION 3.20)
 
-set(LGLOSS_DIR   ${CMAKE_CURRENT_LIST_DIR}/..)
+set(LGLOSS_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 set(LGLOSS_BUILD ${CMAKE_BINARY_DIR}/libgloss)
 
 ######################################
 # libc extensions used by libgloss
 ######################################
-if (NOT DEFINED NO_PRINT_WRAP)
+if (NOT DEFINED SOCT_NO_PRINT_WRAP)
     message(STATUS "Using wrap_io.specs to wrap puts, printf, sprintf, snprintf")
     set(LGLOSS_WRAP_IO_FLAG -specs=${LGLOSS_DIR}/util/wrap_io.specs)
-else()
+else ()
     set(LGLOSS_WRAP_IO_FLAG "")
-endif()
+endif ()
 
 set(LGLOSS_LIBC -lc_nano)
 
-###############
+###########################
 # Libgloss HTIF (common)
-###############
-set(LGLOSS_HTIF_DIR       ${LGLOSS_DIR}/htif)
+###########################
+set(LGLOSS_HTIF_DIR ${LGLOSS_DIR}/htif)
 set(LGLOSS_HTIF_LD_SCRIPT ${LGLOSS_HTIF_DIR}/util/htif.ld)
 
 set(_HTIF_CFLAGS_COMMON
@@ -47,42 +47,27 @@ macro(_compose_htif_ldflags _outvar _glosslib)
 endmacro()
 
 ###############
-# Libgloss HTIF 64
+# Libgloss HTIF
 ###############
-set(LGLOSS_HTIF_LIB_64 gloss64_htif)
+set(LGLOSS_HTIF_LIB gloss_htif)
 
 set(LGLOSS_HTIF_CFLAGS_64 ${_HTIF_CFLAGS_COMMON})
 
-_compose_htif_ldflags(LGLOSS_HTIF_LDFLAGS_64 ${LGLOSS_HTIF_LIB_64})
+_compose_htif_ldflags(LGLOSS_HTIF_LDFLAGS ${LGLOSS_HTIF_LIB})
 
 if (NOT DEFINED NO_HOST_ARGV)
     message(STATUS "Using htif_argv symbols for argument passing")
-    list(APPEND LGLOSS_HTIF_LDFLAGS_64
+    list(APPEND LGLOSS_HTIF_LDFLAGS
             -Wl,--defsym=_start_main=_start_main_argv
             -Wl,--defsym=_start_secondary=_start_secondary_argv
     )
-endif()
+endif ()
 
-###############
-# Libgloss HTIF 32
-###############
-set(LGLOSS_HTIF_LIB_32 gloss32_htif)
 
-set(LGLOSS_HTIF_CFLAGS_32 ${_HTIF_CFLAGS_COMMON})
-
-_compose_htif_ldflags(LGLOSS_HTIF_LDFLAGS_32 ${LGLOSS_HTIF_LIB_32})
-
-if (NOT DEFINED NO_HOST_ARGV)
-    list(APPEND LGLOSS_HTIF_LDFLAGS_32
-            -Wl,--defsym=_start_main=_start_main_argv
-            -Wl,--defsym=_start_secondary=_start_secondary_argv
-    )
-endif()
-
-###############
+###########################
 # Libgloss BOARD (common)
-###############
-set(LGLOSS_BOARD_DIR       ${LGLOSS_DIR}/board)
+###########################
+set(LGLOSS_BOARD_DIR ${LGLOSS_DIR}/board)
 set(LGLOSS_BOARD_LD_SCRIPT ${LGLOSS_BOARD_DIR}/util/board.ld)
 
 set(_BOARD_CFLAGS_COMMON
@@ -110,20 +95,11 @@ macro(_compose_board_ldflags _outvar _glosslib)
     )
 endmacro()
 
-###############
-# Libgloss BOARD 64
-###############
-set(LGLOSS_BOARD_LIB_64 gloss64_board)
+################
+# Libgloss BOARD
+################
+set(LGLOSS_BOARD_LIB gloss_board)
 
-set(LGLOSS_BOARD_CFLAGS_64 ${_BOARD_CFLAGS_COMMON})
+set(LGLOSS_BOARD_CFLAGS ${_BOARD_CFLAGS_COMMON})
 
-_compose_board_ldflags(LGLOSS_BOARD_LDFLAGS_64 ${LGLOSS_BOARD_LIB_64})
-
-###############
-# Libgloss BOARD 32
-###############
-set(LGLOSS_BOARD_LIB_32 gloss32_board)
-
-set(LGLOSS_BOARD_CFLAGS_32 ${_BOARD_CFLAGS_COMMON})
-
-_compose_board_ldflags(LGLOSS_BOARD_LDFLAGS_32 ${LGLOSS_BOARD_LIB_32})
+_compose_board_ldflags(LGLOSS_BOARD_LDFLAGS ${LGLOSS_BOARD_LIB})

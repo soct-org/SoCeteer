@@ -56,7 +56,7 @@ object SOCTPaths {
     case "tclsrcs" => get("syn").resolve("tclsrcs")
     case "vsrcs" => get("syn").resolve("vsrcs")
     case "FindVerilator.cmake" => get("shared").resolve("cmake").resolve("FindVerilator.cmake")
-    case "binaries-build" => get("binaries").resolve("cmake-build-bootrom")
+    case "bootrom-build" => get("binaries").resolve("cmake-build-bootrom")
     case "programs-build" => get("binaries").resolve("cmake-build-programs")
     case _ => throw new InternalBugException(s"Unknown path name: $name")
   }
@@ -104,9 +104,19 @@ abstract class SOCTPaths(args: SOCTArgs) {
   def dtsFile: Path = systemDir.resolve(s"${SOCTPaths.systemName}.dts")
 
   /**
+   * Path to the generated device tree blob file
+   */
+  def dtbFile: Path = systemDir.resolve(s"${SOCTPaths.systemName}.dtb")
+
+  /**
    * Path to the generated bootrom image file (contains the plain instructions to be loaded at boot)
    */
   def bootromImgFile: Path = systemDir.resolve("bootrom.img")
+
+  /**
+   * Path to the generated SOCTSystem.cmake file
+   */
+  def soctSystemCMakeFile: Path = systemDir.resolve("SOCTSystem.cmake")
 
   // Custom to string for easier debugging (thanks ChatGPT)
   override def toString: String = {
@@ -123,7 +133,9 @@ abstract class SOCTPaths(args: SOCTArgs) {
        |  firrtlFile: $firrtlFile
        |  annoFile: $annoFile
        |  dtsFile: $dtsFile
+       |  dtbFile: $dtbFile
        |  bootromImgFile: $bootromImgFile
+       |  soctSystemCMakeFile: $soctSystemCMakeFile
        |""".stripMargin
   }
 }
@@ -141,7 +153,7 @@ private class YosysSOCTPaths(args: SOCTArgs, config: Config) extends SOCTPaths(a
 
 private class BoardSOCTPaths(args: SOCTArgs, config: Config) extends SOCTPaths(args) {
   // For example: workspace/RocketB1-64/system-zcu104
-  val boardDts: Path =  SOCTPaths.get("boards").resolve(args.board.get).resolve("bootrom.dts")
+  val boardDts: Path = SOCTPaths.get("boards").resolve(args.board.get).resolve("bootrom.dts")
   val boardParams: Path = SOCTPaths.get("boards").resolve(args.board.get).resolve("params.json")
   val systemDir: Path = args.workspaceDir.resolve(config.configFull).resolve(s"system-${args.board.get}")
 }

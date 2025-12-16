@@ -41,7 +41,6 @@ object SOCTLauncher {
 
     val boardDtsFile = Source.fromFile(boardPaths.boardDts.toFile)
     val jsonParams = Source.fromFile(boardPaths.boardParams.toFile)
-    implicit val formats: Formats = DefaultFormats // for automatic case class conversion
     var boardParams = parse(jsonParams.mkString).extract[BoardParams]
     // If rocket frequency is provided, override the board params
     if (args.freqMHz.isDefined) {

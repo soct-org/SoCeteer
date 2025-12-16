@@ -13,6 +13,15 @@
 
 #ifdef __ASSEMBLY__
 
+.macro ENTER func
+/* Default to empty argument vector */
+li a0, 1            /* argc = 1 */
+la a1, argv         /* argv = { "", NULL } */
+LREG a2, environ    /* envp */
+call \func
+tail exit
+.endm
+
 /* Signal barrier release */
 .macro BARRIER_PASS flag
 li t0, -1

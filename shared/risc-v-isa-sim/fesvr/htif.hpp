@@ -27,15 +27,15 @@ public:
         start();
         // Contains the data to be sent to the target
         std::queue<reg_t> fromhost_queue;
-        const auto enqueue = [&fromhost_queue](const reg_t x) {
-            soct::logging::fesvr::debug << "Enqueueing " << x << '\n';
+        const auto fromhost_func = [&fromhost_queue](const reg_t x) {
+            soct::logging::fesvr::debug << "Responding " << x << '\n';
             fromhost_queue.push(x);
         };
         while (!stopped()) {
             const auto to_host = m_cmemif->read_int<reg_t>(m_tohost_addr);
             if (to_host != 0) {
                 m_cmemif->write_int<reg_t>(m_tohost_addr, 0); // clear tohost
-                m_device_list.handle_command({to_host, enqueue});
+                m_device_list.handle_command({to_host, fromhost_func});
                 m_device_list.tick();
             } else {
                 idle();

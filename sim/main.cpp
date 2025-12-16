@@ -58,7 +58,7 @@ int main(const int argc, char* argv[]) {
     // Repository-specific configuration:
     logging::globals::all2console = false; // Disable dumping all output to the console
     logging::init_logging("log.txt"s); // Initialize logging to a file
-    logging::globals::log_cores.emplace_back("0"sv); // Log core 0
+    logging::globals::log_cores.emplace_back("0"); // Log only core 0
     logging::globals::log_level = logging::LogLevel::DEBUG;
 
     const std::unique_ptr<VerilatedContext> contextp{new VerilatedContext};

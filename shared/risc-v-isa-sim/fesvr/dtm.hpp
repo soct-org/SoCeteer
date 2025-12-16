@@ -289,9 +289,10 @@ private:
                                   uint32_t data[] = nullptr,
                                   const size_t data_n = 0,
                                   const bool log_error = true) {
-        massert(m_rv_info.has_value(), "System info has not been initialized");
-        massert(program_n <= m_rv_info.value().ram_words, "Program size exceeds RAM size");
-        massert(data_n <= m_rv_info.value().data_words, "Data size exceeds data words");
+        if (m_rv_info.has_value()) {
+            massert(program_n <= m_rv_info.value().ram_words, "Program size exceeds RAM size");
+            massert(data_n <= m_rv_info.value().data_words, "Data size exceeds data words");
+        }
 
         for (size_t i = 0; i < program_n && program; i++) {
             write_dtm(DM_PROGBUF0 + i, program[i]);

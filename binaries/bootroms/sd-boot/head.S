@@ -2,6 +2,10 @@
 
 #define MIP_MSIP (1 << 3)
 
+#ifndef DEVICE_TREE
+#error "DEVICE_TREE is not defined. Please define it to point to the Device Tree binary."
+#endif
+
 .section .text.start, "ax", @progbits
 .globl _start
 _start:

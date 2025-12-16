@@ -141,26 +141,26 @@ object SOCTUtils {
     val rocketDTS = artifacts.find(_.getFileName.toString.endsWith(".dts")).getOrElse {
       throw new InternalBugException("No dts file found in artifacts") // This should never happen
     }
-    var fullDTS = Files.readAllLines(rocketDTS).toArray.mkString("\n")
+    var fullDTS = Files.readString(rocketDTS)
     if (boardDTS.isDefined && boardParams.isDefined) {
       fullDTS = DTSModifier.modifyDTS(s"$fullDTS\n${boardDTS.get}", boardParams.get)
     }
-
     Files.write(paths.dtsFile, fullDTS.getBytes)
-    // Obtain the architecture from the dts
-    val march = DTSExtractor.extractMarch(fullDTS)
+
+    // Generate the CMake file containing relevant variables about the DTS
+    val soctCmake = DTSCMakeGenerator.generate(paths, config)
+    Files.write(paths.soctSystemCMakeFile, soctCmake.getBytes)
+
 
     // Compile bootrom using CMake
     val defs = Map(
+      "SOCT_SYSTEM_CMAKE" -> paths.soctSystemCMakeFile.toString,
+      // And configure for bootrom build
       "BOOTROM_MODE" -> "ON",
-      "MARCH" -> march,
-      "MABI" -> config.mabi,
-      "DTS_PATH" -> paths.dtsFile.toString,
-      "IMG_PATH" -> paths.bootromImgFile.toString,
     )
 
     val sourceDir = SOCTPaths.get("binaries")
-    val buildDir = SOCTPaths.get("binaries-build")
+    val buildDir = SOCTPaths.get("bootrom-build")
     // Delete the cache to force reconfiguration
     val cacheFile = buildDir.resolve("CMakeCache.txt")
     cacheFile.toFile.delete()

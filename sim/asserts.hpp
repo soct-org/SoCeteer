@@ -17,8 +17,7 @@
 
 inline void assert_(const bool condition, const std::string& message, const char* function, const char* file, int line) {
     if (!condition) {
-        std::cerr << "Assertion failed: (" << message << "), function " << function
-                  << ", file " << file << ", line " << line << ".\n";
+        std::cerr << "Assertion failed: (" << message << ") at " << file << ":" << line << "\n";
         std::abort();
     }
 }

@@ -1,16 +1,6 @@
 #include "asm.h"
 
     .section .text.init
-
-    .macro ENTER func
-    /* Default to empty argument vector */
-    li a0, 1            /* argc = 1 */
-    la a1, argv         /* argv = { "", NULL } */
-    LREG a2, environ    /* envp */
-    call \func
-    tail exit
-    .endm
-
     .global _start_main
     .type _start_main, @function
 _start_main:
