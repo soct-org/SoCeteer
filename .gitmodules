@@ -24,11 +24,6 @@
 	url = https://github.com/soct-org/rocket-chip.git
 	branch = master
 	ignore = all
-[submodule "generators/rocket-chip-chisel3"]
-	path = generators/rocket-chip-chisel3
-	url = https://github.com/soct-org/rocket-chip.git
-	branch = chisel3
-	ignore = all
 [submodule "shared/verilator"]
 	path = shared/verilator
 	url = https://github.com/verilator/verilator.git
