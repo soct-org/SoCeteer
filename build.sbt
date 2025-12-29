@@ -1,5 +1,5 @@
-// 7.4.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
-val fallbackChiselVersion = "7.4.0"
+// 7.6.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
+val fallbackChiselVersion = "7.6.0"
 
 val params = sys.env.get("SOCT_CHISEL_VERSION") match {
   case Some(v) => Seq(v.startsWith("3."), v)
@@ -53,11 +53,14 @@ lazy val commonSettings = Seq(
 lazy val soct_org = Seq(organization := "soct")
 lazy val berkeley_org = Seq(organization := "edu.berkeley.cs")
 
-val rocketChipDir = if (useChisel3) {
-  file("generators/rocket-chip-chisel3") // Separate branch for chisel3
+val rocketChipDir = file("generators/rocket-chip")
+
+val diplomacyDir = if (useChisel3) {
+  rocketChipDir / "dependencies/diplomacy-chisel3" // Separate branch for chisel3
 } else {
-  file("generators/rocket-chip")
+  rocketChipDir / "dependencies/diplomacy"
 }
+
 
 // ------------------- Only chisel3/X compatible projects -------------------
 
@@ -72,6 +75,13 @@ lazy val compat = freshProject("compat", file("src/main/scala-unmanaged/compat")
   .settings(soct_org)
   .settings(commonSettings)
   .settings(chiselSettings)
+  .settings(
+    // Lowering backend depends on the Chisel version
+    Compile / unmanagedSourceDirectories ++= {
+      if (useChisel3) Seq(file("src/main/scala-unmanaged/compat/chisel3"))
+      else Seq(file("src/main/scala-unmanaged/compat/chisel"))
+    }
+  )
 
 lazy val shuttle = freshProject("shuttle", file("generators/shuttle"))
   .settings(berkeley_org)
@@ -97,6 +107,7 @@ lazy val boom = freshProject("riscv-boom", file("generators/riscv-boom"))
 lazy val rocketchip = freshProject("rocket-chip" + (if (useChisel3) "-chisel3" else ""), rocketChipDir)
   .settings(berkeley_org)
   .dependsOn(cde)
+  .dependsOn(compat)
   .dependsOn(hardfloat)
   .dependsOn(diplomacy)
   .dependsOn(rocketMacros)
@@ -128,7 +139,7 @@ lazy val cde = Project(id = "cde", base = rocketChipDir / "dependencies/cde")
   .settings(chiselSettings)
 
 // The Diplomacy project is ill-formed, so we can't use freshProject here
-lazy val diplomacy = Project(id = "diplomacy", base = rocketChipDir / "dependencies/diplomacy")
+lazy val diplomacy = Project(id = "diplomacy", base = diplomacyDir)
   .settings(
     Compile / scalaSource := baseDirectory.value / "diplomacy/src",
   )
