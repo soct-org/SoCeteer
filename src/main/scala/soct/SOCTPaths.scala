@@ -23,43 +23,68 @@ object SOCTPaths {
   }
 
   /**
-   * Path to the rocket-chip directory, depending on the chisel version used
-   */
-  val rocketChipDir: Path = if (chisel3.BuildInfo.version.startsWith("3.")) {
-    SOCTPaths.projectRoot.resolve("generators").resolve("rocket-chip-chisel3")
-  } else {
-    SOCTPaths.projectRoot.resolve("generators").resolve("rocket-chip")
-  }
-
-  /**
-   * Path to the default Rocket bootrom image, only used during first elaboration before generating the actual bootrom
-   */
-  val rocketBootrom: Path = rocketChipDir.resolve("bootrom").resolve("bootrom.img")
-
-  /**
    * Name of the generated system (used for naming files and several artifacts)
    */
-  val systemName: String = "riscv_system"
-
+  lazy val systemName: String = "riscv_system"
 
   /**
-   * All trivial paths use a simple map
+   * Get a predefined path by name
+   *
+   * @param name Name of the path to retrieve
+   * @return Path corresponding to the given name
+   * @throws InternalBugException if the name is unknown
    */
-  def get(name: String): Path = name match {
-    case "syn" => SOCTPaths.projectRoot.resolve("syn")
-    case "sim" => SOCTPaths.projectRoot.resolve("sim")
-    case "workspace" => SOCTPaths.projectRoot.resolve("workspace")
-    case "binaries" => SOCTPaths.projectRoot.resolve("binaries")
-    case "shared" => SOCTPaths.projectRoot.resolve("shared")
-    case "vhdlsrcs" => SOCTPaths.projectRoot.resolve("src").resolve("main").resolve("resources") // TODO move to syn?
-    case "boards" => get("syn").resolve("boards")
-    case "tclsrcs" => get("syn").resolve("tclsrcs")
-    case "vsrcs" => get("syn").resolve("vsrcs")
-    case "FindVerilator.cmake" => get("shared").resolve("cmake").resolve("FindVerilator.cmake")
-    case "bootrom-build" => get("binaries").resolve("cmake-build-bootrom")
-    case "programs-build" => get("binaries").resolve("cmake-build-programs")
-    case _ => throw new InternalBugException(s"Unknown path name: $name")
+  def get(name: String): Path = paths.getOrElse(name, throw new InternalBugException(s"Unknown path name: $name"))
+
+  /**
+   * Validate that all static paths exist
+   *
+   * @throws InternalBugException if any static path does not exist
+   */
+  def validateStaticPaths(): Unit = {
+    staticPaths.foreach { case (name, path) =>
+      if (!Files.exists(path)) {
+        throw new InternalBugException(s"Static path '$name' does not exist at expected location: $path")
+      }
+    }
   }
+
+  private lazy val root: Path = SOCTPaths.projectRoot
+
+  private lazy val (staticPaths, dynamicPaths) = {
+    // Split into static (that always exist) and dynamic ones that are generated at runtime
+    // In addition, we split into base paths (that are direct children of the root) and derived ones
+    val base: Map[String, Path] = Map(
+      "syn" -> root.resolve("syn"),
+      "sim" -> root.resolve("sim"),
+      "binaries" -> root.resolve("binaries"),
+      "shared" -> root.resolve("shared"),
+      "generators" -> root.resolve("generators"),
+    )
+
+    val derived: Map[String, Path] = Map(
+      "rocket-chip" -> base("generators").resolve("rocket-chip"),
+      "default-bootrom" -> base("generators").resolve("rocket-chip").resolve("bootrom").resolve("bootrom.img"),
+      "boards" -> base("syn").resolve("boards"),
+      "tclsrcs" -> base("syn").resolve("tclsrcs"),
+      "vsrcs" -> base("syn").resolve("vsrcs"),
+      "vhdlsrcs" -> base("syn").resolve("vhdlsrcs"),
+      "FindVERILATOR.cmake" -> base("shared").resolve("cmake").resolve("FindVERILATOR.cmake"),
+    )
+
+    val baseDyn: Map[String, Path] = Map(
+      "workspace" -> root.resolve("workspace"),
+    )
+
+    val derivedDyn: Map[String, Path] = Map(
+      "bootrom-build" -> base("binaries").resolve("cmake-build-bootrom"),
+      "programs-build" -> base("binaries").resolve("cmake-build-programs")
+    )
+
+    (base ++ derived, baseDyn ++ derivedDyn)
+  }
+
+  private lazy val paths: Map[String, Path] = staticPaths ++ dynamicPaths
 }
 
 /**
@@ -123,8 +148,6 @@ abstract class SOCTPaths(args: SOCTArgs) {
     s"""
        |SOCTPaths:
        |  projectRoot: ${SOCTPaths.projectRoot}
-       |  rocketChipDir: ${SOCTPaths.rocketChipDir}
-       |  rocketBootrom: ${SOCTPaths.rocketBootrom}
        |  systemName: ${SOCTPaths.systemName}
        |  systemDir: $systemDir
        |  firtoolBinary: $firtoolBinary

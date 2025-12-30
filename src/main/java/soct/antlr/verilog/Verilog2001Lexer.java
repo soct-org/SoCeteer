@@ -1,4 +1,4 @@
-// Generated from .../soceteer/src/main/resources/Verilog2001.g4 by ANTLR 4.9.3
+// Generated from /home/rob/tmp/soceteer/src/main/resources/Verilog2001.g4 by ANTLR 4.9.3
 package soct.antlr.verilog;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.CharStream;

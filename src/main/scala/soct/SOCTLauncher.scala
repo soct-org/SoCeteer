@@ -49,12 +49,12 @@ object SOCTLauncher {
     assert(boardParams.ROCKET_FREQ_MHZ.isDefined, "No frequency provided - Either set \"ROCKET_FREQ_MHZ\" in the board params or provide it as an argument")
 
     if (args.xlen == 32) {
-      config.configs +:= "freechips.rocketchip.rocket.WithRV32" // Prepend, so it is actually used
-      config.configs :+= "soct.ExtMem32Bit"
+      config.configs +:= classOf[freechips.rocketchip.rocket.WithRV32].getName
+      config.configs :+= classOf[ExtMem32Bit].getName
     } else {
-      config.configs :+= "soct.ExtMem64Bit"
+      config.configs :+= classOf[ExtMem64Bit].getName
     }
-    config.configs :+= "soct.RocketSynBaseConfig"
+    config.configs :+= classOf[soct.RocketSynBaseConfig].getName
 
     if (SOCTUtils.rmrfOpt(boardPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${boardPaths.systemDir}")
@@ -63,7 +63,7 @@ object SOCTLauncher {
     tmpDir.toFile.mkdirs()
 
     // Store these results in a temporary dir - they are only required to generate a dts of the system
-    val tmpArtifacts = Transpiler.evalDesign(args.synTop, config, boardPaths, SOCTPaths.rocketBootrom)
+    val tmpArtifacts = Transpiler.evalDesign(args.synTop, config, boardPaths, SOCTPaths.get("default-bootrom"))
 
     val boardDts = boardDtsFile.getLines().mkString("\n")
 
@@ -96,12 +96,12 @@ object SOCTLauncher {
     log.debug(s"Using the following paths: ${yosysPaths.toString}")
 
     if (args.xlen == 32) {
-      config.configs +:= "freechips.rocketchip.rocket.WithRV32" // Prepend, so it is actually used
-      config.configs :+= "soct.ExtMem32Bit"
+      config.configs +:= classOf[freechips.rocketchip.rocket.WithRV32].getName
+      config.configs :+= classOf[ExtMem32Bit].getName
     } else {
-      config.configs :+= "soct.ExtMem64Bit"
+      config.configs :+= classOf[ExtMem64Bit].getName
     }
-    config.configs :+= "soct.RocketSynBaseConfig"
+    config.configs :+= classOf[soct.RocketSynBaseConfig].getName
 
     if (SOCTUtils.rmrfOpt(yosysPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${yosysPaths.systemDir}")
@@ -110,7 +110,7 @@ object SOCTLauncher {
     tmpDir.toFile.mkdirs()
 
     // Store these results in a temporary dir - they are only required to generate a dts of the system
-    val tmpArtifacts = Transpiler.evalDesign(args.synTop, config, yosysPaths, SOCTPaths.rocketBootrom)
+    val tmpArtifacts = Transpiler.evalDesign(args.synTop, config, yosysPaths, SOCTPaths.get("default-bootrom"))
 
     val bootromImg: Path = SOCTUtils.compileBootrom(yosysPaths, tmpArtifacts, config)
 
@@ -129,11 +129,12 @@ object SOCTLauncher {
     log.info("Generating design for simulation")
     log.debug(s"Using the following paths: ${simPaths.toString}")
 
-    config.configs :+= "soct.RocketSimBaseConfig"
 
     if (args.xlen == 32) {
-      config.configs +:= "freechips.rocketchip.rocket.WithRV32" // Comes first, so it is actually used
+      config.configs +:= classOf[freechips.rocketchip.rocket.WithRV32].getName
     }
+
+    config.configs :+= classOf[soct.RocketSimBaseConfig].getName
 
     if (SOCTUtils.rmrfOpt(simPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${simPaths.systemDir}")
@@ -142,7 +143,7 @@ object SOCTLauncher {
     tmpDir.toFile.mkdirs()
 
     // Store these results in a temporary dir - they are only required to generate a dts of the system
-    val tmpArtifacts = Transpiler.evalDesign(args.simTop, config, simPaths, SOCTPaths.rocketBootrom)
+    val tmpArtifacts = Transpiler.evalDesign(args.simTop, config, simPaths, SOCTPaths.get("default-bootrom"))
 
     val bootromImg: Path = SOCTUtils.compileBootrom(simPaths, tmpArtifacts, config)
 
@@ -153,14 +154,6 @@ object SOCTLauncher {
     Transpiler.emitLowFirrtl(config, simPaths)
 
     Transpiler.emitVerilog(config, simPaths, args.firtoolArgs)
-
-    if (!args.useRocketCFiles) {
-      val ccFiles = SOCTUtils.listFilesWithExtension(simPaths.systemDir, ".cc")
-      // Print the files that are going to be deleted
-      ccFiles.foreach(f => log.info(s"Deleting ${f.getName}"))
-      // and delete them
-      ccFiles.foreach(_.delete())
-    }
 
     if (args.overrideSimFiles) {
       val configsSimDir = SOCTPaths.projectRoot.resolve("sim").resolve("configs")
@@ -180,6 +173,9 @@ object SOCTLauncher {
     case Some(parsed) =>
       // Set the log level of the logger
       configureLogging(parsed.logLevel.toUpperCase)
+
+      // Validate all static paths exist
+      SOCTPaths.validateStaticPaths()
 
       // First check the terminating options
       if (parsed.getVersion) {

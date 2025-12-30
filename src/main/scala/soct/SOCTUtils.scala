@@ -287,7 +287,7 @@ object SOCTUtils {
 
   def findVerilator(): Option[Path] = {
     // We use Cmake in scripting mode to find the Verilator installation - no need to do the work twice and have multiple copies of filepaths
-    val cmd = new ProcessBuilder("cmake", "-P", SOCTPaths.get("FindVerilator.cmake").toString)
+    val cmd = new ProcessBuilder("cmake", "-P", SOCTPaths.get("FindVERILATOR.cmake").toString)
       .directory(SOCTPaths.projectRoot.toFile)
       .redirectErrorStream(true)
       .start()

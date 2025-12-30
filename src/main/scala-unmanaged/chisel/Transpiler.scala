@@ -41,7 +41,7 @@ object Transpiler {
     }
 
     // First pass contains default rocket bootrom, we don't need to emit anything
-    if (bootromPath == SOCTPaths.rocketBootrom) {
+    if (bootromPath == SOCTPaths.get("default-bootrom")) {
       ChiselStage.elaborate(gen(), Array(s"-ll=${c.args.logLevel}"))
     } else {
       // Second pass generates verilog and dump firrtl
