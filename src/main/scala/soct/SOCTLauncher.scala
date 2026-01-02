@@ -75,14 +75,10 @@ object SOCTLauncher {
 
     Transpiler.emitLowFirrtl(config, boardPaths)
 
-    val vivadoConfig = config.copy(args = config.args.copy(singleVerilogFile = true)) // Always generate single verilog file for boards
-    Transpiler.emitVerilog(vivadoConfig, boardPaths, args.firtoolArgs)
+    Transpiler.emitVerilog(config, boardPaths, args.firtoolArgs)
 
-    if (!chisel3.BuildInfo.version.startsWith("3.")) {
-      log.warn("Vivado synthesis is not yet tested with this Chisel version - expect issues.")
-    }
     val tclFile = SOCTVivado.generateTCLScript(boardPaths.systemDir, args.board.get, config.config, boardParams)
-    SOCTVivado.wrapVHDL(boardPaths.systemDir, SOCTUtils.findVerilator(), boardPaths.verilogFile, config.config)
+    SOCTVivado.wrapVHDL(boardPaths, config)
     if (args.vivado.isDefined) {
       SOCTVivado.generateProject(tclFile, args.vivado.get, args.vivadoSettings)
     } else {
@@ -120,8 +116,7 @@ object SOCTLauncher {
 
     Transpiler.emitLowFirrtl(config, yosysPaths)
 
-    val yosysConfig = config.copy(args = config.args.copy(singleVerilogFile = true)) // Always generate single verilog file for yosys
-    Transpiler.emitVerilog(yosysConfig, yosysPaths, args.firtoolArgs)
+    Transpiler.emitVerilog(config, yosysPaths, args.firtoolArgs)
   }
 
   // Generate the design for simulation
@@ -177,15 +172,18 @@ object SOCTLauncher {
       // Validate all static paths exist
       SOCTPaths.validateStaticPaths()
 
+      // Modify the args based on the target
+      var args = SOCTParser.modifyArgsBasedOnTarget(parsed, parsed.target)
+
       // First check the terminating options
-      if (parsed.getVersion) {
+      if (args.getVersion) {
         println(version)
         return
       }
 
       // Modify the launcher args to include the firtool path
-      val args = parsed.copy(firtoolPath =
-        Some(parsed.firtoolPath.getOrElse(SOCTUtils.findFirtool(parsed.firtoolVersion))))
+      args = args.copy(firtoolPath =
+        Some(args.firtoolPath.getOrElse(SOCTUtils.findFirtool(args.firtoolVersion))))
 
       if (args.wtf) {
         SOCTUtils.printFirtoolHelp(args.firtoolPath.get.toString)

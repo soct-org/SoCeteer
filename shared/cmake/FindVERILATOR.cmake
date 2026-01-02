@@ -3,7 +3,7 @@
 # It has the following precedence for finding a Verilator installation:
 # 1. User-defined VERILATOR_ROOT variable (-DVERILATOR_ROOT=...)
 # 2. VERILATOR_ROOT environment variable
-# 3. The Verilator submodule relative to the project - VERILATOR_ROOT=../verilator
+# 3. The Verilator submodule relative to the project
 #
 # 1. and 2. expect to find "$VERILATOR_ROOT/bin/verilator_bin[.exe]".
 # If it does not exist or the version is too old / cannot be determined, this script will try to install at 3.
@@ -19,6 +19,11 @@ set(VERILATOR_MINOR_REQUIRED 0) # Minor version must be at least this TODO: vali
 # The verilator shipped with the project (as a submodule)
 file(REAL_PATH "${CMAKE_CURRENT_LIST_DIR}/../verilator" VERILATOR_SUBMODULE)
 
+if (EXISTS "${VERILATOR_SUBMODULE}")
+    set(VERILATOR_SOURCE "${VERILATOR_SUBMODULE}")
+    set(VERILATOR_INSTALL "${VERILATOR_SUBMODULE}/artifact")
+endif ()
+
 # 1.
 if (DEFINED VERILATOR_ROOT)
     message(DEBUG "Using user-defined VERILATOR_ROOT: ${VERILATOR_ROOT}")
@@ -30,15 +35,6 @@ elseif (DEFINED ENV{VERILATOR_ROOT})
 elseif (NOT EXISTS "${VERILATOR_SUBMODULE}")
     message(FATAL_ERROR "VERILATOR_ROOT not defined and no project-relative verilator submodule found at ${VERILATOR_SUBMODULE}.")
 endif ()
-
-
-# Define executable based on platform
-if (WIN32)
-    set(VERILATOR_EXE "${VERILATOR_ROOT}/bin/verilator_bin.exe")
-else ()
-    set(VERILATOR_EXE "${VERILATOR_ROOT}/bin/verilator_bin")
-endif ()
-
 
 #####################################
 # Function to check Verilator version
@@ -78,21 +74,25 @@ function(_check_verilator_version exe result_var)
     endif()
 endfunction()
 
-include(${CMAKE_CURRENT_LIST_DIR}/install-verilator.cmake) # Provides install_verilator()
-
-# Check if the found Verilator is of sufficient version
-_check_verilator_version("${VERILATOR_EXE}" _verilator_ok)
-if (NOT _verilator_ok)
-    unset(VERILATOR_EXE)
+# If VERILATOR_ROOT is defined, check for the executable there
+if (DEFINED VERILATOR_ROOT)
+    if (WIN32)
+        set(VERILATOR_EXE "${VERILATOR_ROOT}/bin/verilator_bin.exe")
+    else ()
+        set(VERILATOR_EXE "${VERILATOR_ROOT}/bin/verilator_bin")
+    endif()
+    _check_verilator_version("${VERILATOR_EXE}" _verilator_ok)
+    if (NOT _verilator_ok)
+        unset(VERILATOR_EXE) # Unset to trigger installation
+    endif ()
 endif()
 
+include(${CMAKE_CURRENT_LIST_DIR}/install-verilator.cmake) # Provides install_verilator()
 
 # If not found or insufficient version, attempt to install from project submodule
-if (NOT EXISTS "${VERILATOR_EXE}")
+if (NOT DEFINED VERILATOR_EXE)
     message(STATUS "Verilator not found or insufficient version. Attempting to install from project submodule.")
     unset(VERILATOR_EXE)
-    set(VERILATOR_SOURCE "${VERILATOR_SUBMODULE}")
-    set(VERILATOR_INSTALL "${VERILATOR_SUBMODULE}/artifact")
     install_verilator()
     if (NOT EXISTS "${VERILATOR_EXE}")
         message(FATAL_ERROR "Verilator installation failed. Executable not found at ${VERILATOR_EXE}")
@@ -100,6 +100,7 @@ if (NOT EXISTS "${VERILATOR_EXE}")
 endif ()
 
 message(STATUS "VERILATOR_EXE: ${VERILATOR_EXE}") # DO NOT REMOVE - SoCeteer uses this message to parse the path
+message(STATUS "VERILATOR_ROOT: ${VERILATOR_ROOT}") # DO NOT REMOVE - SoCeteer uses this message to parse the path
 
 # Mark as found and expose variables
 find_package_handle_standard_args(VERILATOR

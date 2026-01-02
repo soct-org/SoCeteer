@@ -18,7 +18,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
 
-public class WrapVHDL {
+public class WrapVHDLLegacy {
 
     private static String riscv_module_name = "rocket";
 
@@ -335,7 +335,7 @@ public class WrapVHDL {
 
     private static void copyModule(String name) {
         try {
-            URL url = WrapVHDL.class.getResource("/" + name + ".vhdl");
+            URL url = WrapVHDLLegacy.class.getResource("/" + name + ".vhdl");
             URLConnection con = url.openConnection();
             BufferedReader inp = new BufferedReader(new InputStreamReader(con.getInputStream()));
             for (; ; ) {

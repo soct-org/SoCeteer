@@ -100,6 +100,25 @@ case class SOCTArgs(
 
 object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
 
+  /**
+   * Modify the args based on the target
+   *
+   * @param args   The original args
+   * @param target The target to modify for
+   * @return The modified args
+   */
+  def modifyArgsBasedOnTarget(args: SOCTArgs, target: Targets): SOCTArgs = {
+    target match {
+      case Targets.Verilator =>
+        // No changes needed for Verilator
+        args
+      case Targets.Vivado =>
+        args.copy(singleVerilogFile = true)
+      case Targets.Yosys =>
+        args.copy(singleVerilogFile = true)
+    }
+  }
+
   private val defaultSOCTArgs = SOCTArgs()
 
   help("help").text("Prints this usage text")

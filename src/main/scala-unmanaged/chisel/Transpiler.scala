@@ -60,11 +60,10 @@ object Transpiler {
 
   def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, firtoolArgs: Seq[String]): Unit = {
     log.info(s"Using Firtool at ${paths.firtoolBinary} to generate Verilog")
-    val outPath = paths.systemDir.resolve(SOCTPaths.systemName)
     val verilogArgs = if (c.args.singleVerilogFile) {
-      Seq("--verilog", "--disable-layers=Verification", s"-o=$outPath.sv") // verilog outputs system verilog
+      Seq("--verilog", "--disable-layers=Verification", s"-o=${paths.verilogSystem.toString}")
     } else {
-      Seq("--split-verilog", s"-o=$outPath")
+      Seq("--split-verilog", s"-o=${paths.verilogSystem.toString}")
     }
     val args = Seq(paths.firtoolBinary.toString) ++ firtoolArgs ++
       Seq("--disable-annotation-unknown", "--format=fir", "-O=release") ++ verilogArgs ++ Seq(paths.firrtlFile.toString)

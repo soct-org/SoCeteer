@@ -104,9 +104,29 @@ abstract class SOCTPaths(args: SOCTArgs) {
   def firtoolBinary: Path = args.firtoolPath.getOrElse(throw new InternalBugException("Firtool path not set in LauncherArgs"))
 
   /**
-   * Path to the generated Verilog file
+   * The path to the generated verilog or systemverilog file/directory
+   * Depending on the chisel version and the args, this can be either a single file or a directory.
+   * If using chisel 3, it is always a single verilog file.
+   * If using Chisel 5 (or later), it depends on the args:
+   * If requested a single file, it is a systemverilog file, otherwise a directory containing multiple systemverilog files.
+   * @return Path to the generated verilog/systemverilog file or directory
    */
-  def verilogFile: Path = systemDir.resolve(s"${SOCTPaths.systemName}.v")
+  def verilogSystem: Path = {
+    if (SOCTUtils.isOldChiselAPI) {
+      systemDir.resolve(s"${SOCTPaths.systemName}.v")
+    } else {
+      if (args.singleVerilogFile) {
+        systemDir.resolve(s"${SOCTPaths.systemName}.sv")
+      } else {
+        systemDir.resolve(s"${SOCTPaths.systemName}")
+      }
+    }
+  }
+
+  /**
+   * Path to the generated VHDL file for Vivado synthesis
+   */
+  def vivadoSystem: Path = systemDir.resolve(s"${SOCTPaths.systemName}.vhdl")
 
   /**
    * Path to the generated low firrtl file (only when using Berkeley chisel)
@@ -151,7 +171,7 @@ abstract class SOCTPaths(args: SOCTArgs) {
        |  systemName: ${SOCTPaths.systemName}
        |  systemDir: $systemDir
        |  firtoolBinary: $firtoolBinary
-       |  verilogFile: $verilogFile
+       |  verilogFile: $verilogSystem
        |  lowFirrtlFile: $lowFirrtlFile
        |  firrtlFile: $firrtlFile
        |  annoFile: $annoFile

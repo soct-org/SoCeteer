@@ -1,6 +1,6 @@
 package soct
 
-import soct.rocket.WrapVHDL
+import soct.SOCTLauncher.Config
 
 import java.nio.file.{Files, Path, Paths}
 import scala.io.Source
@@ -60,33 +60,46 @@ object SOCTVivado {
 
   }
 
-  def wrapVHDL(systemDir: Path, verilatorBin: Option[Path], verilogFile: Path, baseConfig: String): Path = {
-    val outFile = systemDir.resolve("riscv_system.vhdl").toAbsolutePath
+  def wrapVHDL(paths: SOCTPaths, config: Config): Unit = {
+    val verilatorOpt = SOCTUtils.findVerilator()
+    val systemFile = paths.verilogSystem
+    require(Files.exists(systemFile) && !Files.isDirectory(systemFile), s"Output file $systemFile does not exist or is a directory")
 
-    if (verilatorBin.isDefined) {
-      // Copy verilog file to systemDir
-      val verilogRawFile = systemDir.resolve(verilogFile.getFileName.toString.replace(".v", "-raw.v"))
-      Files.copy(verilogFile, verilogRawFile)
-      Files.deleteIfExists(verilogFile)
-      val cmd = Seq(verilatorBin.get.toAbsolutePath.toString, "-P", "-E", verilogRawFile.toAbsolutePath.toString)
-      println("Running Verilator preprocessor with command: " + cmd.mkString(" "))
-      val process = new ProcessBuilder(cmd: _*).
-        directory(systemDir.toFile)
-        .redirectOutput(verilogFile.toFile)
+    if (verilatorOpt.isDefined) {
+      val (exe, root) = verilatorOpt.get
+
+      // Add .raw to the original verilog file and copy the contents
+      val rawSystem = {
+        val fileName = systemFile.getFileName.toString
+        val dotIndex = fileName.lastIndexOf('.')
+        val (name, ext) = if (dotIndex > 0) {
+          (fileName.substring(0, dotIndex), fileName.substring(dotIndex))
+        } else {
+          (fileName, "")
+        }
+        systemFile.resolveSibling(s"$name.raw$ext")
+      }
+      Files.copy(systemFile, rawSystem)
+      Files.deleteIfExists(systemFile)
+
+      val cmd = Seq(exe.toAbsolutePath.toString, "-P", "-E", rawSystem.toAbsolutePath.toString)
+      val processBuilder = new ProcessBuilder(cmd: _*)
+        .redirectOutput(systemFile.toFile)
         .redirectError(ProcessBuilder.Redirect.INHERIT)
-        .start()
-      val exitCode = process.waitFor()
+
+      processBuilder.environment().put("VERILATOR_ROOT", root.toAbsolutePath.toString)
+
+      val exitCode = processBuilder.start().waitFor()
+
       if (exitCode != 0) {
         throw new RuntimeException(s"Verilator preprocessor failed with exit code $exitCode")
       }
-      WrapVHDL.main(Array("-m", baseConfig, "-o", outFile.toString, verilogFile.toAbsolutePath.toString))
-      outFile
+      WrapVHDL.transform(systemFile, paths.vivadoSystem)
     } else {
       println("Verilator binary not found or not executable. Using unprocessed Verilog file instead.")
       SOCTUtils.disableStdErr()
-      WrapVHDL.main(Array("-m", baseConfig, "-o", outFile.toString, verilogFile.toAbsolutePath.toString))
+      WrapVHDL.transform(systemFile, paths.vivadoSystem)
       SOCTUtils.enableStdErr()
-      outFile
     }
   }
 

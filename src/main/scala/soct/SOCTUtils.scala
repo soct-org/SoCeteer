@@ -116,20 +116,27 @@ object SOCTUtils {
   }
 
 
-  private def runCMakeCommand(command: Seq[String], definesMap: Map[String, String], workingDir: Path = SOCTPaths.projectRoot): Unit = {
+  private def runCMakeCommand(command: Seq[String],
+                              definesMap: Map[String, String],
+                              workingDir: Path = SOCTPaths.projectRoot
+                             ): (String, String) = {
     val defines = definesMap.flatMap { case (k, v) => Seq("-D", s"$k=$v") }.toSeq
     val fullCommand = Seq("cmake") ++ defines ++ command
     log.debug(s"Running CMake command: ${fullCommand.mkString(" ")} in directory: $workingDir")
     val processBuilder = new ProcessBuilder(fullCommand: _*)
       .directory(workingDir.toFile)
-      .redirectErrorStream(true)
-      .redirectOutput(ProcessBuilder.Redirect.INHERIT)
 
     val process = processBuilder.start()
+
+    val stdout = scala.io.Source.fromInputStream(process.getInputStream).mkString
+    val stderr = scala.io.Source.fromInputStream(process.getErrorStream).mkString
+
     val exitCode = process.waitFor()
     if (exitCode != 0) {
-      throw new RuntimeException(s"CMake command failed with exit code $exitCode")
+      throw new RuntimeException(s"CMake command failed with exit code $exitCode\nstderr: $stderr")
     }
+
+    (stdout, stderr)
   }
 
 
@@ -204,6 +211,20 @@ object SOCTUtils {
     System.getProperty("os.name").toLowerCase.contains("nix") || System.getProperty("os.name").toLowerCase.contains("nux")
   }
 
+  /**
+   * Check if using Berkeley Chisel 3 API (versions 3.x)
+   * @return True if using Chisel 3.x, false otherwise
+   */
+  def isOldChiselAPI: Boolean = {
+    chisel3.BuildInfo.version.startsWith("3.")
+  }
+
+  /**
+   * Find the firtool binary for the given version using firtoolresolver
+   * @param firtoolVersion The version of firtool to find
+   * @return Path to the firtool binary
+   * @throws RuntimeException if firtool cannot be found
+   */
   def findFirtool(firtoolVersion: String): Path = {
     val firtoolPathOpt = firtoolresolver.Resolve(firtoolVersion)
     firtoolPathOpt match {
@@ -276,38 +297,25 @@ object SOCTUtils {
     System.setOut(System.out)
   }
 
-  def listFilesWithExtension(startDir: Path, extension: String): List[java.io.File] = {
-    Files.walk(startDir)
-      .iterator()
-      .asScala
-      .filter(path => path.toString.endsWith(extension))
-      .map(_.toFile)
-      .toList
-  }
-
-  def findVerilator(): Option[Path] = {
+  /**
+   * Find the Verilator installation using the FindVERILATOR.cmake script
+   * @return Option containing the path to the Verilator binary and root directory, or None if not found
+   */
+  def findVerilator(): Option[(Path, Path)] = {
     // We use Cmake in scripting mode to find the Verilator installation - no need to do the work twice and have multiple copies of filepaths
-    val cmd = new ProcessBuilder("cmake", "-P", SOCTPaths.get("FindVERILATOR.cmake").toString)
-      .directory(SOCTPaths.projectRoot.toFile)
-      .redirectErrorStream(true)
-      .start()
-    val exitCode = cmd.waitFor()
-    if (exitCode != 0) {
-      log.error("Failed to find Verilator - exit code: " + exitCode)
-      return None
-    }
-    val searchString = "VERILATOR_EXE: "
-    // Read the output line by line and find the line that contains the search string
-    val output = scala.io.Source.fromInputStream(cmd.getInputStream).getLines()
-    // Read the output line by line and find the line that contains the search string
-    val lineOpt = output.find(_.contains(searchString))
-    if (lineOpt.isDefined) {
-      val line = lineOpt.get
-      val prefix = line.substring(line.indexOf(searchString) + searchString.length).trim
-      log.info(s"Verilator installation found at $prefix")
-      Some(Paths.get(prefix))
+    val (stdout, _) = runCMakeCommand(Seq("-P", SOCTPaths.get("FindVERILATOR.cmake").toString), Map.empty)
+    val lines = stdout.split("\n")
+    val exeString = "VERILATOR_EXE: "
+    val rootString = "VERILATOR_ROOT: "
+    val exeOpt = lines.find(_.contains(exeString))
+    val rootOpt = lines.find(_.contains(rootString))
+    if (exeOpt.isDefined && rootOpt.isDefined) {
+      val exeLine = exeOpt.get
+      val rootLine = rootOpt.get
+      val exe = exeLine.substring(exeOpt.get.indexOf(exeString) + exeString.length).trim
+      val root = rootLine.substring(rootOpt.get.indexOf(rootString) + rootString.length).trim
+      Some(Paths.get(exe), Paths.get(root))
     } else {
-      log.warn("Failed to find Verilator - output: " + output.mkString("\n"))
       None
     }
   }
