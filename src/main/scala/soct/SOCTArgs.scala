@@ -113,7 +113,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
         // No changes needed for Verilator
         args
       case Targets.Vivado =>
-        args.copy(singleVerilogFile = true)
+        args.copy(singleVerilogFile = false)
       case Targets.Yosys =>
         args.copy(singleVerilogFile = true)
     }

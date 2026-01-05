@@ -1,11 +1,17 @@
 package soct
 
 import soct.SOCTLauncher.Config
+import soct.antlr.verilog.sv2017Parser.List_of_port_declarationsContext
 
 import java.nio.file.{Files, Path, Paths}
+import scala.collection.mutable
 import scala.io.Source
 
 object SOCTVivado {
+
+  // Constants:
+  val VIVADO_WRAPPER_TOP = "soct_system"
+
 
   def generateHeader(systemDir: Path, boardName: String, baseConfig: String, boardParams: BoardParams): String = {
     var header =
@@ -60,7 +66,7 @@ object SOCTVivado {
 
   }
 
-  def wrapVHDL(paths: SOCTPaths, config: Config): Unit = {
+  def wrapVHDL(paths: SOCTPaths, config: Config, top: String, language: String = "1364-2005"): Unit = {
     val verilatorOpt = SOCTUtils.findVerilator()
     val systemFile = paths.verilogSystem
     require(Files.exists(systemFile) && !Files.isDirectory(systemFile), s"Output file $systemFile does not exist or is a directory")
@@ -82,7 +88,7 @@ object SOCTVivado {
       Files.copy(systemFile, rawSystem)
       Files.deleteIfExists(systemFile)
 
-      val cmd = Seq(exe.toAbsolutePath.toString, "-P", "-E", rawSystem.toAbsolutePath.toString)
+      val cmd = Seq(exe.toAbsolutePath.toString, "--language", language, "-P", "-E", rawSystem.toAbsolutePath.toString)
       val processBuilder = new ProcessBuilder(cmd: _*)
         .redirectOutput(systemFile.toFile)
         .redirectError(ProcessBuilder.Redirect.INHERIT)
@@ -94,11 +100,11 @@ object SOCTVivado {
       if (exitCode != 0) {
         throw new RuntimeException(s"Verilator preprocessor failed with exit code $exitCode")
       }
-      WrapVHDL.transform(systemFile, paths.vivadoSystem)
+      SOCTVivadoHelper.transform(systemFile, paths.vivadoSystem, top)
     } else {
       println("Verilator binary not found or not executable. Using unprocessed Verilog file instead.")
       SOCTUtils.disableStdErr()
-      WrapVHDL.transform(systemFile, paths.vivadoSystem)
+      SOCTVivadoHelper.transform(systemFile, paths.vivadoSystem, top)
       SOCTUtils.enableStdErr()
     }
   }

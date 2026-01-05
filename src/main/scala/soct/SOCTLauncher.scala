@@ -78,7 +78,7 @@ object SOCTLauncher {
     Transpiler.emitVerilog(config, boardPaths, args.firtoolArgs)
 
     val tclFile = SOCTVivado.generateTCLScript(boardPaths.systemDir, args.board.get, config.config, boardParams)
-    SOCTVivado.wrapVHDL(boardPaths, config)
+    SOCTVivado.wrapVHDL(boardPaths, config, classOf[SOCTSynTop].getSimpleName)
     if (args.vivado.isDefined) {
       SOCTVivado.generateProject(tclFile, args.vivado.get, args.vivadoSettings)
     } else {
