@@ -40,7 +40,7 @@ def freshProject(name: String, dir: File): Project = {
 lazy val commonSettings = Seq(
   scalaVersion := (if (useChisel3) "2.13.14" else "2.13.18"),
   Global / parallelExecution := true,
-  scalacOptions ++= Seq("-deprecation", "-unchecked"),
+  scalacOptions ++= Seq("-deprecation", "-Xcheckinit", "-unchecked", "-language:reflectiveCalls", "-feature", "-Ymacro-annotations"),
   libraryDependencies += "org.json4s" %% "json4s-jackson" % "4.0.7",
   libraryDependencies += "com.lihaoyi" %% "sourcecode" % "0.4.4",
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % (if (useChisel3) "3.9.5" else "3.9.6"), // For logging
@@ -203,6 +203,7 @@ lazy val soceteer = (project in file("."))
     }
   ).settings(name := "SoCeteer")
 
+enablePlugins(BuildInfoPlugin)
 buildInfoPackage := "soct.build"
 // Add SoCeteer name, version and Scala version to BuildInfo
 buildInfoKeys := Seq[BuildInfoKey](
@@ -220,16 +221,24 @@ generateVerilogParser := {
   val log = streams.value.log
   val packageName = "soct.antlr.verilog"
   val packagePath = packageName.replace('.', '/')
-  // Grammar file is in resources
-  val grammarFile = baseDirectory.value / "src" / "main" / "resources" / "Verilog2001.g4"
-  val grammarFileRel = baseDirectory.value.toURI.relativize(grammarFile.toURI).getPath
+
+  // Grammar files in resources
+  val lexerGrammar = baseDirectory.value / "src" / "main" / "resources" / "sv2017Lexer.g4"
+  val parserGrammar = baseDirectory.value / "src" / "main" / "resources" / "sv2017Parser.g4"
+
   // Output directory for generated Java files
   val outDir = baseDirectory.value / "src" / "main" / "java" / packagePath
   IO.createDirectory(outDir)
+
   val args = Array(
     "-o", outDir.getAbsolutePath,
-    grammarFile.getAbsolutePath,
-    "-package", packageName)
+    "-package", packageName,
+    "-visitor",
+    "-listener",
+    lexerGrammar.getAbsolutePath,
+    parserGrammar.getAbsolutePath
+  )
+
   log.info(s"Running ANTLR with arguments: ${args.mkString(" ")}")
   org.antlr.v4.Tool.main(args)
 }

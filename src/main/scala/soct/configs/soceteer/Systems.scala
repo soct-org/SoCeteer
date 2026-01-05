@@ -41,7 +41,7 @@ class SOCTSimTop()(implicit p: Parameters) extends Module {
     val success = Output(Bool())
   })
   val ldut = LazyModule(new RocketSystem)
-  val dut = Module(ldut.module)
+  val dut = ldut.module
 
   ldut.io_clocks.get.elements.values.foreach(_.clock := clock)
   // Allow the debug ndreset to reset the dut, but not until the initial reset has completed
