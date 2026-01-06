@@ -1,11 +1,19 @@
-package soct
+package soct.xilinx
 
 import soct.SOCTLauncher.Config
+import soct.{BoardParams, BoardSOCTPaths, SOCTPaths, SOCTUtils}
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 import scala.io.Source
 
 object SOCTVivado {
+
+
+  val DEFAULT_MEMORY_ADDR_64: BigInt = BigInt("0x80000000")
+
+  val DEFAULT_MEMORY_ADDR_32: BigInt = BigInt("0x40000000")
+
+  val DEFAULT_MMIO_ADDR = "0x60000000"
 
   def generateHeader(systemDir: Path, boardName: String, baseConfig: String, boardParams: BoardParams): String = {
     var header =

@@ -3,6 +3,7 @@ package soct
 import org.json4s.jackson.JsonMethods.parse
 import org.json4s.jackson.Serialization.writePretty
 import org.json4s.{DefaultFormats, Formats}
+import soct.xilinx.SOCTVivado
 
 import java.nio.file.Path
 import scala.io.Source

@@ -2,7 +2,7 @@ package soct
 
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.system.BaseConfig
-import org.chipsalliance.cde.config.Config
+import org.chipsalliance.cde.config.{Config, Field}
 
 /*----------------- Base Configs ---------------*/
 
@@ -26,15 +26,30 @@ class RocketSynBaseConfig extends Config(
     new WithEdgeDataBits(64) ++
     new WithCoherentBusTopology ++
     new WithoutTLMonitors ++
+    new WithDDR4ExtMem ++
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new BaseConfig)
 
+
+/*----------------- Memory ---------------*/
 
 class ExtMem64Bit extends Config(new WithExtMemSize(0x380000000L))
 
 class ExtMem32Bit extends Config(new WithExtMemSize(0x80000000L))
 
+/**
+ * Enable DDR4 external memory interface
+ */
+case object HasDDR4ExtMem extends Field[Boolean](false)
 
+
+class WithDDR4ExtMem extends Config((_, _, _) => {
+    case HasDDR4ExtMem => true
+  }
+)
+
+
+/*----------------- Reset Schemes ---------------*/
 class WithResetScheme(scheme: SubsystemResetScheme) extends Config((site, here, up) => {
   case SubsystemResetSchemeKey => scheme
 })

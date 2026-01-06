@@ -8,6 +8,7 @@ import freechips.rocketchip.system.SimAXIMem
 import freechips.rocketchip.util.{AsyncResetReg, DontTouch}
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
+import soct.xilinx.components.DDR4
 
 class RocketSystem(implicit p: Parameters) extends RocketSubsystem
   with HasAsyncExtInterrupts
@@ -29,7 +30,14 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT
  */
-class SOCTSynTop(implicit p: Parameters) extends RocketSystem
+class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
+
+
+  if (p(HasDDR4ExtMem)) {
+    DDR4.add()
+  }
+
+}
 
 
 
