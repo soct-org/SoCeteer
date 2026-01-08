@@ -1,6 +1,6 @@
 package soct
 
-import soct.SOCTLauncher.Config
+import soct.SOCTLauncher.SOCTConfig
 
 import java.nio.file.{Files, Path, Paths}
 
@@ -55,7 +55,6 @@ object SOCTPaths {
     // Split into static (that always exist) and dynamic ones that are generated at runtime
     // In addition, we split into base paths (that are direct children of the root) and derived ones
     val base: Map[String, Path] = Map(
-      "syn" -> root.resolve("syn"),
       "sim" -> root.resolve("sim"),
       "binaries" -> root.resolve("binaries"),
       "shared" -> root.resolve("shared"),
@@ -65,10 +64,6 @@ object SOCTPaths {
     val derived: Map[String, Path] = Map(
       "rocket-chip" -> base("generators").resolve("rocket-chip"),
       "default-bootrom" -> base("generators").resolve("rocket-chip").resolve("bootrom").resolve("bootrom.img"),
-      "boards" -> base("syn").resolve("boards"),
-      "tclsrcs" -> base("syn").resolve("tclsrcs"),
-      "vsrcs" -> base("syn").resolve("vsrcs"),
-      "vhdlsrcs" -> base("syn").resolve("vhdlsrcs"),
       "FindVERILATOR.cmake" -> base("shared").resolve("cmake").resolve("FindVERILATOR.cmake"),
     )
 
@@ -189,19 +184,16 @@ abstract class SOCTPaths(args: SOCTArgs) {
  * @param args   SOCTArgs containing user-provided arguments
  * @param config Config used for this synthesis
  */
-private class YosysSOCTPaths(args: SOCTArgs, config: Config) extends SOCTPaths(args) {
+private class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {
   // For example: workspace/RocketB1-64/system-yosys
-  val systemDir: Path = args.workspaceDir.resolve(config.configFull).resolve("system-yosys")
+  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve("system-yosys")
 }
 
-private class BoardSOCTPaths(args: SOCTArgs, config: Config) extends SOCTPaths(args) {
-  // For example: workspace/RocketB1-64/system-zcu104
-  val boardDts: Path = SOCTPaths.get("boards").resolve(args.board.get).resolve("bootrom.dts")
-  val boardParams: Path = SOCTPaths.get("boards").resolve(args.board.get).resolve("params.json")
-  val systemDir: Path = args.workspaceDir.resolve(config.configFull).resolve(s"system-${args.board.get}")
+private class BoardSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {
+  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(s"system-${args.board.get}")
 }
 
-private class SimSOCTPaths(args: SOCTArgs, config: Config) extends SOCTPaths(args) {
+private class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {
   // For example: workspace/RocketB1-64/sim
-  val systemDir: Path = args.workspaceDir.resolve(config.configFull).resolve("sim")
+  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve("sim")
 }

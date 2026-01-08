@@ -1,5 +1,6 @@
 package soct
 
+import org.chipsalliance.cde.config.Parameters
 import org.json4s.jackson.JsonMethods.parse
 import org.json4s.jackson.Serialization.writePretty
 import org.json4s.{DefaultFormats, Formats}
@@ -14,149 +15,77 @@ object SOCTLauncher {
   // JSON formats for serializing/deserializing
   implicit val formats: Formats = DefaultFormats + PathSerializer + TargetsSerializer
 
-  // The current SocPaths based on the last parsed arguments
-  var currentSoCPaths: Option[SOCTPaths] = None
+  case class SOCTConfig(
+                         args: SOCTArgs,
+                         mabi: String,
+                         topModule: ChiselTop,
+                         var params: Parameters,
+                         configName: String,
+                       )
 
-  case class Config(
-                     args: SOCTArgs,
-                     mabi: String,
-                     var configs: Seq[String],
-                     config: String,
-                     configFull: String,
-                   )
-
-  object Config {
-    def apply(args: SOCTArgs): Config = {
-      val mabi = if (args.xlen == 32) args.mabi32 else args.mabi64
-      val configs = args.baseConfig.split(',').map(_.trim).toSeq
-      val config = configs.head.split('.').last
-      val configFull = s"${config}-${args.xlen}"
-      new Config(args, mabi, configs, config, configFull)
+  object SOCTConfig {
+    def apply(args: SOCTArgs): SOCTConfig = {
+      val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
+      val params = new WithHartBootFreqMHz(args.freqsMHz) ++ args.baseConfig
+      val topModule = args.userTop.getOrElse(args.target.defaultTop)
+      val configName = s"${args.baseConfig.toString}-${args.xlen}"
+      new SOCTConfig(args, mabi, topModule, params, configName)
     }
   }
 
   // Generate the design for Vivado synthesis
-  private def generateVivadoDesign(args: SOCTArgs, boardPaths: BoardSOCTPaths, config: Config): Unit = {
+  private def generateVivadoDesign(args: SOCTArgs, boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for Vivado synthesis")
     log.debug(s"Using the following paths: ${boardPaths.toString}")
 
-    val boardDtsFile = Source.fromFile(boardPaths.boardDts.toFile)
-    val jsonParams = Source.fromFile(boardPaths.boardParams.toFile)
-    var boardParams = parse(jsonParams.mkString).extract[BoardParams]
-    // If rocket frequency is provided, override the board params
-    if (args.freqMHz.isDefined) {
-      boardParams = boardParams.copy(ROCKET_FREQ_MHZ = args.freqMHz)
-    }
-    assert(boardParams.ROCKET_FREQ_MHZ.isDefined, "No frequency provided - Either set \"ROCKET_FREQ_MHZ\" in the board params or provide it as an argument")
-
     if (args.xlen == 32) {
-      config.configs +:= classOf[freechips.rocketchip.rocket.WithRV32].getName
-      config.configs :+= classOf[ExtMem32Bit].getName
+      config.params = config.params.orElse(new ExtMem32Bit)
     } else {
-      config.configs :+= classOf[ExtMem64Bit].getName
+      config.params = config.params.orElse(new ExtMem64Bit)
     }
-    config.configs :+= classOf[soct.RocketSynBaseConfig].getName
+    config.params = config.params.orElse(new soct.RocketSynBaseConfig)
 
     if (SOCTUtils.rmrfOpt(boardPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${boardPaths.systemDir}")
     }
-    val tmpDir = boardPaths.systemDir.resolve("tmp")
-    tmpDir.toFile.mkdirs()
 
-    // Store these results in a temporary dir - they are only required to generate a dts of the system
-    val tmpArtifacts = Transpiler.evalDesign(args.synTop, config, boardPaths, SOCTPaths.get("default-bootrom"))
-
-    val boardDts = boardDtsFile.getLines().mkString("\n")
-
-    val bootromImg: Path = SOCTUtils.compileBootrom(boardPaths, tmpArtifacts, config, Some(boardDts), Some(boardParams))
-
-    SOCTUtils.rmrfOpt(tmpDir)
-
-    Transpiler.evalDesign(args.synTop, config, boardPaths, bootromImg)
+    Transpiler.evalDesign(config, boardPaths)
 
     Transpiler.emitLowFirrtl(config, boardPaths)
 
     Transpiler.emitVerilog(config, boardPaths, args.firtoolArgs)
 
-    val tclFile = SOCTVivado.generateTCLScript(boardPaths.systemDir, args.board.get, config.config, boardParams)
     SOCTVivado.generate(boardPaths, config)
-    if (args.vivado.isDefined) {
-      SOCTVivado.generateProject(tclFile, args.vivado.get, args.vivadoSettings)
-    } else {
-      log.warn("No vivado path file provided. Not generating bitstream.")
-    }
   }
 
   // Generate the design for Yosys synthesis
-  private def generateYosysDesign(args: SOCTArgs, yosysPaths: YosysSOCTPaths, config: Config): Unit = {
-    log.info("Generating design for Yosys synthesis")
-    log.debug(s"Using the following paths: ${yosysPaths.toString}")
-
-    if (args.xlen == 32) {
-      config.configs +:= classOf[freechips.rocketchip.rocket.WithRV32].getName
-      config.configs :+= classOf[ExtMem32Bit].getName
-    } else {
-      config.configs :+= classOf[ExtMem64Bit].getName
-    }
-    config.configs :+= classOf[soct.RocketSynBaseConfig].getName
-
-    if (SOCTUtils.rmrfOpt(yosysPaths.systemDir) > 0) {
-      log.info(s"Removed existing files in ${yosysPaths.systemDir}")
-    }
-    val tmpDir = yosysPaths.systemDir.resolve("tmp")
-    tmpDir.toFile.mkdirs()
-
-    // Store these results in a temporary dir - they are only required to generate a dts of the system
-    val tmpArtifacts = Transpiler.evalDesign(args.synTop, config, yosysPaths, SOCTPaths.get("default-bootrom"))
-
-    val bootromImg: Path = SOCTUtils.compileBootrom(yosysPaths, tmpArtifacts, config)
-
-    SOCTUtils.rmrfOpt(tmpDir)
-
-    Transpiler.evalDesign(args.synTop, config, yosysPaths, bootromImg)
-
-    Transpiler.emitLowFirrtl(config, yosysPaths)
-
-    Transpiler.emitVerilog(config, yosysPaths, args.firtoolArgs)
+  private def generateYosysDesign(args: SOCTArgs, yosysPaths: YosysSOCTPaths, config: SOCTConfig): Unit = {
+    throw new NotImplementedError("Yosys synthesis target has been removed for the time being.")
   }
 
   // Generate the design for simulation
-  private def generateSimDesign(args: SOCTArgs, simPaths: SimSOCTPaths, config: Config): Unit = {
+  private def generateSimDesign(args: SOCTArgs, simPaths: SimSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for simulation")
     log.debug(s"Using the following paths: ${simPaths.toString}")
 
-
-    if (args.xlen == 32) {
-      config.configs +:= classOf[freechips.rocketchip.rocket.WithRV32].getName
-    }
-
-    config.configs :+= classOf[soct.RocketSimBaseConfig].getName
+    config.params = config.params.orElse(new soct.RocketSimBaseConfig)
 
     if (SOCTUtils.rmrfOpt(simPaths.systemDir) > 0) {
       log.info(s"Removed existing files in ${simPaths.systemDir}")
     }
-    val tmpDir = simPaths.systemDir.resolve("tmp")
-    tmpDir.toFile.mkdirs()
 
-    // Store these results in a temporary dir - they are only required to generate a dts of the system
-    val tmpArtifacts = Transpiler.evalDesign(args.simTop, config, simPaths, SOCTPaths.get("default-bootrom"))
-
-    val bootromImg: Path = SOCTUtils.compileBootrom(simPaths, tmpArtifacts, config)
-
-    SOCTUtils.rmrfOpt(tmpDir)
-
-    Transpiler.evalDesign(args.simTop, config, simPaths, bootromImg)
+    Transpiler.evalDesign(config, simPaths)
 
     Transpiler.emitLowFirrtl(config, simPaths)
 
     Transpiler.emitVerilog(config, simPaths, args.firtoolArgs)
 
     if (args.overrideSimFiles) {
-      val configsSimDir = SOCTPaths.projectRoot.resolve("sim").resolve("configs")
+      val configsSimDir = SOCTPaths.projectRoot.resolve("sim").resolve("configs") // TODO change path
       if (!configsSimDir.toFile.exists()) {
         configsSimDir.toFile.mkdirs()
       }
-      val configsSimDirConfig = configsSimDir.resolve(config.configFull)
+      val configsSimDirConfig = configsSimDir.resolve(config.configName)
       if (SOCTUtils.rmrfOpt(configsSimDirConfig) > 0) {
         log.info(s"Removed existing files in $configsSimDirConfig")
       }
@@ -167,16 +96,11 @@ object SOCTLauncher {
 
   def main(raw: Array[String]): Unit = SOCTParser.parse(raw, SOCTArgs()) match {
     case Some(parsed) =>
-      // Set the log level of the logger
       configureLogging(parsed.logLevel.toUpperCase)
-
-      // Validate all static paths exist
       SOCTPaths.validateStaticPaths()
-
-      // Modify the args based on the target
       var args = SOCTParser.modifyArgsBasedOnTarget(parsed, parsed.target)
 
-      // First check the terminating options
+      // First check the terminating options:
       if (args.getVersion) {
         println(version)
         return
@@ -191,15 +115,18 @@ object SOCTLauncher {
         return
       }
 
-      val config = Config(args)
-      val prettyConfig = writePretty(config).replace("\"", "").replace(",", "").replace("{", "").replace("}", "").replace(" : ", ": ").replace("\n  ", "\n").replace("\n\n", "\n-------------\n")
-      log.info(s"Generating design with the following configuration:$prettyConfig")
+      // Modify the params:
+      val config = SOCTConfig(args)
+      config.params = config.params.orElse(new WithSOCTConfig(config))
+      if (args.xlen == 32) {
+        config.params = config.params.orElse(new freechips.rocketchip.rocket.WithRV32)
+      }
 
       args.target match {
         case Targets.Verilator =>
           log.info("Targeting Verilator simulation")
           val simPaths = new SimSOCTPaths(args, config)
-          currentSoCPaths = Some(simPaths)
+          config.params = config.params.orElse(new WithSOCTPaths(simPaths))
           generateSimDesign(args, simPaths, config)
         case Targets.Vivado =>
           // Ensure that a board is provided
@@ -208,12 +135,12 @@ object SOCTLauncher {
           }
           log.info(s"Targeting Vivado synthesis for board ${args.board.get}")
           val synPaths = new BoardSOCTPaths(args, config)
-          currentSoCPaths = Some(synPaths)
+          config.params = config.params.orElse(new WithSOCTPaths(synPaths))
           generateVivadoDesign(args, synPaths, config)
         case Targets.Yosys =>
           log.info("Targeting Yosys synthesis")
           val synPaths = new YosysSOCTPaths(args, config)
-          currentSoCPaths = Some(synPaths)
+          config.params = config.params.orElse(new WithSOCTPaths(synPaths))
           generateYosysDesign(args, synPaths, config)
       }
     case None => // arguments are bad, error message will have been displayed

@@ -6,51 +6,8 @@ import org.json4s.{CustomSerializer, JNull, JString}
 
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.util.Comparator
-import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
-import soct.SOCTLauncher.currentSoCPaths
 
-import java.nio.charset.StandardCharsets
-
-
-
-case class BoardParams(
-                        BOARD_PART: Option[String],
-                        XILINX_PART: String,
-                        CFG_DEVICE: String,
-                        CFG_PART: String,
-                        MEMORY_SIZE: String,
-                        ROCKET_FREQ_MHZ: Option[Double],
-                        ETHER_MAC: Option[String],
-                        ETHER_PHY: Option[String]
-                      ) {
-  // Calculate ROCKET_CLOCK_FREQ and ROCKET_TIMEBASE_FREQ
-  def calculateFrequencies(): (Long, Long) = {
-    ROCKET_FREQ_MHZ match {
-      case Some(freq) =>
-        val rocketClockFreq = (freq * 1000000).round
-        val rocketTimebaseFreq = (freq * 10000).round
-        (rocketClockFreq, rocketTimebaseFreq)
-      case None =>
-        throw new UnsupportedOperationException("ROCKET_FREQ_MHZ not defined")
-    }
-  }
-
-  // Calculate memory address range based on MEMORY_SIZE
-  def calculateMemoryAddressRange(): (String, String) = {
-    // remove 0x prefix and convert to BigInt
-    val memorySize = BigInt(MEMORY_SIZE.replace("0x", ""), 16)
-
-    if (memorySize <= 0x80000000L) {
-      val range32 = s"0x80000000 $memorySize"
-      val range64 = s"0x0 0x80000000 0x0 $memorySize"
-      (range32, range64)
-    } else {
-      // Not yet implemented
-      throw new NotImplementedError("Memory size > 2GB not yet supported")
-    }
-  }
-}
 
 // JSON4S serializer for java.nio.file.Path
 object PathSerializer extends CustomSerializer[Path](_ => (
@@ -74,16 +31,21 @@ class InternalBugException(message: String) extends Exception(message) {
 
 object SOCTUtils {
 
-  // Instantiate a Config subclass by name with error suggestion
-  def instantiateConfig(currentName: String): Config = {
+  /**
+   * Instantiate a Config subclass given its name
+   * @param configName The fully qualified name of the Config subclass
+   * @return The instantiated Config
+   * @throws RuntimeException if the config cannot be instantiated, with a suggestion for the closest matching config name
+   */
+  def instantiateConfig(configName: String): Config = {
     try {
-      Class.forName(currentName).getDeclaredConstructor().newInstance().asInstanceOf[Config]
+      Class.forName(configName).getDeclaredConstructor().newInstance().asInstanceOf[Config]
     } catch {
       case _: Exception =>
         val configs = findConfigSubclasses()
         val names = configs.map(_.getName)
-        val closest = names.minBy(n => editDistance(n, currentName))
-        throw new RuntimeException(s"Failed to instantiate config: $currentName. Did you mean: $closest?")
+        val closest = names.minBy(n => editDistance(n, configName))
+        throw new RuntimeException(s"Failed to instantiate config: $configName. Did you mean: $closest?")
     }
   }
 
@@ -116,7 +78,7 @@ object SOCTUtils {
   }
 
 
-  private def runCMakeCommand(command: Seq[String],
+  def runCMakeCommand(command: Seq[String],
                               definesMap: Map[String, String],
                               workingDir: Path = SOCTPaths.projectRoot
                              ): (String, String) = {
@@ -140,49 +102,8 @@ object SOCTUtils {
   }
 
 
-  /**
-   * Compile the bootrom for the given configuration and artifacts using CMake
-   */
-  def compileBootrom(paths: SOCTPaths, artifacts: Set[Path], config: SOCTLauncher.Config,
-                             boardDTS: Option[String] = None, boardParams: Option[BoardParams] = None): Path = {
-    val rocketDTS = artifacts.find(_.getFileName.toString.endsWith(".dts")).getOrElse {
-      throw new InternalBugException("No dts file found in artifacts") // This should never happen
-    }
-    var fullDTS = Files.readString(rocketDTS)
-    if (boardDTS.isDefined && boardParams.isDefined) {
-      fullDTS = DTSModifier.modifyDTS(s"$fullDTS\n${boardDTS.get}", boardParams.get)
-    }
-    Files.write(paths.dtsFile, fullDTS.getBytes)
-
-    // Generate the CMake file containing relevant variables about the DTS
-    val soctCmake = DTSCMakeGenerator.generate(paths, config)
-    Files.write(paths.soctSystemCMakeFile, soctCmake.getBytes)
-
-
-    // Compile bootrom using CMake
-    val defs = Map(
-      "SOCT_SYSTEM_CMAKE" -> paths.soctSystemCMakeFile.toString,
-      // And configure for bootrom build
-      "BOOTROM_MODE" -> "ON",
-    )
-
-    val sourceDir = SOCTPaths.get("binaries")
-    val buildDir = SOCTPaths.get("bootrom-build")
-    // Delete the cache to force reconfiguration
-    val cacheFile = buildDir.resolve("CMakeCache.txt")
-    cacheFile.toFile.delete()
-    val target = config.args.bootrom.getOrElse(config.args.target.defaultBootrom)
-
-    // Init CMake
-    log.info("Building bootrom using CMake")
-    runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
-    runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
-
-    assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
-    paths.bootromImgFile
-  }
-
   // Copy Gemmini software files to the system directory
+  /*
   def copyGemminiSoftware(header: String): Unit = {
     val srcDir = SOCTPaths.projectRoot.resolve("generators").resolve("gemmini").resolve("software").resolve("gemmini-rocc-tests")
     val srcInclude = srcDir.resolve("include")
@@ -202,6 +123,7 @@ object SOCTUtils {
     Files.createDirectories(destXCustom.getParent)
     Files.copy(srcXCustom, destXCustom, StandardCopyOption.REPLACE_EXISTING)
   }
+   */
 
   def isWindows: Boolean = {
     System.getProperty("os.name").toLowerCase.contains("win")

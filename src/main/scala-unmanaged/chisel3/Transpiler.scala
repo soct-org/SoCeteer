@@ -22,13 +22,13 @@ object Transpiler  {
 
   val stage = new FirrtlStage
 
-  def evalDesign(top: String, c: SOCTLauncher.Config, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
+  def evalDesign(top: String, c: SOCTLauncher.SOCTConfig, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
     val gen = () => Class
       .forName(top)
       .getConstructor(classOf[Parameters])
       .newInstance(
         new WithBootROMFile(bootromPath.toString) ++
-          new Config(c.configs.foldRight(Parameters.empty) {
+          new Config(c.params.foldRight(Parameters.empty) {
             case (currentName, config) =>
               val currentConfig = SOCTUtils.instantiateConfig(currentName)
               currentConfig ++ config
@@ -64,12 +64,12 @@ object Transpiler  {
       }
     store(paths.annoFile, firrtl.annotations.JsonProtocol.serialize(annos))
     freechips.rocketchip.util.ElaborationArtefacts.files.foreach {
-      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configs.mkString("_")}.$ext"), contents())
+      case (ext, contents) => store(paths.systemDir.resolve(s"${c.params.mkString("_")}.$ext"), contents())
     }
     artifacts.toSet
   }
 
-  def emitLowFirrtl(c: SOCTLauncher.Config, paths: SOCTPaths): Unit = {
+  def emitLowFirrtl(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate low-firrtl")
     require(paths.annoFile.toFile.exists(), s"Annotation file ${paths.annoFile} does not exist but is required for chisel3")
     require(paths.firrtlFile.toFile.exists(), s"Firrtl file ${paths.firrtlFile} does not exist but is required.")
@@ -81,7 +81,7 @@ object Transpiler  {
     stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=low-opt"), firrtlAnnos)
   }
 
-  def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, @unused firtoolPlugins: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths, @unused firtoolPlugins: Seq[String]): Unit = {
     log.info("Using firrtl to generate verilog")
     val verilogAnnos: Seq[Annotation] = Seq(
       OutputFileAnnotation(paths.verilogSystem.toString),

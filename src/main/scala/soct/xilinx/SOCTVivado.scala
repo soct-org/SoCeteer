@@ -1,10 +1,52 @@
 package soct.xilinx
 
-import soct.SOCTLauncher.Config
-import soct.{BoardParams, BoardSOCTPaths, SOCTPaths, SOCTUtils}
-
+import soct.SOCTLauncher.SOCTConfig
+import soct.{BoardSOCTPaths, SOCTPaths, SOCTUtils}
+import soct.xilinx.fpga.{FPGA, ZCU104}
 import java.nio.file.{Files, Path}
 import scala.io.Source
+
+
+/**
+ * Exception thrown during evaluation of a Xilinx design
+ */
+case class XilinxDesignException(private val message: String = "",
+                                 private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
+
+/**
+ * Registry for known FPGA boards.
+ */
+object FPGARegistry {
+
+  /**
+   * Resolve a board by name
+   * @param name Name of the board
+   * @return Some(FPGA) if found, None otherwise
+   */
+  def resolve(name: String): Option[FPGA] = {
+    val comp = name.toLowerCase
+
+    if (comp == ZCU104.friendlyName.toLowerCase) {
+      Some(ZCU104)
+    } else {
+      None
+    }
+  }
+
+  /**
+   * List of available boards
+   */
+  def availableBoards: Seq[String] = {
+    Seq(
+      ZCU104.friendlyName
+    )
+  }
+}
+
+
+
 
 object SOCTVivado {
 
@@ -15,62 +57,8 @@ object SOCTVivado {
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
-  def generateHeader(systemDir: Path, boardName: String, baseConfig: String, boardParams: BoardParams): String = {
-    var header =
-      s"""
-         |set vivado_board_name "$boardName"
-         |set xilinx_part "${boardParams.XILINX_PART}"
-         |set riscv_module_name "$baseConfig"
-         |set riscv_clock_frequency "${boardParams.ROCKET_FREQ_MHZ.get}"
-         |set memory_size "${boardParams.MEMORY_SIZE}"
-    """
-    if (boardParams.BOARD_PART.isDefined) {
-      header += s"""|set vivado_board_part "${boardParams.BOARD_PART.get}""""
-    }
-    // add the paths:
-    header +=
-      s"""
-         |set vsrcs_dir "${SOCTPaths.get("vsrcs")}"
-         |set vhdlsrcs_dir "${SOCTPaths.get("vhdlsrcs")}"
-         |set tclsrcs_dir "${SOCTPaths.get("tclsrcs")}"
-         |set workspace_dir "${systemDir.toAbsolutePath}"
-         |set boards_dir "${SOCTPaths.get("boards")}"
-    """
-
-    header.stripMargin
-  }
-
-  def generateTCLScript(systemDir: Path, boardName: String, baseConfig: String, boardParams: BoardParams): Path = {
-    val tclFile = systemDir.resolve("system.tcl")
-    val template = Source.fromFile(SOCTPaths.get("tclsrcs").resolve("vivado.template.tcl").toFile)
-    val header = generateHeader(systemDir, boardName, baseConfig, boardParams)
-    val full = header + "\n" + template.mkString
-    // write to file
-    Files.write(tclFile, full.getBytes)
-    tclFile
-  }
-
-  def synthesize(systemDir: Path, vivado: Path, vivadoSettings: Option[Path], maxThreads: Int): Unit = {
-    throw new NotImplementedError("Synthesis is not implemented yet")
-    val vivadoProject = systemDir.resolve(s"vivado-${systemDir.getFileName}.xpr")
-    assert(vivadoProject.toFile.exists(), s"Vivado project file $vivadoProject does not exist, please run generateVivadoProject first")
-
-    val tclFile = systemDir.resolve("make-synthesis.tcl")
-    val synScript =
-      s"""
-         |set_param general.maxThreads $maxThreads
-         |open_project "${vivadoProject.toAbsolutePath}"
-         |update_compile_order -fileset sources_1
-         |reset_run synth_1
-         |launch_runs -jobs $maxThreads synth_1
-         |wait_on_run synth_1
-         |""".stripMargin
-
-  }
-
-
-  def generate(boardPaths: BoardSOCTPaths, config: Config): Unit = {
-
+  def generate(boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
+    // TODO find the Top.sv and change its extension to .v - Vivado does not support SystemVerilog as top module
   }
 
   def generateProject(tclFile: Path, vivado: Path, vivadoSettings: Option[Path]): Unit = {

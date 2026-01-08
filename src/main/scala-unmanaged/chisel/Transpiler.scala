@@ -14,51 +14,36 @@ abstract case class Transpiler() {
 
 object Transpiler {
 
-  def evalDesign(top: String, c: SOCTLauncher.Config, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
+  def evalDesign(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     // Contains a callable that returns a chisel model and that is used to generate the firrtl
-    val gen = () => Class
-      .forName(top)
-      .getConstructor(classOf[Parameters])
-      .newInstance(
-        new WithBootROMFile(bootromPath.toString) ++
-          new Config(c.configs.foldRight(Parameters.empty) {
-            case (currentName, config) =>
-              val currentConfig = SOCTUtils.instantiateConfig(currentName)
-              currentConfig ++ config
-          }))
-    match {
-      case m: RawModule => m
-      case lm: LazyModule => LazyModule(lm).module
+    val gen = () => c.topModule match {
+      case Left(m) =>
+        // Get the constructor of m that accepts Parameters
+        val constructor = m.getConstructor(classOf[Parameters])
+        constructor.newInstance(c.params)
+      case Right(lm) =>
+        val constructor = lm.getConstructor(classOf[Parameters])
+        LazyModule(constructor.newInstance(c.params)).module
     }
-
-    // Contains all the paths to the generated files
-    val artifacts: mutable.HashSet[Path] = mutable.HashSet[Path]()
 
     // Store the generated files in the system directory and add them to the artifacts
     def store(path: Path, content: String): Unit = {
       Files.write(path, content.getBytes)
-      artifacts += path.toAbsolutePath
     }
 
-    // First pass contains default rocket bootrom, we don't need to emit anything
-    if (bootromPath == SOCTPaths.get("default-bootrom")) {
-      ChiselStage.elaborate(gen(), Array(s"-ll=${c.args.logLevel}"))
-    } else {
-      // Second pass generates verilog and dump firrtl
-      val circuit = ChiselStage.elaborate(gen(), Array(s"--firtool-binary-path=${c.args.firtoolPath}", s"-ll=${c.args.logLevel}"))
-      Files.write(paths.firrtlFile, circuit.serialize.getBytes)
-    }
+    val circuit = ChiselStage.elaborate(gen(), Array(s"--firtool-binary-path=${c.args.firtoolPath}", s"-ll=${c.args.logLevel}"))
+    Files.write(paths.firrtlFile, circuit.serialize.getBytes)
+
     freechips.rocketchip.util.ElaborationArtefacts.files.foreach {
-      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configs.mkString("_")}.$ext"), contents())
+      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configName}.$ext"), contents())
     }
-    artifacts.toSet
   }
 
-  def emitLowFirrtl(c: SOCTLauncher.Config, paths: SOCTPaths): Unit = {
+  def emitLowFirrtl(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     // Only used for Chisel 3 compiler
   }
 
-  def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, firtoolArgs: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths, firtoolArgs: Seq[String]): Unit = {
     log.info(s"Using Firtool at ${paths.firtoolBinary} to generate Verilog")
     val verilogArgs = if (c.args.singleVerilogFile) {
       Seq("--verilog", "--disable-layers=Verification", s"-o=${paths.verilogSystem.toString}")
