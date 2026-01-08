@@ -1,10 +1,11 @@
 package soct.xilinx
 
+
 import soct.SOCTLauncher.SOCTConfig
-import soct.{BoardSOCTPaths, SOCTPaths, SOCTUtils}
+import soct.{BoardSOCTPaths, SOCTUtils}
 import soct.xilinx.fpga.{FPGA, ZCU104}
+
 import java.nio.file.{Files, Path}
-import scala.io.Source
 
 
 /**
@@ -22,6 +23,7 @@ object FPGARegistry {
 
   /**
    * Resolve a board by name
+   *
    * @param name Name of the board
    * @return Some(FPGA) if found, None otherwise
    */
@@ -46,8 +48,6 @@ object FPGARegistry {
 }
 
 
-
-
 object SOCTVivado {
 
 
@@ -58,7 +58,31 @@ object SOCTVivado {
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
   def generate(boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
+    // Vivado does not allow a SystemVerilog top-level.
+    // We do a highly illegal trick here by just renaming the file extension,
+    // hoping that Chisel did not include any SystemVerilog-specific constructs in the top-level module.
+    // Note that this is not guaranteed to work and may break in future Chisel versions.
+    if (boardPaths.verilogSystem.toFile.isDirectory) {
+      // Get all files in the directory recursively
+      val svFiles = Files.walk(boardPaths.verilogSystem)
+        .filter(p => p.toString.endsWith(".sv"))
+        .toArray
+        .map(_.asInstanceOf[Path])
 
+      val topModuleName = config.topModule.fold(_.getSimpleName, _.getSimpleName)
+      // We now check if the name of the top module matches any of the files
+      val topModuleFileOpt = svFiles.find { p =>
+        p.getFileName.toString.equals(s"$topModuleName.sv")
+      }
+      if (topModuleFileOpt.isEmpty) {
+        throw XilinxDesignException(s"Could not find SystemVerilog file for top module $topModuleName in directory ${boardPaths.verilogSystem}")
+      } else {
+        val topModuleFile = topModuleFileOpt.get
+        val newTopModuleFile = topModuleFile.resolveSibling(topModuleFile.getFileName.toString.replace(".sv", ".v"))
+        Files.move(topModuleFile, newTopModuleFile)
+        soct.log.info(s"Renamed top module file ${topModuleFile.getFileName} to ${newTopModuleFile.getFileName} for Vivado compatibility")
+      }
+    }
   }
 
   def generateProject(tclFile: Path, vivado: Path, vivadoSettings: Option[Path]): Unit = {

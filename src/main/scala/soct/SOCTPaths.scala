@@ -118,11 +118,6 @@ abstract class SOCTPaths(args: SOCTArgs) {
   }
 
   /**
-   * Path to the generated VHDL file for Vivado synthesis
-   */
-  def vivadoSystem: Path = systemDir.resolve(s"${SOCTPaths.systemName}.vhdl")
-
-  /**
    * Path to the generated low firrtl file (only when using Berkeley chisel)
    */
   def lowFirrtlFile: Path = systemDir.resolve(s"${SOCTPaths.systemName}.opt.lo.fir")
