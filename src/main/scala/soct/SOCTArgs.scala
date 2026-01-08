@@ -100,7 +100,6 @@ case class SOCTArgs(
                      userMabi: Option[String] = None,
                      // Simulation options
                      overrideSimFiles: Boolean = true,
-                     // Synthesis options
                      // Vivado specific options
                      vivadoSettings: Option[Path] = None,
                      vivado: Option[Path] = None,

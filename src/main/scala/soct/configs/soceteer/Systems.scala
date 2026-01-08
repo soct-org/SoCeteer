@@ -11,8 +11,9 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule}
 import soct.SOCTUtils.runCMakeCommand
-import soct.xilinx.components.DDR4
+import soct.xilinx.components.{Component, DDR4, IsModule, IsXilinxIP, SDCardPMOD}
 
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.file.{Files, Paths}
 
@@ -32,6 +33,33 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
   with HasExtInterruptsModuleImp
   with DontTouch
 
+
+class BDBuilder(top: ChiselTop)(implicit p: Parameters) {
+  // Components:
+  val xilinxIPs: Seq[IsXilinxIP] = Seq.empty
+  val modules: Seq[IsModule] = Seq.empty
+
+  private val paths = p(HasSOCTPaths)
+  private val config = p(HasSOCTConfig)
+
+  // TCL commands:
+  val instantiateCommands: Seq[String] = Seq.empty
+
+  val portCommands: Seq[String] = Seq.empty
+
+  val collateralSourceFiles: Seq[File] = Seq.empty
+
+  // Function that accepts any T and checks its traits:
+  def add[T](component: T)(implicit p: Parameters): Unit = {
+    // fall through match to check for various traits
+    if (component.isInstanceOf[IsXilinxIP]) {
+
+    }
+  }
+
+}
+
+
 /**
  * Top-level module for Yosys synthesis of the RocketSystem within SOCT
  */
@@ -43,9 +71,20 @@ class SOCTYosysTop(implicit p: Parameters) extends RocketSystem {
  * Top-level module for synthesis of the RocketSystem within SOCT
  */
 class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
+  private val top = Right(this.getClass)
+  private val bdBuilder = new BDBuilder(Right(this.getClass))
 
 
   if (p(HasDDR4ExtMem)) {
+    val ddr4 = new DDR4
+    ddr4.checkAvailable(top)
+    bdBuilder.add(ddr4)
+  }
+
+  if (p(HasSDCard)) {
+    val sdCard = new SDCardPMOD
+    sdCard.checkAvailable(top)
+    bdBuilder.add(sdCard)
   }
 
 }

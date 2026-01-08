@@ -9,4 +9,6 @@ object ZCU104 extends FPGA {
   override val partName: String = "xilinx.com:zcu104:part0:1.1"
 
   override val hasDDR4: Boolean = true
+
+  override val hasPMOD: Boolean = true
 }

@@ -9,6 +9,8 @@ abstract class FPGA extends Component with IsXilinxIP
 
   val hasDDR4: Boolean = false
 
+  val hasPMOD: Boolean = false
+
   override def toString: String = friendlyName
 
 }

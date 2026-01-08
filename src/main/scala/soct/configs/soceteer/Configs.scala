@@ -72,6 +72,7 @@ class RocketSynBaseConfig extends Config(
     new WithJtagDTM ++
     new WithDebugSBA ++
     new WithDDR4ExtMem ++
+    new WithSDCard ++
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )
@@ -108,6 +109,17 @@ class WithDDR4ExtMem extends Config((_, _, _) => {
 }
 )
 
+/*----------------- Storage ---------------*/
+
+case object HasSDCard extends Field[Boolean](false)
+
+class WithSDCard extends Config((_, _, _) => {
+  case HasSDCard => true
+}
+)
+
+
+
 /*----------------- Clock Speeds ---------------*/
 class WithSingleClockDomain(freqMHz: Double) extends Config(
   new WithPeripheryBusFrequency(freqMHz) ++
@@ -140,11 +152,11 @@ class WithHartBootFreqMHz(freqsMHz: Seq[Double]) extends Config((site, here, up)
 /**
  * Field to indicate whether the design runs on a Xilinx FPGA.
  */
-case object RunsOnXilinxFPGA extends Field[Option[FPGA]](None)
+case object HasXilinxFPGA extends Field[Option[FPGA]](None)
 
 
 class WithXilinxFPGA(fpga: FPGA) extends Config((_, _, _) => {
-  case RunsOnXilinxFPGA => Some(fpga)
+  case HasXilinxFPGA => Some(fpga)
 })
 
 

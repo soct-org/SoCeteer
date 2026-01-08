@@ -48,6 +48,10 @@ object SOCTLauncher {
     } else {
       config.params = config.params.orElse(new ExtMem64Bit)
     }
+    if (args.board.isEmpty) {
+      throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
+    }
+    config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
     config.params = config.params.orElse(new soct.RocketSynBaseConfig)
 
     Transpiler.evalDesign(config, boardPaths)
@@ -125,10 +129,6 @@ object SOCTLauncher {
         case Targets.Verilator =>
           new SimSOCTPaths(args, config)
         case Targets.Vivado =>
-          // Ensure that a board is provided
-          if (args.board.isEmpty) {
-            throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
-          }
           new BoardSOCTPaths(args, config)
         case Targets.Yosys =>
           new YosysSOCTPaths(args, config)
