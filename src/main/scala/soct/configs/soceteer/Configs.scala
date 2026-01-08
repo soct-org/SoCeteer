@@ -72,7 +72,7 @@ class RocketSynBaseConfig extends Config(
     new WithJtagDTM ++
     new WithDebugSBA ++
     new WithDDR4ExtMem ++
-    new WithSDCard ++
+    new WithSDCardPMOD ++
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )
@@ -99,25 +99,27 @@ class ExtMem64Bit extends Config(new WithExtMemSize(0x380000000L))
 class ExtMem32Bit extends Config(new WithExtMemSize(0x80000000L))
 
 /**
- * Enable DDR4 external memory interface
+ * Field to indicate whether the design should include DDR4 external memory on a specified port (index).
  */
-case object HasDDR4ExtMem extends Field[Boolean](false)
+case object HasDDR4ExtMem extends Field[Option[Int]](None)
 
 
-class WithDDR4ExtMem extends Config((_, _, _) => {
-  case HasDDR4ExtMem => true
+class WithDDR4ExtMem(ddr4Idx: Int = 0) extends Config((_, _, _) => {
+  case HasDDR4ExtMem => Some(ddr4Idx)
 }
 )
 
 /*----------------- Storage ---------------*/
 
-case object HasSDCard extends Field[Boolean](false)
+/**
+ * Field to indicate whether the design should include an SDCard PMOD interface on a specified port (index).
+ */
+case object HasSDCardPMOD extends Field[Option[Int]](None)
 
-class WithSDCard extends Config((_, _, _) => {
-  case HasSDCard => true
+class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
+  case HasSDCardPMOD => Some(pmodIdx)
 }
 )
-
 
 
 /*----------------- Clock Speeds ---------------*/

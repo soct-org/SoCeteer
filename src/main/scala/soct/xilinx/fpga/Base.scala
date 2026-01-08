@@ -1,15 +1,14 @@
 package soct.xilinx.fpga
 
-import org.chipsalliance.cde.config.{Config, Field}
 import soct.xilinx.components.{Component, IsXilinxIP}
 
 
 abstract class FPGA extends Component with IsXilinxIP
 {
 
-  val hasDDR4: Boolean = false
+  val portsDDR4: Seq[Int] = Seq.empty
 
-  val hasPMOD: Boolean = false
+  val portsPMOD: Seq[Int] = Seq.empty
 
   override def toString: String = friendlyName
 

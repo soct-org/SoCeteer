@@ -1,21 +1,25 @@
 package soct.xilinx.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.ChiselTop
+import soct.{ChiselTop, HasXilinxFPGA}
 import soct.xilinx.XilinxDesignException
 
 import java.io.File
-import java.nio.file.Path
+import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
 
 trait Component {
-
   /**
    * Check that this component is available in the current configuration.
    */
   @throws[XilinxDesignException]
-  def checkAvailable(top: ChiselTop)(implicit p: Parameters): Unit = {}
+  def checkAvailable(top: ChiselTop)(implicit p: Parameters): Unit = {
+    val fpgaOpt = p(HasXilinxFPGA)
+    if (fpgaOpt.isEmpty) {
+      throw XilinxDesignException(s"Adding $friendlyName requires the design to run on a Xilinx FPGA")
+    }
+  }
 
   /**
    * A friendly name for this component, derived from the class name or overridden
@@ -23,19 +27,11 @@ trait Component {
   val friendlyName: String = this.getClass.getSimpleName.replaceAll("\\$", "")
 
   /**
-   * A map of properties for this component, to be added to the design
-   */
-  val properties = mutable.Map.empty[String, String]
-
-  /**
    * Default properties for this component influenced by parameters, can be overridden by subclasses
    *
-   * @param parameters The implicit Parameters
    * @return A map of default properties
    */
-  def defaultProperties()(implicit parameters: Parameters): Map[String, String] = {
-    Map.empty
-  }
+  def defaultProperties: Map[String, String] = Map.empty
 
   /**
    * Constraints for this component, to be added to the design
@@ -44,42 +40,33 @@ trait Component {
    */
   def constraints: Seq[String] = Seq.empty
 
-
   /**
-   * TCL commands to add this component to the design
+   * Dump collateral files for this component to the specified output directory.
+   * Inheriting classes should call super.dumpCollaterals with createDir = true to ensure the directory exists.
    *
-   * @return A sequence of TCL command strings
+   * @param outDir    The output directory path
+   * @param createDir Whether to create the directory if it does not exist
+   * @return Some(Path) to the created directory if createDir is true, None otherwise
    */
-  def tclCommands: Seq[String] = Seq.empty
-
-
-  /**
-   * Dump collateral files for this component to the specified output directory
-   *
-   * @param outDir The output directory path
-   */
-  def dumpCollaterals(outDir: Path): Unit = {
-    // Default implementation does nothing
+  def dumpCollaterals(outDir: Path, createDir: Boolean = false): Option[Path] = {
+    if (createDir) {
+      val collateralsDir = outDir.resolve(friendlyName)
+      if (!collateralsDir.toFile.exists()) {
+        Files.createDirectories(collateralsDir)
+      }
+      return Some(collateralsDir)
+    }
+    None
   }
 }
 
 /**
- * Base class for Xilinx IP components
- */
-abstract class XilinxIPComponent extends Component
-  with IsXilinxIP {
-
-  @throws[XilinxDesignException]
-  def connectToBoardInterface(intf: XilinxBdIntfPort): Unit = {}
-}
-
-
-/**
  * Trait for custom module components
  */
-trait IsModule {
-  _: Component =>
-
+trait IsModule extends Component {
+  /**
+   * The reference name of this module - as defined in the collateral files
+   */
   val reference: String
 }
 
@@ -94,18 +81,47 @@ trait IsXilinxIP extends Component {
 }
 
 /**
- *
+ * Trait for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-trait XilinxBdPort {
+trait BdPort extends Component {
 
+  /**
+   * The name of this interface port
+   */
   val INTERFACE_NAME: String
 
+  /**
+   * The type of this interface port, e.g., "clk", "data", etc.
+   */
   val ifType: String
 
+  /**
+   * The direction of this interface port, e.g., "I", "O", or "IO"
+   */
+  val dir: String
+
+  /**
+   * Optional vector range for this port, e.g. -from 3
+   */
   val from: Option[String] = None
 
+  /**
+   * Optional vector range for this port, e.g. -to 0
+   */
   val to: Option[String] = None
 
+  /**
+   * Emit the TCL command to create the port for this component
+   */
+  def tclCommands: Seq[String] = {
+    // Either none or both of from/to must be defined
+    val range = (from, to) match {
+      case (Some(f), Some(t)) => s"-from $f -to $t "
+      case (None, None) => ""
+      case _ => throw new IllegalStateException(s"BdPort $INTERFACE_NAME must have either both or neither of from/to defined")
+    }
+    Seq(s"set ${INTERFACE_NAME} [create_bd_port -type $ifType -dir $dir $range$INTERFACE_NAME]")
+  }
 }
 
 
@@ -126,7 +142,7 @@ trait XilinxBdIntfPort extends IsXilinxIP {
   /**
    * Emit the TCL command to create the port for this component
    */
-  override def tclCommands: Seq[String] = {
+  def tclCommands: Seq[String] = {
     Seq(s"set $INTERFACE_NAME [create_bd_intf_port -mode $mode -vlnv $partName $INTERFACE_NAME]")
   }
 }
@@ -157,14 +173,14 @@ trait InstantiableComponent extends Component {
   /**
    * Emit the TCL command to instantiate this component in the design
    */
-  override def tclCommands: Seq[String] = {
+  def tclCommands: Seq[String] = {
     this match {
       case ip: IsXilinxIP =>
         Seq(s"set $instanceName [create_bd_cell -type ip -vlnv ${ip.partName} $instanceName]")
       case module: IsModule =>
         Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
       case _ =>
-        throw new UnsupportedOperationException(s"Component ${friendlyName} is not instantiable")
+        throw new UnsupportedOperationException(s"Component ${friendlyName} must be either IsXilinxIP or IsModule to be instantiated.")
     }
   }
 }

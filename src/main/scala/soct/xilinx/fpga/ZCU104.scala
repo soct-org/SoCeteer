@@ -8,7 +8,7 @@ object ZCU104 extends FPGA {
 
   override val partName: String = "xilinx.com:zcu104:part0:1.1"
 
-  override val hasDDR4: Boolean = true
+  override val portsDDR4: Seq[Int] = Seq(0) // DDR4 port 0 is available
 
-  override val hasPMOD: Boolean = true
+  override val portsPMOD: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1 are available, 2 is I2C
 }

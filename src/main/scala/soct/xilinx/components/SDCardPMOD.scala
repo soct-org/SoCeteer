@@ -8,55 +8,81 @@ import soct.xilinx.XilinxDesignException
 import java.nio.file.{Files, Path}
 
 
-class SDCmdInterface extends XilinxIPComponent with XilinxBdIntfPort {
-  lazy val INTERFACE_NAME = "sd_cmd"
+case class SDIOCDPort() extends BdPort {
+  override val INTERFACE_NAME = "sdio_cd"
 
-  val mode: String = "Master"
+  override val ifType: String = "data"
 
-  override val partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
+  override val dir: String = "I"
+}
+
+case class SDIOClkPort() extends BdPort {
+  override val INTERFACE_NAME = "sdio_clk"
+
+  override val ifType: String = "clk"
+
+  override val dir: String = "O"
+}
+
+case class SDIOCmdPort() extends BdPort {
+  override val INTERFACE_NAME = "sdio_cmd"
+
+  override val ifType: String = "data"
+
+  override val dir: String = "IO"
+}
+
+case class SDIODataPort() extends BdPort {
+  override val INTERFACE_NAME = "sdio_data"
+
+  override val ifType: String = "data"
+
+  override val dir: String = "IO"
+
+  override val from: Option[String] = Some("3")
+
+  override val to: Option[String] = Some("0")
 }
 
 
 /**
- * SD Card controller connected via PMOD interface
- * @param pmodIdx Which PMOD port to use (default: 0)
+ * SDCard PMOD component for Xilinx FPGAs
+ *
+ * @param pmodIdx  The PMOD index to use
+ * @param cdPort   The card detect port
+ * @param clkPort  The clock port
+ * @param cmdPort  The command port
+ * @param dataPort The data port
  */
-case class SDCardPMOD(pmodIdx: Int = 0) extends InstantiableComponent with IsModule {
+case class SDCardPMOD(pmodIdx: Int,
+                      cdPort: SDIOCDPort,
+                      clkPort: SDIOClkPort,
+                      cmdPort: SDIOCmdPort,
+                      dataPort: SDIODataPort
+                     ) extends InstantiableComponent with IsModule {
 
-  override val reference: String = "sdc_controller"
+  override val reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
 
   override def checkAvailable(top: ChiselTop)(implicit p: config.Parameters): Unit = {
-    val fpgaOpt = p(HasXilinxFPGA)
-    if (fpgaOpt.isEmpty) {
-      throw XilinxDesignException("Adding SDCardController requires the design to run on a Xilinx FPGA")
-    }
+    super.checkAvailable(top)
+    val fpga = p(HasXilinxFPGA).get
 
-    if (!fpgaOpt.get.hasPMOD) {
-      throw XilinxDesignException(s"Adding SDCardController requires the target FPGA (${fpgaOpt.get.friendlyName}) to have PMOD support")
-    } else {
-      soct.log.info(s"Adding SDCardController to FPGA (${fpgaOpt.get.friendlyName}) that requires a PMOD to SDCard adapter. " +
-        s"If you have not done so, please connect an appropriate adapter to the PMOD port.")
+    if (!fpga.portsPMOD.contains(pmodIdx)) {
+      throw XilinxDesignException(s"PMOD index $pmodIdx is not available on the selected FPGA")
     }
 
     // The SD controller requires both a master MMIO port and a slave AXI4 port to function:
-    val hasMMIOPort = top.fold(
-      _   => false,
-      cls => classOf[CanHaveMasterAXI4MMIOPort].isAssignableFrom(cls)
-    )
-    if (!hasMMIOPort)
-      throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MMIOPort")
-    val hasSlaveMMIOPort = top.fold(
-      _   => false,
-      cls => classOf[CanHaveSlaveAXI4Port].isAssignableFrom(cls)
-    )
-    if (!hasSlaveMMIOPort)
-      throw XilinxDesignException("Top must mix in CanHaveSlaveAXI4Port")
+    val hasMMIOPort = top.fold(_ => false, cls => classOf[CanHaveMasterAXI4MMIOPort].isAssignableFrom(cls))
+    if (!hasMMIOPort) throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MMIOPort")
+    val hasSlaveMMIOPort = top.fold(_ => false, cls => classOf[CanHaveSlaveAXI4Port].isAssignableFrom(cls))
+    if (!hasSlaveMMIOPort) throw XilinxDesignException("Top must mix in CanHaveSlaveAXI4Port")
 
-
+    // TODO continue
   }
 
-  override def dumpCollaterals(outDir: Path) : Unit = {
+  override def dumpCollaterals(outDir: Path, createDir: Boolean): Option[Path] = {
+    val dest = super.dumpCollaterals(outDir, createDir = true).get
     val path = "/sdc/"
     val files = Seq(
       "axi_sdc_controller.v",
@@ -66,14 +92,15 @@ case class SDCardPMOD(pmodIdx: Int = 0) extends InstantiableComponent with IsMod
       "sd_data_serial_host.v",
       "sd_defines.h"
     )
-    files.foreach( file => {
+    files.foreach(file => {
       val contentOpt = soct.getResource(path + file)
       if (contentOpt.isEmpty) {
         throw XilinxDesignException(s"Could not find SDCardController collateral file: $file")
       }
-      val outFile = outDir.resolve(file).toFile
+      val outFile = dest.resolve(file).toFile
       Files.write(outFile.toPath, contentOpt.get.getBytes)
     })
+    Some(dest)
   }
 
 }

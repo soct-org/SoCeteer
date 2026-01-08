@@ -11,7 +11,8 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule}
 import soct.SOCTUtils.runCMakeCommand
-import soct.xilinx.components.{Component, DDR4, IsModule, IsXilinxIP, SDCardPMOD}
+import soct.xilinx.BDBuilder
+import soct.xilinx.components._
 
 import java.io.File
 import java.nio.ByteBuffer
@@ -34,32 +35,6 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
   with DontTouch
 
 
-class BDBuilder(top: ChiselTop)(implicit p: Parameters) {
-  // Components:
-  val xilinxIPs: Seq[IsXilinxIP] = Seq.empty
-  val modules: Seq[IsModule] = Seq.empty
-
-  private val paths = p(HasSOCTPaths)
-  private val config = p(HasSOCTConfig)
-
-  // TCL commands:
-  val instantiateCommands: Seq[String] = Seq.empty
-
-  val portCommands: Seq[String] = Seq.empty
-
-  val collateralSourceFiles: Seq[File] = Seq.empty
-
-  // Function that accepts any T and checks its traits:
-  def add[T](component: T)(implicit p: Parameters): Unit = {
-    // fall through match to check for various traits
-    if (component.isInstanceOf[IsXilinxIP]) {
-
-    }
-  }
-
-}
-
-
 /**
  * Top-level module for Yosys synthesis of the RocketSystem within SOCT
  */
@@ -72,20 +47,28 @@ class SOCTYosysTop(implicit p: Parameters) extends RocketSystem {
  */
 class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
   private val top = Right(this.getClass)
-  private val bdBuilder = new BDBuilder(Right(this.getClass))
+  private val bd = new BDBuilder(Right(this.getClass))
 
-
-  if (p(HasDDR4ExtMem)) {
-    val ddr4 = new DDR4
-    ddr4.checkAvailable(top)
-    bdBuilder.add(ddr4)
+  if (p(HasDDR4ExtMem).isDefined) {
+    bd.add(DDR4(
+      ddr4Idx = p(HasDDR4ExtMem).get,
+      intf = bd.add(DDR4BdIntfPort())
+    ))
   }
 
-  if (p(HasSDCard)) {
-    val sdCard = new SDCardPMOD
-    sdCard.checkAvailable(top)
-    bdBuilder.add(sdCard)
+  if (p(HasSDCardPMOD).isDefined) {
+    bd.add(SDCardPMOD(
+      pmodIdx = p(HasSDCardPMOD).get,
+      cdPort = bd.add(SDIOCDPort()),
+      clkPort = bd.add(SDIOClkPort()),
+      cmdPort = bd.add(SDIOCmdPort()),
+      dataPort = bd.add(SDIODataPort())
+    ))
   }
+
+  val tcl = bd.generateTcl()
+
+  println(tcl)
 
 }
 

@@ -151,25 +151,6 @@ abstract class SOCTPaths(args: SOCTArgs) {
    * Path to the generated SOCTSystem.cmake file
    */
   def soctSystemCMakeFile: Path = systemDir.resolve("SOCTSystem.cmake")
-
-  // Custom to string for easier debugging (thanks ChatGPT)
-  override def toString: String = {
-    s"""
-       |SOCTPaths:
-       |  projectRoot: ${SOCTPaths.projectRoot}
-       |  systemName: ${SOCTPaths.systemName}
-       |  systemDir: $systemDir
-       |  firtoolBinary: $firtoolBinary
-       |  verilogFile: $verilogSystem
-       |  lowFirrtlFile: $lowFirrtlFile
-       |  firrtlFile: $firrtlFile
-       |  annoFile: $annoFile
-       |  dtsFile: $dtsFile
-       |  dtbFile: $dtbFile
-       |  bootromImgFile: $bootromImgFile
-       |  soctSystemCMakeFile: $soctSystemCMakeFile
-       |""".stripMargin
-  }
 }
 
 /**

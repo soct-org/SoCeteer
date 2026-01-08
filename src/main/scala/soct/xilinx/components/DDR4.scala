@@ -7,19 +7,25 @@ import soct.xilinx.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
 import soct.xilinx.XilinxDesignException
 
 
-class DDR4BdIntfPort extends XilinxIPComponent with XilinxBdIntfPort {
-  lazy val INTERFACE_NAME = "ddr4_sdram"
+case class DDR4BdIntfPort() extends XilinxBdIntfPort {
+  override val INTERFACE_NAME = "ddr4_sdram"
 
-  val mode: String = "Master"
+  override val mode: String = "Master"
 
   override val partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
 }
 
 
-class DDR4 extends XilinxIPComponent with InstantiableComponent {
-  val partName: String = "xilinx.com:ip:ddr4:2.2xilinx.com:ip:ddr4:2.2"
+case class DDR4(ddr4Idx: Int,
+                intf: XilinxBdIntfPort)
+  extends InstantiableComponent with IsXilinxIP {
+
+  override val partName: String = "xilinx.com:ip:ddr4:2.2xilinx.com:ip:ddr4:2.2"
 
   override def checkAvailable(top: ChiselTop)(implicit p: Parameters): Unit = {
+    super.checkAvailable(top)
+    val fpga = p(HasXilinxFPGA).get
+
     val extMemOpt = p(ExtMem)
     if (extMemOpt.isEmpty) {
       throw XilinxDesignException("Adding DDR4 requires ExtMem to be defined in the Parameters")
@@ -33,32 +39,19 @@ class DDR4 extends XilinxIPComponent with InstantiableComponent {
       )
     }
 
-    val fpgaOpt = p(HasXilinxFPGA)
-    if (fpgaOpt.isEmpty) {
-      throw XilinxDesignException("Adding DDR4 requires the design to run on a Xilinx FPGA")
-    }
+    if (!fpga.portsDDR4.contains(ddr4Idx))
+      throw XilinxDesignException(s"DDR4 index $ddr4Idx is not available on the selected FPGA")
 
-    if (!fpgaOpt.get.hasDDR4) {
-      throw XilinxDesignException(s"Adding DDR4 requires the target FPGA (${fpgaOpt.get.friendlyName}) to have DDR4 support")
-    }
-
-    val hasMemPort = top.fold(
-      _   => false, // RawModule path cannot mix in CanHaveMasterAXI4MemPort
-      cls => classOf[CanHaveMasterAXI4MemPort].isAssignableFrom(cls)
-    )
-
+    // DDR4 requires a master AXI4 memory port
+    val hasMemPort = top.fold(_ => false, cls => classOf[CanHaveMasterAXI4MemPort].isAssignableFrom(cls))
     if (!hasMemPort)
       throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MemPort")
   }
 
-
-  override def connectToBoardInterface(intf: XilinxBdIntfPort): Unit = {
-    intf match {
-      case intf: DDR4BdIntfPort =>
-        properties.update("CONFIG.C0_DDR4_BOARD_INTERFACE", intf.INTERFACE_NAME)
-      case _ =>
-        throw XilinxDesignException(s"$friendlyName can not connect to interface ${intf.INTERFACE_NAME}")
-    }
+  override def defaultProperties: Map[String, String] = {
+    Map(
+      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> intf.INTERFACE_NAME
+    )
   }
 }
 
