@@ -1,18 +1,15 @@
 package soct
 
-import chisel3.RawModule
 import chisel3.stage.ChiselGeneratorAnnotation
 import firrtl.AnnotationSeq
 import firrtl.annotations.{Annotation, JsonProtocol}
 import firrtl.stage.{FirrtlFileAnnotation, FirrtlStage, OutputFileAnnotation}
-import freechips.rocketchip.subsystem.WithBootROMFile
-import org.chipsalliance.cde.config.{Config, Parameters}
+import org.chipsalliance.cde.config.Parameters
 
 import java.nio.file.{Files, Path}
 import firrtl.options.TargetDirAnnotation
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
-import scala.collection.mutable
 import scala.annotation.unused
 
 abstract case class Transpiler() {
@@ -22,30 +19,22 @@ object Transpiler  {
 
   val stage = new FirrtlStage
 
-  def evalDesign(top: String, c: SOCTLauncher.SOCTConfig, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
-    val gen = () => Class
-      .forName(top)
-      .getConstructor(classOf[Parameters])
-      .newInstance(
-        new WithBootROMFile(bootromPath.toString) ++
-          new Config(c.params.foldRight(Parameters.empty) {
-            case (currentName, config) =>
-              val currentConfig = SOCTUtils.instantiateConfig(currentName)
-              currentConfig ++ config
-          }))
-    match {
-      case m: RawModule => m
-      case lm: LazyModule => LazyModule(lm).module
+  def evalDesign(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
+    // Contains a callable that returns a chisel model and that is used to generate the firrtl
+    val gen = () => c.topModule match {
+      case Left(m) =>
+        // Get the constructor of m that accepts Parameters
+        val constructor = m.getConstructor(classOf[Parameters])
+        constructor.newInstance(c.params)
+      case Right(lm) =>
+        val constructor = lm.getConstructor(classOf[Parameters])
+        LazyModule(constructor.newInstance(c.params)).module
     }
-
-    val artifacts: mutable.HashSet[Path] = mutable.HashSet[Path]()
 
     def store(path: Path, content: String): Unit = {
       Files.write(path, content.getBytes)
-      artifacts += path.toAbsolutePath
     }
 
-    log.info("Using chisel to generate firrtl")
     val annos = Seq(
       new chisel3.stage.phases.Elaborate,
       new chisel3.stage.phases.Convert
@@ -64,9 +53,8 @@ object Transpiler  {
       }
     store(paths.annoFile, firrtl.annotations.JsonProtocol.serialize(annos))
     freechips.rocketchip.util.ElaborationArtefacts.files.foreach {
-      case (ext, contents) => store(paths.systemDir.resolve(s"${c.params.mkString("_")}.$ext"), contents())
+      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configName}.$ext"), contents())
     }
-    artifacts.toSet
   }
 
   def emitLowFirrtl(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
