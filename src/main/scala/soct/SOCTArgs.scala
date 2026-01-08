@@ -7,7 +7,6 @@ import soct.xilinx.fpga.FPGA
 
 import java.nio.file.{Path, Paths}
 import org.chipsalliance.cde.config
-import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 
@@ -36,7 +35,7 @@ object Targets {
   case object Vivado extends Targets {
     val name: String = "vivado"
     val defaultBootrom: String = "sd-boot"
-    val defaultTop = Right(classOf[SOCTSynTop])
+    val defaultTop: ChiselTop = Right(classOf[SOCTSynTop])
   }
 
   /**
@@ -45,7 +44,7 @@ object Targets {
   case object Yosys extends Targets {
     val name: String = "yosys"
     val defaultBootrom: String = "sd-boot"
-    val defaultTop = Right(classOf[SOCTYosysTop])
+    val defaultTop: ChiselTop  = Right(classOf[SOCTYosysTop])
   }
 
   /**
@@ -54,7 +53,7 @@ object Targets {
   case object Verilator extends Targets {
     val name: String = "verilator"
     val defaultBootrom: String = "testchipip-boot"
-    val defaultTop = Left(classOf[SOCTSimTop])
+    val defaultTop: ChiselTop  = Left(classOf[SOCTSimTop])
   }
 
   /**

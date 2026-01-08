@@ -4,11 +4,22 @@ import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
 import soct.xilinx.SOCTVivado
 
+import java.nio.file.Files
+import scala.reflect.io.Path.jfile2path
+
 object SOCTLauncher {
 
   // JSON formats for serializing/deserializing
   implicit val formats: Formats = DefaultFormats + PathSerializer + TargetsSerializer
 
+  /**
+   * Configuration for the SOCT design generation
+   * @param args The parsed SOCT arguments
+   * @param mabi The RISC-V ABI to use for compiling the bootrom
+   * @param topModule The top module to instantiate
+   * @param params The Parameters to use for the design generation
+   * @param configName The name of the configuration (used for output directories)
+   */
   case class SOCTConfig(
                          args: SOCTArgs,
                          mabi: String,
@@ -39,10 +50,6 @@ object SOCTLauncher {
     }
     config.params = config.params.orElse(new soct.RocketSynBaseConfig)
 
-    if (SOCTUtils.rmrfOpt(boardPaths.systemDir) > 0) {
-      log.info(s"Removed existing files in ${boardPaths.systemDir}")
-    }
-
     Transpiler.evalDesign(config, boardPaths)
 
     Transpiler.emitLowFirrtl(config, boardPaths)
@@ -64,10 +71,6 @@ object SOCTLauncher {
 
     config.params = config.params.orElse(new soct.RocketSimBaseConfig)
 
-    if (SOCTUtils.rmrfOpt(simPaths.systemDir) > 0) {
-      log.info(s"Removed existing files in ${simPaths.systemDir}")
-    }
-
     Transpiler.evalDesign(config, simPaths)
 
     Transpiler.emitLowFirrtl(config, simPaths)
@@ -75,16 +78,18 @@ object SOCTLauncher {
     Transpiler.emitVerilog(config, simPaths, args.firtoolArgs)
 
     if (args.overrideSimFiles) {
-      val configsSimDir = SOCTPaths.projectRoot.resolve("sim").resolve("configs") // TODO change path
+      val configsSimDir = SOCTPaths.get("sim-configs")
       if (!configsSimDir.toFile.exists()) {
         configsSimDir.toFile.mkdirs()
       }
-      val configsSimDirConfig = configsSimDir.resolve(config.configName)
-      if (SOCTUtils.rmrfOpt(configsSimDirConfig) > 0) {
-        log.info(s"Removed existing files in $configsSimDirConfig")
+      val simConfigDir = configsSimDir.resolve(config.configName)
+      if (simConfigDir.toFile.exists()) {
+        simConfigDir.toFile.deleteRecursively()
+        log.info(s"Removed existing files in $simConfigDir")
       }
-      SOCTUtils.recCopy(simPaths.systemDir, configsSimDirConfig)
-      log.info(s"Copied files to $configsSimDirConfig")
+      // Copy systemDir to simConfigDir recursively using Scala api:
+      SOCTUtils.recCopy(simPaths.systemDir, simConfigDir)
+      log.info(s"Copied files to $simConfigDir")
     }
   }
 
@@ -116,27 +121,38 @@ object SOCTLauncher {
         config.params = config.params.orElse(new freechips.rocketchip.rocket.WithRV32)
       }
 
-      args.target match {
+      val paths: SOCTPaths = args.target match {
         case Targets.Verilator =>
-          log.info("Targeting Verilator simulation")
-          val simPaths = new SimSOCTPaths(args, config)
-          config.params = config.params.orElse(new WithSOCTPaths(simPaths))
-          generateSimDesign(args, simPaths, config)
+          new SimSOCTPaths(args, config)
         case Targets.Vivado =>
           // Ensure that a board is provided
           if (args.board.isEmpty) {
             throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
           }
+          new BoardSOCTPaths(args, config)
+        case Targets.Yosys =>
+          new YosysSOCTPaths(args, config)
+      }
+
+      config.params = config.params.orElse(new WithSOCTPaths(paths))
+
+      if (paths.systemDir.toFile.exists()) {
+        paths.systemDir.toFile.deleteRecursively()
+        log.info(s"Removed existing files in ${paths.systemDir}")
+      }
+
+      args.target match {
+        case Targets.Verilator =>
+          log.info("Targeting Verilator simulation")
+          generateSimDesign(args, paths.asInstanceOf[SimSOCTPaths], config)
+        case Targets.Vivado =>
           log.info(s"Targeting Vivado synthesis for board ${args.board.get}")
-          val synPaths = new BoardSOCTPaths(args, config)
-          config.params = config.params.orElse(new WithSOCTPaths(synPaths))
-          generateVivadoDesign(args, synPaths, config)
+          generateVivadoDesign(args, paths.asInstanceOf[BoardSOCTPaths], config)
         case Targets.Yosys =>
           log.info("Targeting Yosys synthesis")
-          val synPaths = new YosysSOCTPaths(args, config)
-          config.params = config.params.orElse(new WithSOCTPaths(synPaths))
-          generateYosysDesign(args, synPaths, config)
+          generateYosysDesign(args, paths.asInstanceOf[YosysSOCTPaths], config)
       }
+
     case None => // arguments are bad, error message will have been displayed
   }
 }

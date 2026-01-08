@@ -51,14 +51,14 @@ object FPGARegistry {
 object SOCTVivado {
 
 
-  val DEFAULT_MEMORY_ADDR_64: BigInt = BigInt("0x80000000")
+  val DEFAULT_MEMORY_ADDR_64: BigInt = BigInt("80000000", 16)
 
-  val DEFAULT_MEMORY_ADDR_32: BigInt = BigInt("0x40000000")
+  val DEFAULT_MEMORY_ADDR_32: BigInt = BigInt("40000000", 16)
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
   def generate(boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
-    // TODO find the Top.sv and change its extension to .v - Vivado does not support SystemVerilog as top module
+
   }
 
   def generateProject(tclFile: Path, vivado: Path, vivadoSettings: Option[Path]): Unit = {

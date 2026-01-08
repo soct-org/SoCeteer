@@ -6,6 +6,7 @@ import org.json4s.{CustomSerializer, JNull, JString}
 
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.util.Comparator
+import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
 
 
@@ -166,57 +167,12 @@ object SOCTUtils {
     sys.exit(code)
   }
 
-  def rmrfOpt(dir: Path): Int = {
-    var count = 0
-    if (Files.exists(dir)) {
-      Files.walk(dir)
-        .sorted(Comparator.reverseOrder())
-        .forEach(path => {
-          if (Files.deleteIfExists(path)) count += 1
-        })
+  def recCopy(src: Path, dst: Path): Unit = {
+    Files.walk(src).iterator().asScala.foreach { p =>
+      val target = dst.resolve(src.relativize(p).toString)
+      if (Files.isDirectory(p)) Files.createDirectories(target)
+      else Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
     }
-    count
-  }
-
-  def recCopy(src: Path, dest: Path): Int = {
-    var count = 0
-    Files.walk(src).forEach { p =>
-      val target = dest.resolve(src.relativize(p))
-      if (Files.isDirectory(p)) {
-        if (!Files.exists(target)) {
-          Files.createDirectory(target)
-          count += 1
-        }
-      } else {
-        Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING)
-        count += 1
-      }
-    }
-    count
-  }
-
-  def disableStdErr(): Unit = {
-    // Disable standard error output
-    System.setErr(new java.io.PrintStream(new java.io.OutputStream() {
-      override def write(b: Int): Unit = {}
-    }))
-  }
-
-  def disableStdOut(): Unit = {
-    // Disable standard output
-    System.setOut(new java.io.PrintStream(new java.io.OutputStream() {
-      override def write(b: Int): Unit = {}
-    }))
-  }
-
-  def enableStdErr(): Unit = {
-    // Enable standard error output
-    System.setErr(System.err)
-  }
-
-  def enableStdOut(): Unit = {
-    // Enable standard output
-    System.setOut(System.out)
   }
 
   /**

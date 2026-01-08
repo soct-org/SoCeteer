@@ -49,6 +49,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
 class RocketBaseConfig extends Config(
   new WithNExtTopInterrupts(8) ++
     new WithSingleClockDomain(100.0) ++ // 100 MHz clock is the default
+    new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
     new WithEdgeDataBits(64) ++
     new WithDefaultMemPort ++
     new WithDefaultMMIOPort ++
@@ -71,7 +72,6 @@ class RocketSynBaseConfig extends Config(
     new WithJtagDTM ++
     new WithDebugSBA ++
     new WithDDR4ExtMem ++
-    new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )

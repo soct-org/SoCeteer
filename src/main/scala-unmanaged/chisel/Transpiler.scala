@@ -1,13 +1,10 @@
 package soct
 
-import chisel3.RawModule
 import circt.stage.ChiselStage
-import freechips.rocketchip.subsystem.WithBootROMFile
-import org.chipsalliance.cde.config.{Config, Parameters}
+import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 import java.nio.file.{Files, Path}
-import scala.collection.mutable
 
 abstract case class Transpiler() {
 }

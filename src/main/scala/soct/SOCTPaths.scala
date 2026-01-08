@@ -62,13 +62,12 @@ object SOCTPaths {
     )
 
     val derived: Map[String, Path] = Map(
-      "rocket-chip" -> base("generators").resolve("rocket-chip"),
-      "default-bootrom" -> base("generators").resolve("rocket-chip").resolve("bootrom").resolve("bootrom.img"),
       "FindVERILATOR.cmake" -> base("shared").resolve("cmake").resolve("FindVERILATOR.cmake"),
     )
 
     val baseDyn: Map[String, Path] = Map(
       "workspace" -> root.resolve("workspace"),
+      "sim-configs" -> base("sim").resolve("configs") // may not exist
     )
 
     val derivedDyn: Map[String, Path] = Map(
