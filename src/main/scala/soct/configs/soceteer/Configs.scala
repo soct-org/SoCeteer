@@ -1,14 +1,11 @@
 package soct
 
-import chisel3.{Data, UInt}
 import chisel3.util.log2Up
 import freechips.rocketchip.devices.debug.{DebugModuleKey, DefaultDebugModuleParams}
 import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, BuiltInErrorDeviceParams, CLINTKey, CLINTParams, DevNullParams, PLICKey, PLICParams}
 import freechips.rocketchip.diplomacy.AddressSet
-import freechips.rocketchip.rocket.RocketCoreParams
 import freechips.rocketchip.subsystem._
-import freechips.rocketchip.tile.{LookupByHartId, LookupByHartIdImpl, MaxHartIdBits, PriorityMuxHartIdFromSeq, RocketTileParams, TileKey, TileParams}
-import freechips.rocketchip.util.SystemFileName
+import freechips.rocketchip.tile.{LookupByHartId, MaxHartIdBits, PriorityMuxHartIdFromSeq}
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTLauncher.SOCTConfig
 import soct.xilinx.fpga.FPGA
@@ -39,7 +36,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
     beatBytes = 8,
     blockBytes = site(CacheBlockBytes))
   // Additional device Parameters
-  //case BootROMLocated(InSubsystem) => Seq(BootROMParams(contentFileName = SystemFileName("./bootrom/bootrom.img"))) // TODO Change me
+  case BootROMLocated(InSubsystem) => Seq(BootROMParams())
   case HasTilesExternalResetVectorKey => false
   case DebugModuleKey => Some(DefaultDebugModuleParams(64))
   case CLINTKey => Some(CLINTParams())
@@ -58,7 +55,6 @@ class RocketBaseConfig extends Config(
     new WithoutTLMonitors ++
     new WithCoherentBusTopology ++
     new BaseSubsystemConfig
-  //
 )
 
 class RocketSimBaseConfig extends Config(

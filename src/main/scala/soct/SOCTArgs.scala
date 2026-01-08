@@ -138,11 +138,8 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   // General options
   opt[String]('o', "out-dir").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated files. Default is ${defaultSOCTArgs.workspaceDir}.")
   opt[String]('c', "configs")
-    .action((x, c) => c.copy(baseConfig = x.split(",").foldRight(Parameters.empty) {
-      case (currentConfig, acc) =>
-        acc ++ SOCTUtils.instantiateConfig(currentConfig)
-    }))
-    .text(s"The config(s) to build - Usually it is sufficient to only give one config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Comma separated list with the fully qualified names (including the package path). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
+    .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
+    .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
   opt[String]('t', "target").action((x, c) => c.copy(target = Targets.parse(x))).text(s"Whether to simulate or synthesize the design using various backends. Available options: ${Targets.values.map(_.name).mkString(", ")}. Default is ${defaultSOCTArgs.target}.")
   opt[String]("bootrom").action((x, c) => c.copy(userBootrom = Some(x))).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
     s" ${Targets.values.map(t => s"${t.name} -> ${t.defaultBootrom}").mkString(", ")}.")

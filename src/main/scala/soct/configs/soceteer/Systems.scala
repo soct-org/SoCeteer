@@ -59,7 +59,7 @@ class SOCTSimTop()(implicit p: Parameters) extends Module {
     val success = Output(Bool())
   })
   val ldut = LazyModule(new RocketSystem)
-  val dut = ldut.module
+  val dut = Module(ldut.module)
 
   ldut.io_clocks.get.elements.values.foreach(_.clock := clock)
   // Allow the debug ndreset to reset the dut, but not until the initial reset has completed
@@ -94,41 +94,46 @@ object SOCTBootROM {
     val bootROMDomainWrapper = tlbus.generateSynchronousDomain(params.name).suggestName(s"${params.name}_domain")
     val bootROMResetVectorSourceNode = BundleBridgeSource[UInt]()
 
-    val config = p(HasSOCTConfig)
-    val paths = p(HasSOCTPaths)
+    // Function to build the bootrom and return its contents - invoked during LazyModule instantiation
+    def getContents: Array[Byte] = {
+      val config = p(HasSOCTConfig)
+      val paths = p(HasSOCTPaths)
 
-    // Write the device tree for this subsystem
-    Files.write(paths.dtsFile, subsystem.dts.getBytes())
+      // Write the device tree for this subsystem - create parent directories if needed
+      Files.createDirectories(paths.dtsFile.getParent)
+      Files.write(paths.dtsFile, subsystem.dts.getBytes())
 
-    // Write a CMake file with important information from the DTS - simplifies building binaries for the system
-    val soctCmake = DTSCMakeGenerator.generate(paths, config)
-    Files.write(paths.soctSystemCMakeFile, soctCmake.getBytes)
+      // Write a CMake file with important information from the DTS - simplifies building binaries for the system
+      val soctCmake = DTSCMakeGenerator.generate(paths, config)
+      Files.write(paths.soctSystemCMakeFile, soctCmake.getBytes)
 
-    // Compile bootrom using CMake
-    val defs = Map(
-      "SOCT_SYSTEM_CMAKE" -> paths.soctSystemCMakeFile.toString,
-      // And configure for bootrom build
-      "BOOTROM_MODE" -> "ON",
-    )
+      // Compile bootrom using CMake
+      val defs = Map(
+        "SOCT_SYSTEM_CMAKE" -> paths.soctSystemCMakeFile.toString,
+        // And configure for bootrom build
+        "BOOTROM_MODE" -> "ON",
+      )
 
-    val sourceDir = SOCTPaths.get("binaries")
-    val buildDir = SOCTPaths.get("bootrom-build")
-    // Delete the cache to force reconfiguration
-    val cacheFile = buildDir.resolve("CMakeCache.txt")
-    cacheFile.toFile.delete()
-    val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
+      val sourceDir = SOCTPaths.get("binaries")
+      val buildDir = SOCTPaths.get("bootrom-build")
+      // Delete the cache to force reconfiguration
+      val cacheFile = buildDir.resolve("CMakeCache.txt")
+      cacheFile.toFile.delete()
+      val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
 
-    runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
-    runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
+      runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
+      runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
 
-    assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
+      assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
 
-    log.info("Building bootrom using CMake")
+      log.info("Building bootrom using CMake")
 
-    val contents = Files.readAllBytes(paths.bootromImgFile)
+      val contents = Files.readAllBytes(paths.bootromImgFile)
+      contents
+    }
 
     val bootrom = bootROMDomainWrapper {
-      LazyModule(new TLROM(params.address, params.size, contents.toIndexedSeq, true, tlbus.beatBytes))
+      LazyModule(new TLROM(params.address, params.size, getContents.toIndexedSeq, true, tlbus.beatBytes))
     }
 
     bootrom.node := tlbus.coupleTo(params.name) {

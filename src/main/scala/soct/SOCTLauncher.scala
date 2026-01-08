@@ -1,14 +1,8 @@
 package soct
 
 import org.chipsalliance.cde.config.Parameters
-import org.json4s.jackson.JsonMethods.parse
-import org.json4s.jackson.Serialization.writePretty
 import org.json4s.{DefaultFormats, Formats}
 import soct.xilinx.SOCTVivado
-
-import java.nio.file.Path
-import scala.io.Source
-
 
 object SOCTLauncher {
 
@@ -28,7 +22,7 @@ object SOCTLauncher {
       val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
       val params = new WithHartBootFreqMHz(args.freqsMHz) ++ args.baseConfig
       val topModule = args.userTop.getOrElse(args.target.defaultTop)
-      val configName = s"${args.baseConfig.toString}-${args.xlen}"
+      val configName = s"${args.baseConfig.getClass.getSimpleName}-${args.xlen}"
       new SOCTConfig(args, mabi, topModule, params, configName)
     }
   }
