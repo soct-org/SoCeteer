@@ -1,12 +1,18 @@
 package soct
 
+import chisel3.Data
 import circt.stage.ChiselStage
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 import java.nio.file.{Files, Path}
+import scala.collection.mutable
 
-abstract case class Transpiler() {
+object ChiselCompat {
+
+  def addAttribute(target: Data, annoString: String): Unit = {
+    chisel3.util.addAttribute(target, annoString)
+  }
 }
 
 object Transpiler {
@@ -40,15 +46,23 @@ object Transpiler {
     // Only used for Chisel 3 compiler
   }
 
-  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths, firtoolArgs: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info(s"Using Firtool at ${paths.firtoolBinary} to generate Verilog")
-    val verilogArgs = if (c.args.singleVerilogFile) {
-      Seq("--verilog", "--disable-layers=Verification", s"-o=${paths.verilogSystem.toString}")
+    var loweringArgs = mutable.Seq(s"-o=${paths.verilogSystem.toString}")
+
+    loweringArgs ++= {
+      if (c.args.singleVerilogFile) {
+      Seq("--verilog", "--disable-layers=Verification")
     } else {
-      Seq("--split-verilog", s"-o=${paths.verilogSystem.toString}")
+      Seq("--split-verilog")
+    }}
+
+    if (!c.args.includeLocationInfo) {
+      loweringArgs ++= Seq("--lowering-options=locationInfoStyle=none")
     }
-    val args = Seq(paths.firtoolBinary.toString) ++ firtoolArgs ++
-      Seq("--disable-annotation-unknown", "--format=fir", "-O=release") ++ verilogArgs ++ Seq(paths.firrtlFile.toString)
+
+    val args = Seq(paths.firtoolBinary.toString) ++ c.args.userFirtoolArgs ++
+      Seq("--disable-annotation-unknown", "--format=fir", "-O=release") ++ loweringArgs ++ Seq(paths.firrtlFile.toString)
     new ProcessBuilder(args: _*)
       .inheritIO()
       .start()

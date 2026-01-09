@@ -10,10 +10,7 @@ import java.nio.file.{Files, Path}
 import firrtl.options.TargetDirAnnotation
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
-import scala.annotation.unused
-
-abstract case class Transpiler() {
-}
+import scala.collection.mutable
 
 object Transpiler  {
 
@@ -66,15 +63,23 @@ object Transpiler  {
       FirrtlFileAnnotation(paths.firrtlFile.toString),
       OutputFileAnnotation(paths.lowFirrtlFile.toString)
     ) ++ annos
-    stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=low-opt"), firrtlAnnos)
+    val out = stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=low-opt"), firrtlAnnos)
+    Files.write(paths.annoFile, JsonProtocol.serialize(out).getBytes)
   }
 
-  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths, @unused firtoolPlugins: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate verilog")
     val verilogAnnos: Seq[Annotation] = Seq(
       OutputFileAnnotation(paths.verilogSystem.toString),
-      FirrtlFileAnnotation(paths.lowFirrtlFile.toString)
+      FirrtlFileAnnotation(paths.lowFirrtlFile.toString),
     )
-    stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=verilog", "--start-from=low-opt"), verilogAnnos)
+    var loweringArgs = mutable.Seq("-E=verilog", "--start-from=low-opt", s"-ll=${c.args.logLevel}")
+
+    if (!c.args.includeLocationInfo) {
+      loweringArgs ++= Seq("--info-mode=ignore")
+    }
+
+    loweringArgs ++= c.args.userFirtoolArgs
+    stage.execute(loweringArgs.toArray, verilogAnnos)
   }
 }

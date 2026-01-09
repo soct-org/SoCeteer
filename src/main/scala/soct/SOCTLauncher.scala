@@ -58,7 +58,7 @@ object SOCTLauncher {
 
     Transpiler.emitLowFirrtl(config, boardPaths)
 
-    Transpiler.emitVerilog(config, boardPaths, args.firtoolArgs)
+    Transpiler.emitVerilog(config, boardPaths)
 
     SOCTVivado.generate(boardPaths, config)
   }
@@ -79,7 +79,7 @@ object SOCTLauncher {
 
     Transpiler.emitLowFirrtl(config, simPaths)
 
-    Transpiler.emitVerilog(config, simPaths, args.firtoolArgs)
+    Transpiler.emitVerilog(config, simPaths)
 
     if (args.overrideSimFiles) {
       val configsSimDir = SOCTPaths.get("sim-configs")

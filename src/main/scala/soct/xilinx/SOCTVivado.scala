@@ -1,13 +1,16 @@
 package soct.xilinx
 
 
+import chisel3.reflect.DataMirror
+import chisel3.Data
+import freechips.rocketchip.amba.axi4._
 import org.chipsalliance.cde.config.Parameters
+import org.chipsalliance.diplomacy.nodes.HeterogeneousBag
 import soct.SOCTLauncher.SOCTConfig
 import soct.xilinx.components._
-import soct.{BoardSOCTPaths, ChiselTop, HasSOCTConfig, HasSOCTPaths, SOCTUtils}
+import soct.{BoardSOCTPaths, ChiselTop, HasSOCTConfig, HasSOCTPaths, SOCTUtils, log}
 import soct.xilinx.fpga.{FPGA, ZCU104}
 
-import java.io.File
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
@@ -62,35 +65,25 @@ class BDBuilder(implicit p: Parameters, top: ChiselTop) {
 
   private val portCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
-  def add[T <: BdComp](c: T): T = {
-    // If the component is already added, return it directly
-    if (components.contains(c)) {
-      return c
+  def add[T <: BdComp](c: T): Unit = {
+    if (!components.contains(c)) {
+      c.checkAvailable()
+      components += c
     }
-    c.checkAvailable()
-
-    components += c
-
-    c.dumpCollaterals(paths.verilogSystem)
-    val clazz = c.getClass
-
-    if (classOf[InstantiableBdComp].isAssignableFrom(clazz)) {
-      instantiateCommands ++= c.asInstanceOf[InstantiableBdComp].tclCommands
-      // TODO add properties (and constraints?)
-    }
-
-    if (classOf[XilinxBdIntfPort].isAssignableFrom(clazz)) {
-      portCommands ++= c.asInstanceOf[XilinxBdIntfPort].tclCommands
-    }
-
-    if (classOf[BdPort].isAssignableFrom(clazz)) {
-      portCommands ++= c.asInstanceOf[BdPort].tclCommands
-    }
-
-    c
   }
 
   def generateTcl(): String = {
+    components.foreach {
+      case inst: InstantiableBdComp =>
+        instantiateCommands ++= inst.tclCommands
+      case port: BdPort =>
+        portCommands ++= port.tclCommands
+      case xport: XilinxBdIntfPort =>
+        portCommands ++= xport.tclCommands
+      case c =>
+        log.warn(s"Unknown type: ${c.friendlyName}")
+    }
+
     // First declare all ports
     val portsTcl = portCommands.mkString("\n")
     // Then instantiate all components
@@ -107,7 +100,6 @@ class BDBuilder(implicit p: Parameters, top: ChiselTop) {
        |${instTcl}
        |""".stripMargin
   }
-
 }
 
 object SOCTVivado {
@@ -118,6 +110,33 @@ object SOCTVivado {
   val DEFAULT_MEMORY_ADDR_32: BigInt = BigInt("40000000", 16)
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
+
+  def annotateAsAXI(
+                   ifName: String,
+                   axiPorts: HeterogeneousBag[AXI4Bundle],
+                   partName: String = "xilinx.com:interface:aximm:1.0"
+                   ): Unit = {
+
+
+    axiPorts.elements.foreach {case (name, bundle) =>
+      bundle.elements.foreach { case (channelName, channel) =>
+        // Use the DataMirror to map the chisel names to known interface names
+        // AXI4BundleR/AW etc are always the data part, all other fields have standard names
+        DataMirror.collectMembers(channel) {
+          case data: AXI4BundleAW => println(s"Found AW channel")
+          case data: AXI4BundleW => println(s"Found W channel")
+          case data: AXI4BundleB => println(s"Found B channel")
+          case data: AXI4BundleAR => println(s"Found AR channel")
+          case data: AXI4BundleR => println(s"Found R channel")
+          case data: Data =>
+
+
+        }
+      }
+    }
+  }
+
+
 
   def generate(boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
     // Vivado does not allow a SystemVerilog top-level.

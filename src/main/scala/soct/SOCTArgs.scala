@@ -82,8 +82,12 @@ case class SOCTArgs(
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
                      singleVerilogFile: Boolean = false,
+                     includeLocationInfo: Boolean = false,
                      target: Targets = Targets.Verilator,
                      userBootrom: Option[String] = None,
+                     userTop: Option[ChiselTop] = None,
+                     userMabi: Option[String] = None,
+
                      // Firtool options
                      firtoolPath: Option[Path] = None,
                      firtoolVersion: String = chisel3.BuildInfo.firtoolVersion.flatMap {
@@ -95,9 +99,8 @@ case class SOCTArgs(
                          // Only allow versions greater than 1.75.0
                          if (minor > 75) Some(v) else None
                      }.getOrElse("1.75.0"), // Default to the version
-                     firtoolArgs: Seq[String] = Seq.empty,
-                     userTop: Option[ChiselTop] = None,
-                     userMabi: Option[String] = None,
+                     userFirtoolArgs: Seq[String] = Seq.empty,
+
                      // Simulation options
                      overrideSimFiles: Boolean = true,
                      // Vivado specific options
@@ -138,9 +141,6 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[String]('c', "configs")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
-  opt[String]('t', "target").action((x, c) => c.copy(target = Targets.parse(x))).text(s"Whether to simulate or synthesize the design using various backends. Available options: ${Targets.values.map(_.name).mkString(", ")}. Default is ${defaultSOCTArgs.target}.")
-  opt[String]("bootrom").action((x, c) => c.copy(userBootrom = Some(x))).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
-    s" ${Targets.values.map(t => s"${t.name} -> ${t.defaultBootrom}").mkString(", ")}.")
   opt[Int]("xlen").action((x, c) => c.copy(xlen = x)).text(s"The xlen to use. Default is ${defaultSOCTArgs.xlen}. Allowed values are 32 and 64 - 32 adds ${classOf[freechips.rocketchip.rocket.WithRV32].getName} to the config.")
   opt[String]("ll")
     .action((x, c) => c.copy(logLevel = x))
@@ -150,10 +150,10 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
     )
     .text(s"The log level to use. Options: ${logLevels.mkString(", ")}. Default is ${defaultSOCTArgs.logLevel}.")
   opt[Unit]("single-verilog-file").action((_, c) => c.copy(singleVerilogFile = true)).text(s"(Ignored for Chisel 3 compiler - it always outputs a single file) Generate a single verilog file instead of splitting it up into modules. Due to the way firtool handles things, this flag DISABLES ANY FORM OF VERIFICATION INCLUDING PRINTF.")
-  // Firtool options
-  opt[String]("firtool-path").action((x, c) => c.copy(firtoolPath = Some(Paths.get(x)))).text(s"The path to the firtool binary. Overrides the version. If not set, the version together with the firtool resolver will be used.")
-  opt[String]("firtool-version").action((x, c) => c.copy(firtoolVersion = x)).text(s"The version of firtool to use. Only change if you encounter issues. Default is ${defaultSOCTArgs.firtoolVersion}.")
-  opt[String]('a', "firtool-arg").unbounded().action((x, c) => c.copy(firtoolArgs = c.firtoolArgs :+ x)).text(s"Additional arguments to pass to firtool. Is only applied in the last lowering stage. Can be used multiple times.")
+  opt[Unit]("include-location-info").action((_, c) => c.copy(includeLocationInfo = true)).text(s"Include location information (file and line number) as comments in the generated verilog/systemverilog file.")
+  opt[String]('t', "target").action((x, c) => c.copy(target = Targets.parse(x))).text(s"Whether to simulate or synthesize the design using various backends. Available options: ${Targets.values.map(_.name).mkString(", ")}. Default is ${defaultSOCTArgs.target}.")
+  opt[String]("bootrom").action((x, c) => c.copy(userBootrom = Some(x))).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
+    s" ${Targets.values.map(t => s"${t.name} -> ${t.defaultBootrom}").mkString(", ")}.")
   opt[String]("top")
     .action((x, c) => c.copy(userTop = {
       // The top can either be a class extending Module or LazyModule - we use reflection to determine which one it is
@@ -168,8 +168,16 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
     }))
     .text(s"The fully qualified name (including the package path) of the top module class to use. Default is determined by the target: ${Targets.values.map(t => s"${t.name} -> ${t.defaultTop.fold(_.getName, _.getName)}").mkString(", ")}.")
   opt[String]("mabi").action((x, c) => c.copy(userMabi = Some(x))).text(s"The machine ABI to use (e.g., ilp32, lp64) to compile the bootrom.")
+
+
+  // Firtool options
+  opt[String]("firtool-path").action((x, c) => c.copy(firtoolPath = Some(Paths.get(x)))).text(s"The path to the firtool binary. Overrides the version. If not set, the version together with the firtool resolver will be used.")
+  opt[String]("firtool-version").action((x, c) => c.copy(firtoolVersion = x)).text(s"The version of firtool to use. Only change if you encounter issues. Default is ${defaultSOCTArgs.firtoolVersion}.")
+  opt[String]('a', "firtool-arg").unbounded().action((x, c) => c.copy(userFirtoolArgs = c.userFirtoolArgs :+ x)).text(s"Additional arguments to pass to firtool. Is only applied in the last lowering stage. Can be used multiple times.")
+
   // Simulation options
   opt[Unit]("no-override-sim-files").action((_, c) => c.copy(overrideSimFiles = false)).text(s"When generating a design to be used with simulation, DO NOT copy, and potentially overwrite the files to the simulation directory - Only keep them in the workspace directory.")
+
   // Vivado specific options
   opt[String]("vivado-settings").action((x, c) => c.copy(vivadoSettings = Some(Paths.get(x)))).text(s"The vivado settings file to run before executing vivado. Default is ${defaultSOCTArgs.vivadoSettings}.")
   opt[String]("vivado").action((x, c) => c.copy(vivado = Some(Paths.get(x)))).text(s"The vivado executable script to use. Default is ${defaultSOCTArgs.vivado}.")
@@ -187,6 +195,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure("Frequencies must be positive numbers.")
     })
     .text(s"The target frequency in MHz for the design. Either a single frequency for all cores or a comma separated list of frequencies for each core for the config provided. Default is ${defaultSOCTArgs.freqsMHz.head} MHz.")
+
   // Terminating options
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")
   opt[Unit]("wtf").action((_, c) => c.copy(wtf = true)).text("What the firtool -- Prints the firtool help.")
