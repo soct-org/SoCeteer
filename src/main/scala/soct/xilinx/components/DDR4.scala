@@ -4,26 +4,28 @@ import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MemPort, ExtMem}
 import org.chipsalliance.cde.config.Parameters
 import soct.{ChiselTop, HasXilinxFPGA}
 import soct.xilinx.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
-import soct.xilinx.XilinxDesignException
+import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 
-case class DDR4BdIntfPort() extends XilinxBdIntfPort {
-  override val INTERFACE_NAME = "ddr4_sdram"
+case class DDR4BdIntfPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+  extends XilinxBdIntfPort {
+  override def INTERFACE_NAME = "ddr4_sdram"
 
-  override val mode: String = "Master"
+  override def mode: String = "Master"
 
-  override val partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
+  override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
 }
 
 
 case class DDR4(ddr4Idx: Int,
                 intf: XilinxBdIntfPort)
-  extends InstantiableComponent with IsXilinxIP {
+               (implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+  extends InstantiableBdComp with IsXilinxIP {
 
-  override val partName: String = "xilinx.com:ip:ddr4:2.2xilinx.com:ip:ddr4:2.2"
+  override def partName: String = "xilinx.com:ip:ddr4:2.2xilinx.com:ip:ddr4:2.2"
 
-  override def checkAvailable(top: ChiselTop)(implicit p: Parameters): Unit = {
-    super.checkAvailable(top)
+  override def checkAvailable(): Unit = {
+    super.checkAvailable()
     val fpga = p(HasXilinxFPGA).get
 
     val extMemOpt = p(ExtMem)

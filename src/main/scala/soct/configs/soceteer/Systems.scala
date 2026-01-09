@@ -46,30 +46,37 @@ class SOCTYosysTop(implicit p: Parameters) extends RocketSystem {
  * Top-level module for synthesis of the RocketSystem within SOCT
  */
 class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
-  private val top = Right(this.getClass)
-  private val bd = new BDBuilder(Right(this.getClass))
+  implicit val top: ChiselTop = Right(this.getClass)
+  implicit val bd: BDBuilder = new BDBuilder
 
-  if (p(HasDDR4ExtMem).isDefined) {
-    bd.add(DDR4(
-      ddr4Idx = p(HasDDR4ExtMem).get,
-      intf = bd.add(DDR4BdIntfPort())
-    ))
+  // InModuleBody is needed to ensure this code doesn't run before the LazyModule is fully constructed
+  InModuleBody {
+
+    mmio_axi4.getWrappedValue.elements.values.foreach { port =>
+      println(s"MMIO AXI4 port: ${port.elements}")
+    }
+
+    if (p(HasDDR4ExtMem).isDefined) {
+      DDR4(
+        ddr4Idx = p(HasDDR4ExtMem).get,
+        intf = DDR4BdIntfPort()
+      )
+    }
+
+    if (p(HasSDCardPMOD).isDefined) {
+      SDCardPMOD(
+        pmodIdx = p(HasSDCardPMOD).get,
+        cdPort = SDIOCDPort(),
+        clkPort = SDIOClkPort(),
+        cmdPort = SDIOCmdPort(),
+        dataPort = SDIODataPort()
+      )
+    }
+
+    val tcl = bd.generateTcl()
+
+    println(tcl)
   }
-
-  if (p(HasSDCardPMOD).isDefined) {
-    bd.add(SDCardPMOD(
-      pmodIdx = p(HasSDCardPMOD).get,
-      cdPort = bd.add(SDIOCDPort()),
-      clkPort = bd.add(SDIOClkPort()),
-      cmdPort = bd.add(SDIOCmdPort()),
-      dataPort = bd.add(SDIODataPort())
-    ))
-  }
-
-  val tcl = bd.generateTcl()
-
-  println(tcl)
-
 }
 
 

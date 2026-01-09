@@ -1,9 +1,9 @@
 package soct.xilinx.fpga
 
-import soct.xilinx.components.{Component, IsXilinxIP}
+import soct.xilinx.components.{BdComp, HasFriendlyName, IsXilinxIP}
 
 
-abstract class FPGA extends Component with IsXilinxIP
+abstract class FPGA() extends IsXilinxIP with HasFriendlyName
 {
 
   val portsDDR4: Seq[Int] = Seq.empty

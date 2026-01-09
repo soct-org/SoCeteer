@@ -2,46 +2,47 @@ package soct.xilinx.components
 
 import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MMIOPort, CanHaveSlaveAXI4Port}
 import org.chipsalliance.cde.config
+import org.chipsalliance.cde.config.Parameters
 import soct.{ChiselTop, HasXilinxFPGA}
-import soct.xilinx.XilinxDesignException
+import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 import java.nio.file.{Files, Path}
 
 
-case class SDIOCDPort() extends BdPort {
-  override val INTERFACE_NAME = "sdio_cd"
+case class SDIOCDPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+  override def INTERFACE_NAME = "sdio_cd"
 
-  override val ifType: String = "data"
+  override def ifType: String = "data"
 
-  override val dir: String = "I"
+  override def dir: String = "I"
 }
 
-case class SDIOClkPort() extends BdPort {
-  override val INTERFACE_NAME = "sdio_clk"
+case class SDIOClkPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+  override def INTERFACE_NAME = "sdio_clk"
 
-  override val ifType: String = "clk"
+  override def ifType: String = "clk"
 
-  override val dir: String = "O"
+  override def dir: String = "O"
 }
 
-case class SDIOCmdPort() extends BdPort {
-  override val INTERFACE_NAME = "sdio_cmd"
+case class SDIOCmdPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+  override def INTERFACE_NAME = "sdio_cmd"
 
-  override val ifType: String = "data"
+  override def ifType: String = "data"
 
-  override val dir: String = "IO"
+  override def dir: String = "IO"
 }
 
-case class SDIODataPort() extends BdPort {
-  override val INTERFACE_NAME = "sdio_data"
+case class SDIODataPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+  override def INTERFACE_NAME = "sdio_data"
 
-  override val ifType: String = "data"
+  override def ifType: String = "data"
 
-  override val dir: String = "IO"
+  override def dir: String = "IO"
 
-  override val from: Option[String] = Some("3")
+  override def from: Option[String] = Some("3")
 
-  override val to: Option[String] = Some("0")
+  override def to: Option[String] = Some("0")
 }
 
 
@@ -59,13 +60,14 @@ case class SDCardPMOD(pmodIdx: Int,
                       clkPort: SDIOClkPort,
                       cmdPort: SDIOCmdPort,
                       dataPort: SDIODataPort
-                     ) extends InstantiableComponent with IsModule {
+                     )
+                     (implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+  extends InstantiableBdComp with IsModule {
 
-  override val reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
+  override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
-
-  override def checkAvailable(top: ChiselTop)(implicit p: config.Parameters): Unit = {
-    super.checkAvailable(top)
+  override def checkAvailable(): Unit = {
+    super.checkAvailable()
     val fpga = p(HasXilinxFPGA).get
 
     if (!fpga.portsPMOD.contains(pmodIdx)) {

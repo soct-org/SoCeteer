@@ -2,29 +2,29 @@ package soct.xilinx.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.{ChiselTop, HasXilinxFPGA}
-import soct.xilinx.XilinxDesignException
+import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 import java.io.File
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
-
-trait Component {
+/**
+ * Base class for Board Design Components.
+ * DO NOT add val/var members that are overridden in subclasses, as automatically registering the component in the
+ * builder happens in this base class constructor - before subclass constructors run. Only defs are safe to use, as
+ * they are resolved at call time.
+ */
+abstract class BdComp()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends HasFriendlyName {
   /**
    * Check that this component is available in the current configuration.
    */
   @throws[XilinxDesignException]
-  def checkAvailable(top: ChiselTop)(implicit p: Parameters): Unit = {
+  def checkAvailable(): Unit = {
     val fpgaOpt = p(HasXilinxFPGA)
     if (fpgaOpt.isEmpty) {
       throw XilinxDesignException(s"Adding $friendlyName requires the design to run on a Xilinx FPGA")
     }
   }
-
-  /**
-   * A friendly name for this component, derived from the class name or overridden
-   */
-  val friendlyName: String = this.getClass.getSimpleName.replaceAll("\\$", "")
 
   /**
    * Default properties for this component influenced by parameters, can be overridden by subclasses
@@ -58,57 +58,40 @@ trait Component {
     }
     None
   }
+
+  // Register this component with the BDBuilder upon creation
+  bd.add(this)
 }
 
 /**
- * Trait for custom module components
+ * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-trait IsModule extends Component {
-  /**
-   * The reference name of this module - as defined in the collateral files
-   */
-  val reference: String
-}
-
-/**
- * Trait for Xilinx IP components
- */
-trait IsXilinxIP extends Component {
-  /**
-   * The part name of this Xilinx IP
-   */
-  val partName: String
-}
-
-/**
- * Trait for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
- */
-trait BdPort extends Component {
+abstract class BdPort(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
 
   /**
    * The name of this interface port
    */
-  val INTERFACE_NAME: String
+  def INTERFACE_NAME: String
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
    */
-  val ifType: String
+  def ifType: String
 
   /**
    * The direction of this interface port, e.g., "I", "O", or "IO"
    */
-  val dir: String
+  def dir: String
 
   /**
    * Optional vector range for this port, e.g. -from 3
    */
-  val from: Option[String] = None
+  def from: Option[String] = None
 
   /**
    * Optional vector range for this port, e.g. -to 0
    */
-  val to: Option[String] = None
+  def to: Option[String] = None
 
   /**
    * Emit the TCL command to create the port for this component
@@ -124,20 +107,19 @@ trait BdPort extends Component {
   }
 }
 
-
 /**
- * Trait for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
+ * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-trait XilinxBdIntfPort extends IsXilinxIP {
+abstract class XilinxBdIntfPort(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp with IsXilinxIP {
   /**
    * The name of this interface, used to connect components to it
    */
-  val INTERFACE_NAME: String
+  def INTERFACE_NAME: String
 
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
    */
-  val mode: String
+  def mode: String
 
   /**
    * Emit the TCL command to create the port for this component
@@ -150,7 +132,7 @@ trait XilinxBdIntfPort extends IsXilinxIP {
 /**
  * Trait for components that can be instantiated in the design
  */
-trait InstantiableComponent extends Component {
+abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
 
   /**
    * Optional index to differentiate multiple instances of the same component
@@ -183,4 +165,33 @@ trait InstantiableComponent extends Component {
         throw new UnsupportedOperationException(s"Component ${friendlyName} must be either IsXilinxIP or IsModule to be instantiated.")
     }
   }
+
+}
+
+
+/**
+ * Trait for custom module components
+ */
+trait IsModule {
+  /**
+   * The reference name of this module - as defined in the collateral files
+   */
+  def reference: String
+}
+
+/**
+ * Trait for Xilinx IP components
+ */
+trait IsXilinxIP  {
+  /**
+   * The part name of this Xilinx IP
+   */
+  def partName: String
+}
+
+trait HasFriendlyName {
+  /**
+   * A friendly name for this component, derived from the class name or overridden
+   */
+  def friendlyName: String = this.getClass.getSimpleName.replaceAll("\\$", "")
 }

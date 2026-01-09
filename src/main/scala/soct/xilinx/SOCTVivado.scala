@@ -51,22 +51,31 @@ object FPGARegistry {
   }
 }
 
-class BDBuilder(top: ChiselTop)(implicit p: Parameters) {
+class BDBuilder(implicit p: Parameters, top: ChiselTop) {
   private val paths = p(HasSOCTPaths)
   private val config = p(HasSOCTConfig)
+
+  private val components = mutable.Set.empty[BdComp]
 
   // TCL commands:
   private val instantiateCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
   private val portCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
-  def add[T <: Component](c: T)(implicit p: Parameters): T = {
-    c.checkAvailable(top)
+  def add[T <: BdComp](c: T): T = {
+    // If the component is already added, return it directly
+    if (components.contains(c)) {
+      return c
+    }
+    c.checkAvailable()
+
+    components += c
+
     c.dumpCollaterals(paths.verilogSystem)
     val clazz = c.getClass
 
-    if (classOf[InstantiableComponent].isAssignableFrom(clazz)) {
-      instantiateCommands ++= c.asInstanceOf[InstantiableComponent].tclCommands
+    if (classOf[InstantiableBdComp].isAssignableFrom(clazz)) {
+      instantiateCommands ++= c.asInstanceOf[InstantiableBdComp].tclCommands
       // TODO add properties (and constraints?)
     }
 
