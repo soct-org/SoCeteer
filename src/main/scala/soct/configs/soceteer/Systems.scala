@@ -1,13 +1,13 @@
 package soct
 
 import chisel3._
-import firrtl.AttributeAnnotation
+import chisel3.reflect.DataMirror
 import freechips.rocketchip.devices.debug.Debug
-import freechips.rocketchip.devices.tilelink.{BootROM, BootROMLocated, BootROMParams, TLROM}
+import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, TLROM}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.system.SimAXIMem
 import freechips.rocketchip.tilelink.TLFragmenter
-import freechips.rocketchip.util.{AsyncResetReg, DontTouch, ResourceFileName, SystemFileName}
+import freechips.rocketchip.util.{AsyncResetReg, DontTouch}
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule}
@@ -15,9 +15,16 @@ import soct.SOCTUtils.runCMakeCommand
 import soct.xilinx.{BDBuilder, SOCTVivado}
 import soct.xilinx.components._
 
-import java.io.File
-import java.nio.ByteBuffer
-import java.nio.file.{Files, Paths}
+import java.nio.file.Files
+
+/**
+ * Singleton object to hold the last instantiated RocketSystem for access by other components
+ * This is mainly due to Chisel limitations and unstable API for inspecting an elaborated design
+ */
+object LastRocketSystem {
+  var instance: Option[RocketSystem] = None
+}
+
 
 class RocketSystem(implicit p: Parameters) extends RocketSubsystem
   with HasAsyncExtInterrupts
@@ -28,6 +35,7 @@ class RocketSystem(implicit p: Parameters) extends RocketSubsystem
     SOCTBootROM.attach(_, this, CBUS)
   }
   override lazy val module = new RocketSystemModuleImp(this)
+  LastRocketSystem.instance = Some(this)
 }
 
 class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsystemModuleImp(_outer)
@@ -50,18 +58,8 @@ class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
   implicit val top: ChiselTop = Right(this.getClass)
   implicit val bd: BDBuilder = new BDBuilder
 
-  // Name for the AXI4 interfaces - how to refer to all of its ports in the block design without wiring them individually
-  private val memAxi4Name = "mem_axi4"
-  private val mmioAxi4Name = "mmio_axi4"
-  private val slaveAxi4Name = "slave_axi4"
-
   // InModuleBody is needed to ensure this code doesn't run before the LazyModule is fully constructed
   InModuleBody {
-    SOCTVivado.annotateAsAXI(
-      ifName = memAxi4Name,
-      axiPorts = this.mem_axi4.getWrappedValue
-    )
-
     if (p(HasDDR4ExtMem).isDefined) {
       DDR4(
         ddr4Idx = p(HasDDR4ExtMem).get,
@@ -83,6 +81,8 @@ class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
 
     println(tcl)
   }
+
+
 }
 
 

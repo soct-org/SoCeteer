@@ -48,6 +48,9 @@ object Transpiler {
 
   def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info(s"Using Firtool at ${paths.firtoolBinary} to generate Verilog")
+
+    // Args for --lowering-options=
+    var loweringOptions = mutable.Seq("disallowPortDeclSharing")
     var loweringArgs = mutable.Seq(s"-o=${paths.verilogSystem.toString}")
 
     loweringArgs ++= {
@@ -58,7 +61,11 @@ object Transpiler {
     }}
 
     if (!c.args.includeLocationInfo) {
-      loweringArgs ++= Seq("--lowering-options=locationInfoStyle=none")
+      loweringOptions +:= "locationInfoStyle=none"
+    }
+
+    if (loweringOptions.nonEmpty) {
+      loweringArgs +:= s"--lowering-options=${loweringOptions.mkString(",")}"
     }
 
     val args = Seq(paths.firtoolBinary.toString) ++ c.args.userFirtoolArgs ++

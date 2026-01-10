@@ -2,17 +2,20 @@ package soct.xilinx
 
 
 import chisel3.reflect.DataMirror
-import chisel3.Data
+import chisel3.util.DecoupledIO
+import chisel3.{ActualDirection, Bundle, Data}
 import freechips.rocketchip.amba.axi4._
+import freechips.rocketchip.util.BundleMap
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.nodes.HeterogeneousBag
 import soct.SOCTLauncher.SOCTConfig
 import soct.xilinx.components._
-import soct.{BoardSOCTPaths, ChiselTop, HasSOCTConfig, HasSOCTPaths, SOCTUtils, log}
+import soct.{BoardSOCTPaths, ChiselTop, HasSOCTConfig, HasSOCTPaths, LastRocketSystem, SOCTUtils, log}
 import soct.xilinx.fpga.{FPGA, ZCU104}
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
+import scala.util.matching.Regex
 
 
 /**
@@ -111,59 +114,182 @@ object SOCTVivado {
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
-  def annotateAsAXI(
-                   ifName: String,
-                   axiPorts: HeterogeneousBag[AXI4Bundle],
-                   partName: String = "xilinx.com:interface:aximm:1.0"
-                   ): Unit = {
+  /** Convert a name to snake_case */
+  def snake(name: String): String = {
+    name.toLowerCase.replace(".", "_")
+  }
 
+  /**
+   * Annotate the given Verilog port lines with Vivado X_INTERFACE_INFO attributes for the given AXI4 interface
+   *
+   * @param ifName          Name of the interface
+   * @param axiPort         AXI4Bundle to annotate
+   * @param lines           Lines of the Verilog file containing the port declarations
+   * @param partName        Part name for the X_INTERFACE_INFO attribute
+   * @param yankedPorts     Set of port names to ignore (not annotate)
+   * @param additionalPorts Set of additional port names to annotate (e.g., ready/valid)
+   * @param annoPrefix      Prefix to add before the annotation (e.g., indentation)
+   * @return New lines with annotations added
+   */
+  private def annotateAsAXI(
+                             ifName: String,
+                             axiPort: AXI4Bundle,
+                             lines: Seq[String],
+                             partName: String = "xilinx.com:interface:aximm:1.0",
+                             yankedPorts: Set[String] = Set("user", "echo"),
+                             additionalPorts: Set[String] = Set("ready", "valid"),
+                             annoPrefix: String = " "
+                           ): Seq[String] = {
 
-    axiPorts.elements.foreach {case (name, bundle) =>
-      bundle.elements.foreach { case (channelName, channel) =>
-        // Use the DataMirror to map the chisel names to known interface names
-        // AXI4BundleR/AW etc are always the data part, all other fields have standard names
-        DataMirror.collectMembers(channel) {
-          case data: AXI4BundleAW => println(s"Found AW channel")
-          case data: AXI4BundleW => println(s"Found W channel")
-          case data: AXI4BundleB => println(s"Found B channel")
-          case data: AXI4BundleAR => println(s"Found AR channel")
-          case data: AXI4BundleR => println(s"Found R channel")
-          case data: Data =>
+    // Maps name of the full port to the Vivado X_INTERFACE_INFO string
+    val portMappings = mutable.Map.empty[String, String]
 
-
+    axiPort.elements.foreach { case (channelName, channel) =>
+      // Use the DataMirror to map the chisel names to known interface names
+      // AXI4BundleR/AW etc are always the data part, all other fields have standard names
+      DataMirror.collectMembers(channel) {
+          case data: AXI4BundleAW => data.elements
+          case data: AXI4BundleW => data.elements
+          case data: AXI4BundleB => data.elements
+          case data: AXI4BundleAR => data.elements
+          case data: AXI4BundleR => data.elements
+          case data: Bundle => data.elements.filter { case (fieldName, _) => additionalPorts.contains(fieldName) }
         }
+        .foldLeft(Map.empty[String, Data])(_ ++ _) // flatten the maps
+        .filterNot { case (fieldName, _) => yankedPorts.contains(fieldName) } // remove yanked ports (ports that are not actually part of the AXI interface)
+        .foreach { case (fieldName, port) =>
+          val portName = snake(port.instanceName) // Full port name in snake_case - hopefully matches the Verilog port
+          val xilinxName = s"${channelName.toUpperCase}${fieldName.toUpperCase()}"
+          val attrString = s"(* X_INTERFACE_INFO = \"$partName $ifName $xilinxName\" *)"
+          portMappings += (portName -> attrString)
+        }
+    }
+
+    // Now we have all port mappings, we can annotate the port lines
+    val newPortLines = lines.toBuffer
+    portMappings.foreach { case (portName, attrString) =>
+      val lineIdxOpt = newPortLines.zipWithIndex.find { case (line, _) =>
+        line.contains(s"$portName")
+      }.map { case (_, idx) => idx }
+
+      if (lineIdxOpt.isEmpty) {
+        soct.log.warn(s"Could not find port line for AXI4 port $portName in top-level Verilog - not annotating")
+      } else {
+        val lineIdx = lineIdxOpt.get
+        // Insert the annotation before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
+        newPortLines.insert(lineIdx, s"$annoPrefix$attrString")
       }
+    }
+
+    newPortLines.toSeq
+  }
+
+  /**
+   * Vivado does not allow a SystemVerilog top-level.
+   * We do a highly illegal trick here by just renaming the file extension,
+   * hoping that Chisel did not include any SystemVerilog-specific constructs in the top-level module.
+   * Note that this is not guaranteed to work and may break in future Chisel versions.
+   *
+   * @param boardPaths Paths to the board
+   * @param config     SOCT configuration
+   * @return Path to the (new) top-level Verilog file
+   */
+  private def convertTopModuleFile(boardPaths: BoardSOCTPaths, config: SOCTConfig): Path = {
+    val file = boardPaths.verilogSystem.toFile
+
+    if (!file.exists()) {
+      throw XilinxDesignException(s"Verilog system path ${boardPaths.verilogSystem} does not exist")
+    }
+
+    if (file.isFile) {
+      return boardPaths.verilogSystem
+    }
+
+    if (!file.isDirectory) {
+      throw XilinxDesignException(s"Verilog system path ${boardPaths.verilogSystem} is neither a file nor a directory")
+    }
+
+    // Get all files in the directory recursively
+    val svFiles = Files.walk(boardPaths.verilogSystem)
+      .filter(p => p.toString.endsWith(".sv"))
+      .toArray
+      .map(_.asInstanceOf[Path])
+
+    val topModuleName = config.topModule.fold(_.getSimpleName, _.getSimpleName)
+
+    // We now check if the name of the top module matches any of the files
+    val topModuleFileOpt = svFiles.find { p =>
+      p.getFileName.toString.equals(s"$topModuleName.sv")
+    }
+
+    if (topModuleFileOpt.isEmpty) {
+      throw XilinxDesignException(s"Could not find SystemVerilog file for top module $topModuleName in directory ${boardPaths.verilogSystem}")
+    } else {
+      val topModuleFile = topModuleFileOpt.get
+      val newTopModuleFile = topModuleFile.resolveSibling(topModuleFile.getFileName.toString.replace(".sv", ".v"))
+      Files.move(topModuleFile, newTopModuleFile)
+      soct.log.info(s"Renamed top module file ${topModuleFile.getFileName} to ${newTopModuleFile.getFileName} for Vivado compatibility")
+      newTopModuleFile
     }
   }
 
+  /**
+   * Regex to match a Verilog module declaration. Has three capture groups:
+   * 1: module moduleName (
+   * 2: port declarations
+   * 3: );
+   * @param moduleName Name of the module
+   * @return Regex to match the module declaration
+   */
+  private def verilogModuleRegex(moduleName: String): Regex =
+    s"""(?s)(module\\s+$moduleName\\s*\\()(.*?)(\\)\\s*;)""".r
+
+
+  private def extractPortLines(topVerilog: String, topModuleName: String): Seq[String] = {
+    val m = verilogModuleRegex(topModuleName).findFirstMatchIn(topVerilog).getOrElse {
+      throw XilinxDesignException(
+        s"Could not find module declaration for top module $topModuleName"
+      )
+    }
+    m.group(2).linesIterator.toSeq
+  }
+
+
+  private def patchPortLines(topVerilog: String, topModuleName: String, newPortLines: Seq[String]): String = {
+    val regex = verilogModuleRegex(topModuleName)
+
+    val m = regex.findFirstMatchIn(topVerilog).getOrElse {
+      throw XilinxDesignException(
+        s"Could not find module declaration for top module $topModuleName"
+      )
+    }
+    val moduleStart = m.group(1)
+    val moduleEnd = m.group(3)
+    val ports = newPortLines.mkString("\n") + "\n"
+    val replacement = s"$moduleStart$ports$moduleEnd"
+    regex.replaceFirstIn(topVerilog, replacement)
+  }
 
 
   def generate(boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
-    // Vivado does not allow a SystemVerilog top-level.
-    // We do a highly illegal trick here by just renaming the file extension,
-    // hoping that Chisel did not include any SystemVerilog-specific constructs in the top-level module.
-    // Note that this is not guaranteed to work and may break in future Chisel versions.
-    if (boardPaths.verilogSystem.toFile.isDirectory) {
-      // Get all files in the directory recursively
-      val svFiles = Files.walk(boardPaths.verilogSystem)
-        .filter(p => p.toString.endsWith(".sv"))
-        .toArray
-        .map(_.asInstanceOf[Path])
+    val topModuleFile: Path = convertTopModuleFile(boardPaths, config)
 
-      val topModuleName = config.topModule.fold(_.getSimpleName, _.getSimpleName)
-      // We now check if the name of the top module matches any of the files
-      val topModuleFileOpt = svFiles.find { p =>
-        p.getFileName.toString.equals(s"$topModuleName.sv")
-      }
-      if (topModuleFileOpt.isEmpty) {
-        throw XilinxDesignException(s"Could not find SystemVerilog file for top module $topModuleName in directory ${boardPaths.verilogSystem}")
-      } else {
-        val topModuleFile = topModuleFileOpt.get
-        val newTopModuleFile = topModuleFile.resolveSibling(topModuleFile.getFileName.toString.replace(".sv", ".v"))
-        Files.move(topModuleFile, newTopModuleFile)
-        soct.log.info(s"Renamed top module file ${topModuleFile.getFileName} to ${newTopModuleFile.getFileName} for Vivado compatibility")
-      }
+    val rs = LastRocketSystem.instance.getOrElse {
+      throw XilinxDesignException("No RocketSystem instance found for Vivado generation - did you elaborate the design?")
     }
+    val topVerilog = Files.readString(topModuleFile)
+    val topModuleName = config.topModule.fold(_.getSimpleName, _.getSimpleName)
+
+    var portLines = extractPortLines(topVerilog, topModuleName)
+    val axiInfts = Seq(rs.mem_axi4, rs.mmio_axi4, rs.l2_frontend_bus_axi4).flatten
+    axiInfts.foreach { axiBundle =>
+      // How to address the interface
+      val ifName = snake(axiBundle.instanceName)
+      portLines = annotateAsAXI(ifName, axiBundle, portLines)
+    }
+
+    val newTopVerilog = patchPortLines(topVerilog, topModuleName, portLines)
+    Files.writeString(topModuleFile, newTopVerilog)
   }
 
   def generateProject(tclFile: Path, vivado: Path, vivadoSettings: Option[Path]): Unit = {
