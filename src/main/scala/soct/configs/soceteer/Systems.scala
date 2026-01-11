@@ -1,7 +1,6 @@
 package soct
 
 import chisel3._
-import chisel3.reflect.DataMirror
 import freechips.rocketchip.devices.debug.Debug
 import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, TLROM}
 import freechips.rocketchip.subsystem._
@@ -12,8 +11,6 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule}
 import soct.SOCTUtils.runCMakeCommand
-import soct.xilinx.{BDBuilder, SOCTVivado}
-import soct.xilinx.components._
 
 import java.nio.file.Files
 
@@ -47,44 +44,12 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
 /**
  * Top-level module for Yosys synthesis of the RocketSystem within SOCT
  */
-class SOCTYosysTop(implicit p: Parameters) extends RocketSystem {
-
-}
+class SOCTYosysTop(implicit p: Parameters) extends RocketSystem
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT
  */
-class SOCTSynTop(implicit p: Parameters) extends RocketSystem {
-  implicit val top: ChiselTop = Right(this.getClass)
-  implicit val bd: BDBuilder = new BDBuilder
-
-  // InModuleBody is needed to ensure this code doesn't run before the LazyModule is fully constructed
-  InModuleBody {
-    if (p(HasDDR4ExtMem).isDefined) {
-      DDR4(
-        ddr4Idx = p(HasDDR4ExtMem).get,
-        intf = DDR4BdIntfPort()
-      )
-    }
-
-    if (p(HasSDCardPMOD).isDefined) {
-      SDCardPMOD(
-        pmodIdx = p(HasSDCardPMOD).get,
-        cdPort = SDIOCDPort(),
-        clkPort = SDIOClkPort(),
-        cmdPort = SDIOCmdPort(),
-        dataPort = SDIODataPort()
-      )
-    }
-
-    val tcl = bd.generateTcl()
-
-    println(tcl)
-  }
-
-
-}
-
+class SOCTSynTop(implicit p: Parameters) extends RocketSystem
 
 /**
  * Top-level module for simulation of the RocketSystem within SOCT

@@ -10,7 +10,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.nodes.HeterogeneousBag
 import soct.SOCTLauncher.SOCTConfig
 import soct.xilinx.components._
-import soct.{BoardSOCTPaths, ChiselTop, HasSOCTConfig, HasSOCTPaths, LastRocketSystem, SOCTUtils, log}
+import soct.{BoardSOCTPaths, ChiselTop, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasSOCTPaths, LastRocketSystem, SOCTUtils, log}
 import soct.xilinx.fpga.{FPGA, ZCU104}
 
 import java.nio.file.{Files, Path}
@@ -114,74 +114,97 @@ object SOCTVivado {
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
+  val TAB_SIZE = 2
+
+  val PERIPHERY_CLOCK_FREQ_HZ: Long = 100_000_000
+
   /** Convert a name to snake_case */
   def snake(name: String): String = {
     name.toLowerCase.replace(".", "_")
   }
 
+
+  private case class InterfaceInfo(partName: String, ignoredPorts: Set[String], freqHz: Long)
+
+  /**
+   * Add Vivado port mappings to the given lines
+   *
+   * @param lines        Lines of the Verilog file containing the port declarations
+   * @param portMappings Map of port names to Vivado attribute strings
+   */
+  private def addPortMappings(
+                               lines: mutable.Buffer[String],
+                               portMappings: Map[String, Seq[String]],
+                             ): Unit = {
+    portMappings.foreach { case (portName, attrStrings) =>
+      val lineIdxOpt = lines.zipWithIndex.find { case (line, _) =>
+        line.contains(s"$portName")
+      }.map { case (_, idx) => idx }
+      if (lineIdxOpt.isEmpty) {
+        soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")
+      } else {
+        val lineIdx = lineIdxOpt.get
+        val ws = " " * TAB_SIZE
+        // Insert the annotations before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
+        attrStrings.reverse.foreach { attrString =>
+          lines.insert(lineIdx, ws + attrString)
+        }
+      }
+    }
+  }
+
+
   /**
    * Annotate the given Verilog port lines with Vivado X_INTERFACE_INFO attributes for the given AXI4 interface
    *
-   * @param ifName          Name of the interface
-   * @param axiPort         AXI4Bundle to annotate
-   * @param lines           Lines of the Verilog file containing the port declarations
-   * @param partName        Part name for the X_INTERFACE_INFO attribute
-   * @param yankedPorts     Set of port names to ignore (not annotate)
-   * @param additionalPorts Set of additional port names to annotate (e.g., ready/valid)
-   * @param annoPrefix      Prefix to add before the annotation (e.g., indentation)
-   * @return New lines with annotations added
+   * @param ifName  Name of the interface
+   * @param axiPort AXI4Bundle to annotate
+   * @param lines   Lines of the Verilog file containing the port declarations
+   * @param intf    InterfaceInfo containing details about the interface
+   * @return New lines with X_INTERFACE_INFO lines added
    */
   private def annotateAsAXI(
                              ifName: String,
                              axiPort: AXI4Bundle,
                              lines: Seq[String],
-                             partName: String = "xilinx.com:interface:aximm:1.0",
-                             yankedPorts: Set[String] = Set("user", "echo"),
-                             additionalPorts: Set[String] = Set("ready", "valid"),
-                             annoPrefix: String = " "
+                             intf: InterfaceInfo = InterfaceInfo(
+                               partName = "xilinx.com:interface:aximm:1.0",
+                               ignoredPorts = Set("bits", "user", "echo"),
+                               freqHz = PERIPHERY_CLOCK_FREQ_HZ
+                             )
                            ): Seq[String] = {
-
-    // Maps name of the full port to the Vivado X_INTERFACE_INFO string
-    val portMappings = mutable.Map.empty[String, String]
+    val portMappings = mutable.Map.empty[String, Seq[String]]
 
     axiPort.elements.foreach { case (channelName, channel) =>
-      // Use the DataMirror to map the chisel names to known interface names
-      // AXI4BundleR/AW etc are always the data part, all other fields have standard names
       DataMirror.collectMembers(channel) {
-          case data: AXI4BundleAW => data.elements
-          case data: AXI4BundleW => data.elements
-          case data: AXI4BundleB => data.elements
-          case data: AXI4BundleAR => data.elements
-          case data: AXI4BundleR => data.elements
-          case data: Bundle => data.elements.filter { case (fieldName, _) => additionalPorts.contains(fieldName) }
+          case data: Bundle => data.elements
         }
-        .foldLeft(Map.empty[String, Data])(_ ++ _) // flatten the maps
-        .filterNot { case (fieldName, _) => yankedPorts.contains(fieldName) } // remove yanked ports (ports that are not actually part of the AXI interface)
+        .foldLeft(Map.empty[String, Data])(_ ++ _)
+        .filterNot { case (fieldName, _) => intf.ignoredPorts.contains(fieldName) }
         .foreach { case (fieldName, port) =>
-          val portName = snake(port.instanceName) // Full port name in snake_case - hopefully matches the Verilog port
+          val portName = snake(port.instanceName)
           val xilinxName = s"${channelName.toUpperCase}${fieldName.toUpperCase()}"
-          val attrString = s"(* X_INTERFACE_INFO = \"$partName $ifName $xilinxName\" *)"
-          portMappings += (portName -> attrString)
+          val intfString = s"(* X_INTERFACE_INFO = \"${intf.partName} $ifName $xilinxName\" *)"
+          val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {
+            Some(s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $ifName, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}, FREQ_HZ ${intf.freqHz}\" *)")
+          } else {
+            None
+          }
+          val annotations = paramString match {
+            case Some(param) => Seq(param, intfString)
+            case None => Seq(intfString)
+          }
+          if (portMappings.contains(portName)) {
+            soct.log.warn(s"Port $portName already has Vivado annotations, overwriting")
+          }
+          portMappings(portName) = annotations
         }
     }
 
-    // Now we have all port mappings, we can annotate the port lines
-    val newPortLines = lines.toBuffer
-    portMappings.foreach { case (portName, attrString) =>
-      val lineIdxOpt = newPortLines.zipWithIndex.find { case (line, _) =>
-        line.contains(s"$portName")
-      }.map { case (_, idx) => idx }
 
-      if (lineIdxOpt.isEmpty) {
-        soct.log.warn(s"Could not find port line for AXI4 port $portName in top-level Verilog - not annotating")
-      } else {
-        val lineIdx = lineIdxOpt.get
-        // Insert the annotation before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
-        newPortLines.insert(lineIdx, s"$annoPrefix$attrString")
-      }
-    }
-
-    newPortLines.toSeq
+    val newLines = lines.to(mutable.Buffer)
+    addPortMappings(newLines, portMappings.toMap)
+    newLines.toSeq
   }
 
   /**
@@ -196,11 +219,6 @@ object SOCTVivado {
    */
   private def convertTopModuleFile(boardPaths: BoardSOCTPaths, config: SOCTConfig): Path = {
     val file = boardPaths.verilogSystem.toFile
-
-    if (!file.exists()) {
-      throw XilinxDesignException(s"Verilog system path ${boardPaths.verilogSystem} does not exist")
-    }
-
     if (file.isFile) {
       return boardPaths.verilogSystem
     }
@@ -238,6 +256,7 @@ object SOCTVivado {
    * 1: module moduleName (
    * 2: port declarations
    * 3: );
+   *
    * @param moduleName Name of the module
    * @return Regex to match the module declaration
    */
@@ -272,21 +291,47 @@ object SOCTVivado {
 
 
   def generate(boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
-    val topModuleFile: Path = convertTopModuleFile(boardPaths, config)
-
     val rs = LastRocketSystem.instance.getOrElse {
       throw XilinxDesignException("No RocketSystem instance found for Vivado generation - did you elaborate the design?")
     }
+    implicit val top: ChiselTop = Right(rs.getClass)
+    implicit val p: Parameters = rs.p
+    implicit val bd: BDBuilder = new BDBuilder
+
+    if (p(HasDDR4ExtMem).isDefined) {
+      DDR4(
+        ddr4Idx = p(HasDDR4ExtMem).get,
+        intf = DDR4BdIntfPort()
+      )
+    }
+
+    if (p(HasSDCardPMOD).isDefined) {
+      SDCardPMOD(
+        pmodIdx = p(HasSDCardPMOD).get,
+        cdPort = SDIOCDPort(),
+        clkPort = SDIOClkPort(),
+        cmdPort = SDIOCmdPort(),
+        dataPort = SDIODataPort()
+      )
+    }
+
+    val topModuleFile: Path = convertTopModuleFile(boardPaths, config)
     val topVerilog = Files.readString(topModuleFile)
     val topModuleName = config.topModule.fold(_.getSimpleName, _.getSimpleName)
 
     var portLines = extractPortLines(topVerilog, topModuleName)
+
+    // Annotate AXI4 interfaces - Every RocketSystem has these
     val axiInfts = Seq(rs.mem_axi4, rs.mmio_axi4, rs.l2_frontend_bus_axi4).flatten
     axiInfts.foreach { axiBundle =>
       // How to address the interface
       val ifName = snake(axiBundle.instanceName)
       portLines = annotateAsAXI(ifName, axiBundle, portLines)
     }
+
+    val tcl = bd.generateTcl()
+
+    println(tcl)
 
     val newTopVerilog = patchPortLines(topVerilog, topModuleName, portLines)
     Files.writeString(topModuleFile, newTopVerilog)

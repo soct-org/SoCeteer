@@ -1,5 +1,5 @@
 // 7.6.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
-val fallbackChiselVersion = "3.6.1"
+val fallbackChiselVersion = "7.6.0"
 
 val params = sys.env.get("SOCT_CHISEL_VERSION") match {
   case Some(v) => Seq(v.startsWith("3."), v)
