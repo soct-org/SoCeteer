@@ -56,7 +56,9 @@ class SOCTVivadoTop(implicit p: Parameters) extends RocketSystem {
   implicit val bd: BDBuilder = p(HasBdBuilder).getOrElse(
     throw new IllegalArgumentException("No BDBuilder found in parameters for SOCTVivadoTop")
   )
+
   bd.init(p)
+
   InModuleBody {
     val peripheryClock = ClockDomain("periphery_clock", p(PeripheryClockFrequency)) // TODO allow to not have a separate periphery clock
 

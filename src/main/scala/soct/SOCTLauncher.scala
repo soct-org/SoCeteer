@@ -63,13 +63,10 @@ object SOCTLauncher {
 
     SOCTVivado.prepareForVivado(boardPaths, config)
 
-    if (args.overrideVivadoProject) {
-      if (args.vivado.isEmpty) {
-        log.warn("No Vivado path provided, cannot override existing Vivado project.")
-      }
-      else {
-        SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get)
-      }
+    if (args.vivado.isEmpty) {
+      log.warn("No Vivado path provided, cannot override existing Vivado project.")
+    } else {
+      SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get)
     }
   }
 
