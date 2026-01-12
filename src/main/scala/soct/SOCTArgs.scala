@@ -82,7 +82,7 @@ case class SOCTArgs(
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
-                     singleVerilogFile: Boolean = true,
+                     singleVerilogFile: Boolean = false,
                      includeLocationInfo: Boolean = false,
                      target: Targets = Targets.Verilator,
                      userBootrom: Option[String] = None,
@@ -128,7 +128,10 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       case Targets.Verilator =>
         args
       case Targets.Vivado =>
-        args
+        if (args.singleVerilogFile && !SOCTUtils.isOldChiselAPI) {
+          log.warn("Overriding --single-verilog-file for Vivado target - We do not support a single verilog file emitted by modern Chisel versions.")
+        }
+        args.copy(singleVerilogFile = false)
       case Targets.Yosys =>
         if (!args.singleVerilogFile) {
           log.warn("Overriding --single-verilog-file for Yosys target - Yosys requires a single verilog file.")
