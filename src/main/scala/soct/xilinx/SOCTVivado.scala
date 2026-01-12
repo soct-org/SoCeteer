@@ -175,10 +175,15 @@ class BDBuilder() {
     // generate header with variable descriptions, using a subset of vals in vars
     val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) }
 
+    // Collect all Xilinx IP components which are instantiable
+    val xilinxIps = components.collect {
+      case ip: InstantiableBdComp if ip.isInstanceOf[IsXilinxIP] =>
+        ip.asInstanceOf[IsXilinxIP]
+    }
 
     s"""${genTCLHeader(bdVars)}
        |
-       |# Helper procedures
+       |######## Helper procedures ########
        |proc error_exit {id msg} {
        |  common::send_gid_msg -ssname BD::TCL -id $$id -severity "ERROR" $$msg
        |  error $$msg
@@ -192,6 +197,9 @@ class BDBuilder() {
        |  common::send_gid_msg -ssname BD::TCL -id $$id -severity "INFO" $$msg
        |}
        |
+       |
+       |######## Project & Board design (bd) validation ########
+       |
        |# Check if the current project matches the expected project name
        |if {[llength [get_projects -quiet]] == 0} {
        |  error_exit 2000 "No Vivado project is opened. Please open a project before sourcing this script."
@@ -202,13 +210,9 @@ class BDBuilder() {
        |  }
        |}
        |
-       |# Capture current context (design + instance scope)
        |set cur_design [current_bd_design -quiet]
        |set cur_inst [current_bd_instance -quiet]
-       |
        |set bd_exists [llength [get_bd_designs -quiet ${k.bdName}]]
-       |
-       |
        |if {$$bd_exists == 0} {
        |  # If there is an existing block design opened, close it
        |  if {[llength $$cur_design] != 0} {
@@ -248,6 +252,25 @@ class BDBuilder() {
        |}
        |
        |info_msg 2005 "Created / opened block design ${k.bdName} successfully."
+       |
+       |
+       |######## Check for required Xilinx IPs ########
+       |
+       |set list_ips_missing {}
+       |set list_check_ips [list \\
+       |${xilinxIps.map(_.partName).map(ip => s"  \"$ip\"").mkString(" \\\n")}
+       |]
+       |foreach ip_name $$list_check_ips {
+       |  if {[llength [get_ipdefs -all $$ip_name]] == 0} {
+       |    lappend list_ips_missing $$ip_name
+       |  }
+       |}
+       |if {[llength $$list_ips_missing] != 0} {
+       |  error_exit 2006 "The following required Xilinx IPs are missing: \\n  [join $$list_ips_missing "\\n  "]\\nPlease install them via the Vivado IP Catalog before sourcing this script."
+       |}
+       |
+       |info_msg 2007 "All required Xilinx IPs are available."
+       |
        |
        |# Declare ports
        |${portsTcl}
