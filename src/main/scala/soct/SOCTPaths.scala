@@ -67,6 +67,7 @@ object SOCTPaths {
 
     val baseDyn: Map[String, Path] = Map(
       "workspace" -> root.resolve("workspace"),
+      "vivado-projects" -> root.resolve("vivado-projects"),
       "sim-configs" -> base("sim").resolve("configs") // may not exist
     )
 
@@ -166,6 +167,8 @@ private class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPat
 
 private class BoardSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {
   val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(s"system-${args.board.get}")
+  val vivadoProjectDir: Path = args.vivadoProjectDir.resolve(s"${config.configName}-${args.board.get}")
+  val tclInitFile: Path = systemDir.resolve("init.tcl")
 }
 
 private class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {

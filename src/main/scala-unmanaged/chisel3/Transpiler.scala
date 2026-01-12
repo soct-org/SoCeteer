@@ -1,5 +1,7 @@
 package soct
 
+import chisel3.{Data, Element}
+import chisel3.reflect.DataMirror
 import chisel3.stage.ChiselGeneratorAnnotation
 import firrtl.AnnotationSeq
 import firrtl.annotations.{Annotation, JsonProtocol}
@@ -11,6 +13,28 @@ import firrtl.options.TargetDirAnnotation
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 import scala.collection.mutable
+
+
+object ChiselCompat {
+  def collectLeafMembers(data: Data): Seq[Data] = {
+    DataMirror.collectMembers(data) {
+        case x: Element => x
+      }
+      .toVector
+  }
+
+  def collectAll(data: Data): Seq[String, Data] = {
+    // Collect all elements, add them to a map, then recursively all other
+    val all = mutable.Map[String, Data]()
+
+    DataMirror.collectMembers(data) {
+        case x: Element => all += (x.instanceName -> x) // TODO only use the last part of the name
+        case other: Data =>
+          val childs = collectLeafMembers(other)
+    }
+
+  }
+}
 
 object Transpiler  {
 

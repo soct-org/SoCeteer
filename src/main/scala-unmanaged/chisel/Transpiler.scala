@@ -1,6 +1,7 @@
 package soct
 
-import chisel3.Data
+import chisel3.{Data, Element}
+import chisel3.reflect.DataMirror
 import circt.stage.ChiselStage
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
@@ -9,9 +10,8 @@ import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
 object ChiselCompat {
-
-  def addAttribute(target: Data, annoString: String): Unit = {
-    chisel3.util.addAttribute(target, annoString)
+  def collectLeafMembers(data: Data): Seq[Data] = {
+    DataMirror.collectLeafMembers(data)
   }
 }
 

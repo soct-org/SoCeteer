@@ -35,7 +35,7 @@ object Targets {
   case object Vivado extends Targets {
     val name: String = "vivado"
     val defaultBootrom: String = "sd-boot"
-    val defaultTop: ChiselTop = Right(classOf[SOCTSynTop])
+    val defaultTop: ChiselTop = Right(classOf[SOCTVivadoTop])
   }
 
   /**
@@ -78,6 +78,7 @@ object Targets {
 case class SOCTArgs(
                      // General options
                      workspaceDir: Path = SOCTPaths.get("workspace"),
+                     vivadoProjectDir: Path = SOCTPaths.get("vivado-projects"),
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
@@ -104,10 +105,10 @@ case class SOCTArgs(
                      // Simulation options
                      overrideSimFiles: Boolean = true,
                      // Vivado specific options
-                     vivadoSettings: Option[Path] = None,
                      vivado: Option[Path] = None,
                      board: Option[FPGA] = None,
                      freqsMHz: Seq[Double] = Seq(100.0),
+                     overrideVivadoProject: Boolean = true,
                      // Terminating options
                      getVersion: Boolean = false, // Print the version of the tool
                      wtf: Boolean = false, // What the firtool - for debugging
@@ -138,6 +139,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   help("help").text("Prints this usage text")
   // General options
   opt[String]('o', "out-dir").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated files. Default is ${defaultSOCTArgs.workspaceDir}.")
+  opt[String]("vivado-project-dir").action((x, c) => c.copy(vivadoProjectDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated vivado projects. Default is ${defaultSOCTArgs.vivadoProjectDir}.")
   opt[String]('c', "configs")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
@@ -179,7 +181,6 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[Unit]("no-override-sim-files").action((_, c) => c.copy(overrideSimFiles = false)).text(s"When generating a design to be used with simulation, DO NOT copy, and potentially overwrite the files to the simulation directory - Only keep them in the workspace directory.")
 
   // Vivado specific options
-  opt[String]("vivado-settings").action((x, c) => c.copy(vivadoSettings = Some(Paths.get(x)))).text(s"The vivado settings file to run before executing vivado. Default is ${defaultSOCTArgs.vivadoSettings}.")
   opt[String]("vivado").action((x, c) => c.copy(vivado = Some(Paths.get(x)))).text(s"The vivado executable script to use. Default is ${defaultSOCTArgs.vivado}.")
   opt[String]('b', "board")
     .action((x, c) => c.copy(board = FPGARegistry.resolve(x)))
@@ -195,7 +196,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure("Frequencies must be positive numbers.")
     })
     .text(s"The target frequency in MHz for the design. Either a single frequency for all cores or a comma separated list of frequencies for each core for the config provided. Default is ${defaultSOCTArgs.freqsMHz.head} MHz.")
-
+  opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the workspace directory.")
   // Terminating options
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")
   opt[Unit]("wtf").action((_, c) => c.copy(wtf = true)).text("What the firtool -- Prints the firtool help.")

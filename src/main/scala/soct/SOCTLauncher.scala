@@ -14,10 +14,11 @@ object SOCTLauncher {
 
   /**
    * Configuration for the SOCT design generation
-   * @param args The parsed SOCT arguments
-   * @param mabi The RISC-V ABI to use for compiling the bootrom
-   * @param topModule The top module to instantiate
-   * @param params The Parameters to use for the design generation
+   *
+   * @param args       The parsed SOCT arguments
+   * @param mabi       The RISC-V ABI to use for compiling the bootrom
+   * @param topModule  The top module to instantiate
+   * @param params     The Parameters to use for the design generation
    * @param configName The name of the configuration (used for output directories)
    */
   case class SOCTConfig(
@@ -52,7 +53,7 @@ object SOCTLauncher {
       throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
     }
     config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
-    config.params = config.params.orElse(new soct.RocketSynBaseConfig)
+    config.params = config.params.orElse(new soct.RocketVivadoBaseConfig)
 
     Transpiler.evalDesign(config, boardPaths)
 
@@ -60,7 +61,16 @@ object SOCTLauncher {
 
     Transpiler.emitVerilog(config, boardPaths)
 
-    SOCTVivado.generate(boardPaths, config)
+    SOCTVivado.prepareForVivado(boardPaths, config)
+
+    if (args.overrideVivadoProject) {
+      if (args.vivado.isEmpty) {
+        log.warn("No Vivado path provided, cannot override existing Vivado project.")
+      }
+      else {
+        SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get)
+      }
+    }
   }
 
   // Generate the design for Yosys synthesis

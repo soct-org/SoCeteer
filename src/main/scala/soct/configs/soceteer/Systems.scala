@@ -11,6 +11,8 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule}
 import soct.SOCTUtils.runCMakeCommand
+import soct.xilinx.BDBuilder
+import soct.xilinx.components._
 
 import java.nio.file.Files
 
@@ -47,9 +49,40 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
 class SOCTYosysTop(implicit p: Parameters) extends RocketSystem
 
 /**
- * Top-level module for synthesis of the RocketSystem within SOCT
+ * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
-class SOCTSynTop(implicit p: Parameters) extends RocketSystem
+class SOCTVivadoTop(implicit p: Parameters) extends RocketSystem {
+  implicit val top: ChiselTop = Right(this.getClass)
+  implicit val bd: BDBuilder = p(HasBdBuilder).getOrElse(
+    throw new IllegalArgumentException("No BDBuilder found in parameters for SOCTVivadoTop")
+  )
+  bd.init(p)
+  InModuleBody {
+    val peripheryClock = ClockDomain("periphery_clock", p(PeripheryClockFrequency)) // TODO allow to not have a separate periphery clock
+
+    val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
+    axiInfts.foreach { axiInft =>
+      AXIBdXInterface(axiInft, peripheryClock)
+    }
+
+    if (p(HasDDR4ExtMem).isDefined) {
+      DDR4(
+        ddr4Idx = p(HasDDR4ExtMem).get,
+        intf = DDR4BdIntfPort()
+      )
+    }
+
+    if (p(HasSDCardPMOD).isDefined) {
+      SDCardPMOD(
+        pmodIdx = p(HasSDCardPMOD).get,
+        cdPort = SDIOCDPort(),
+        clkPort = SDIOClkPort(),
+        cmdPort = SDIOCmdPort(),
+        dataPort = SDIODataPort()
+      )
+    }
+  }
+}
 
 /**
  * Top-level module for simulation of the RocketSystem within SOCT

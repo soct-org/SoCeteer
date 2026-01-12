@@ -63,6 +63,37 @@ abstract class BdComp()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) e
   bd.add(this)
 }
 
+
+/**
+ * Case class representing a clock domain in the design - TODO: Missing many parameters
+ *
+ * @param name         The name of the clock domain
+ * @param frequencyMHz The frequency of the clock domain in MHz
+ */
+case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp
+
+
+/**
+ * Base class for Board Design X Interfaces.
+ * Used to add extra annotations to ports in the design.
+ */
+abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
+  /**
+   * Prefix to use for port annotations - default is two spaces equaling indentation for IO
+   */
+  val prefix = "  "
+
+  /**
+   * The name of the signal group for this port, relevant for example for X_INTERFACE_INFO annotations
+   */
+  def ifName: String
+
+  /**
+   * The port mapping for this interface - maps signal names to sequences of annotation strings
+   */
+  def portMapping: Map[String, Seq[String]]
+}
+
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
@@ -182,7 +213,7 @@ trait IsModule {
 /**
  * Trait for Xilinx IP components
  */
-trait IsXilinxIP  {
+trait IsXilinxIP {
   /**
    * The part name of this Xilinx IP
    */

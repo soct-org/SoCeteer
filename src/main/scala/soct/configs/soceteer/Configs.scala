@@ -8,6 +8,7 @@ import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tile.{LookupByHartId, MaxHartIdBits, PriorityMuxHartIdFromSeq}
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTLauncher.SOCTConfig
+import soct.xilinx.BDBuilder
 import soct.xilinx.fpga.FPGA
 
 /*----------------- Base Configs ---------------*/
@@ -66,13 +67,15 @@ class RocketSimBaseConfig extends Config(
     new RocketBaseConfig
 )
 
-class RocketSynBaseConfig extends Config(
+class RocketVivadoBaseConfig extends Config(
   new WithDTS("freechips,rocketchip-vivado", Nil) ++
+    new WithBdBuilder(new BDBuilder) ++
     new WithDefaultSlavePort ++
     new WithJtagDTM ++
     new WithDebugSBA ++
     new WithDDR4ExtMem ++
     new WithSDCardPMOD ++
+    new WithPeripheryClockDomain(100.0) ++ // 100 MHz periphery clock
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )
@@ -123,6 +126,20 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
 
 
 /*----------------- Clock Speeds ---------------*/
+
+/**
+ * Field to specify the periphery clock frequency in MHz - for parts like the SDCard controller and UART.
+ */
+case object PeripheryClockFrequency extends Field[Double](100.0)
+
+/**
+ * Field to specify the system bus clock frequency in MHz.
+ */
+class WithPeripheryClockDomain(freqMHz: Double) extends Config((site, here, up) => {
+  case PeripheryClockFrequency => freqMHz
+})
+
+
 class WithSingleClockDomain(freqMHz: Double) extends Config(
   new WithPeripheryBusFrequency(freqMHz) ++
     new WithSystemBusFrequency(freqMHz) ++
@@ -156,6 +173,20 @@ class WithHartBootFreqMHz(freqsMHz: Seq[Double]) extends Config((site, here, up)
  */
 case object HasXilinxFPGA extends Field[Option[FPGA]](None)
 
+
+/**
+ * Field to hold the BDBuilder instance for Xilinx FPGA designs.
+ */
+case object HasBdBuilder extends Field[Option[BDBuilder]](None)
+
+
+/**
+ * Class to add a BDBuilder to the configuration. Used to generate Vivado block designs.
+ * @param bd The BDBuilder instance to add to the configuration.
+ */
+class WithBdBuilder(bd: BDBuilder) extends Config((_, _, _) => {
+  case HasBdBuilder => Some(bd)
+})
 
 class WithXilinxFPGA(fpga: FPGA) extends Config((_, _, _) => {
   case HasXilinxFPGA => Some(fpga)
