@@ -22,7 +22,7 @@ case class DDR4(ddr4Idx: Int,
                (implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
   extends InstantiableBdComp with IsXilinxIP {
 
-  override def partName: String = "xilinx.com:ip:ddr4:2.2xilinx.com:ip:ddr4:2.2"
+  override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
   override def checkAvailable(): Unit = {
     super.checkAvailable()

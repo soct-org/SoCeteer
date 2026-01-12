@@ -46,12 +46,12 @@ class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsyst
 /**
  * Top-level module for Yosys synthesis of the RocketSystem within SOCT
  */
-class SOCTYosysTop(implicit p: Parameters) extends RocketSystem
+class SOCTYosysSystem(implicit p: Parameters) extends RocketSystem
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
-class SOCTVivadoTop(implicit p: Parameters) extends RocketSystem {
+class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
   implicit val top: ChiselTop = Right(this.getClass)
   implicit val bd: BDBuilder = p(HasBdBuilder).getOrElse(
     throw new IllegalArgumentException("No BDBuilder found in parameters for SOCTVivadoTop")
@@ -89,7 +89,7 @@ class SOCTVivadoTop(implicit p: Parameters) extends RocketSystem {
 /**
  * Top-level module for simulation of the RocketSystem within SOCT
  */
-class SOCTSimTop()(implicit p: Parameters) extends Module {
+class SOCTSimSystem()(implicit p: Parameters) extends Module {
   val io = IO(new Bundle {
     val success = Output(Bool())
   })

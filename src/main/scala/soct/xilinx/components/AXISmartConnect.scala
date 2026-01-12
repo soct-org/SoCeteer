@@ -35,7 +35,7 @@ extends BdXInterface with IsXilinxIP {
           val intfString = s"(* X_INTERFACE_INFO = \"$partName $ifName $xilinxName\" *)"
           val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {
             Some(
-              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $ifName, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}, CLK_DOMAIN ${clockDomain.name}\" *)"
+              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $ifName, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
             )
           } else None
 

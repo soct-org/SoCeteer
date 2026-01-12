@@ -35,7 +35,7 @@ object Targets {
   case object Vivado extends Targets {
     val name: String = "vivado"
     val defaultBootrom: String = "sd-boot"
-    val defaultTop: ChiselTop = Right(classOf[SOCTVivadoTop])
+    val defaultTop: ChiselTop = Right(classOf[SOCTVivadoSystem])
   }
 
   /**
@@ -44,7 +44,7 @@ object Targets {
   case object Yosys extends Targets {
     val name: String = "yosys"
     val defaultBootrom: String = "sd-boot"
-    val defaultTop: ChiselTop  = Right(classOf[SOCTYosysTop])
+    val defaultTop: ChiselTop  = Right(classOf[SOCTYosysSystem])
   }
 
   /**
@@ -53,7 +53,7 @@ object Targets {
   case object Verilator extends Targets {
     val name: String = "verilator"
     val defaultBootrom: String = "testchipip-boot"
-    val defaultTop: ChiselTop  = Left(classOf[SOCTSimTop])
+    val defaultTop: ChiselTop  = Left(classOf[SOCTSimSystem])
   }
 
   /**

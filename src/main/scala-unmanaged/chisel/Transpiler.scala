@@ -69,7 +69,6 @@ object Transpiler {
     }
 
     val args = Seq(paths.firtoolBinary.toString) ++ c.args.userFirtoolArgs ++ otherArgs ++ Seq(paths.firrtlFile.toString)
-    println(args)
     new ProcessBuilder(args: _*)
       .inheritIO()
       .start()
