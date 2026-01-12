@@ -165,10 +165,22 @@ private class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPat
   val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve("system-yosys")
 }
 
-private class BoardSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {
-  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(s"system-${args.board.get}")
-  val vivadoProjectDir: Path = args.vivadoProjectDir.resolve(s"${config.configName}-${args.board.get}")
+private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {
+  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(args.board.get.friendlyName)
+  /**
+   * Path to the Vivado project directory - where the Vivado project files like the .xpr file will be stored
+   */
+  val vivadoProjectDir: Path = args.vivadoProjectDir.resolve(config.configName).resolve(args.board.get.friendlyName)
+
+  /**
+   * Path to the TCL file that initializes the Vivado project (loading sources, constraints, etc.)
+   */
   val tclInitFile: Path = systemDir.resolve("init.tcl")
+
+  /**
+   * Path to the TCL file that loads the block design for the top module in Vivado
+   */
+  val bdLoadFile: Path = systemDir.resolve(s"${config.topModuleName}_bd.tcl")
 }
 
 private class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args) {

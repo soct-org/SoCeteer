@@ -15,16 +15,18 @@ object SOCTLauncher {
   /**
    * Configuration for the SOCT design generation
    *
-   * @param args       The parsed SOCT arguments
-   * @param mabi       The RISC-V ABI to use for compiling the bootrom
-   * @param topModule  The top module to instantiate
-   * @param params     The Parameters to use for the design generation
-   * @param configName The name of the configuration (used for output directories)
+   * @param args          The parsed SOCT arguments
+   * @param mabi          The RISC-V ABI to use for compiling the bootrom
+   * @param topModule     The top module to instantiate
+   * @param topModuleName The name of the top module
+   * @param params        The Parameters to use for the design generation
+   * @param configName    The name of the configuration (used for output directories)
    */
   case class SOCTConfig(
                          args: SOCTArgs,
                          mabi: String,
                          topModule: ChiselTop,
+                         topModuleName: String,
                          var params: Parameters,
                          configName: String,
                        )
@@ -34,13 +36,14 @@ object SOCTLauncher {
       val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
       val params = new WithHartBootFreqMHz(args.freqsMHz) ++ args.baseConfig
       val topModule = args.userTop.getOrElse(args.target.defaultTop)
+      val topModuleName = topModule.fold(_.getSimpleName, _.getSimpleName)
       val configName = s"${args.baseConfig.getClass.getSimpleName}-${args.xlen}"
-      new SOCTConfig(args, mabi, topModule, params, configName)
+      new SOCTConfig(args, mabi, topModule, topModuleName, params, configName)
     }
   }
 
   // Generate the design for Vivado synthesis
-  private def generateVivadoDesign(args: SOCTArgs, boardPaths: BoardSOCTPaths, config: SOCTConfig): Unit = {
+  private def generateVivadoDesign(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for Vivado synthesis")
     log.debug(s"Using the following paths: ${boardPaths.toString}")
 
@@ -136,7 +139,7 @@ object SOCTLauncher {
         case Targets.Verilator =>
           new SimSOCTPaths(args, config)
         case Targets.Vivado =>
-          new BoardSOCTPaths(args, config)
+          new VivadoSOCTPaths(args, config)
         case Targets.Yosys =>
           new YosysSOCTPaths(args, config)
       }
@@ -154,7 +157,7 @@ object SOCTLauncher {
           generateSimDesign(args, paths.asInstanceOf[SimSOCTPaths], config)
         case Targets.Vivado =>
           log.info(s"Targeting Vivado synthesis for board ${args.board.get}")
-          generateVivadoDesign(args, paths.asInstanceOf[BoardSOCTPaths], config)
+          generateVivadoDesign(args, paths.asInstanceOf[VivadoSOCTPaths], config)
         case Targets.Yosys =>
           log.info("Targeting Yosys synthesis")
           generateYosysDesign(args, paths.asInstanceOf[YosysSOCTPaths], config)

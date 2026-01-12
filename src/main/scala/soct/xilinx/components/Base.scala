@@ -79,11 +79,6 @@ case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: BDBuilde
  */
 abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
   /**
-   * Prefix to use for port annotations - default is two spaces equaling indentation for IO
-   */
-  val prefix = "  "
-
-  /**
    * The name of the signal group for this port, relevant for example for X_INTERFACE_INFO annotations
    */
   def ifName: String
