@@ -69,7 +69,7 @@ object SOCTLauncher {
     if (args.vivado.isEmpty) {
       log.warn("No Vivado path provided, cannot override existing Vivado project.")
     } else {
-      SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get)
+      SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get, boardPaths.vivadoProjectDir)
     }
   }
 
@@ -150,6 +150,9 @@ object SOCTLauncher {
         paths.systemDir.toFile.deleteRecursively()
         log.info(s"Removed existing files in ${paths.systemDir}")
       }
+
+      // Create the Verilog source directory - needed for all targets
+      paths.verilogSrc.toFile.mkdirs()
 
       args.target match {
         case Targets.Verilator =>

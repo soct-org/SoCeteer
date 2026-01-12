@@ -22,18 +22,6 @@ object ChiselCompat {
       }
       .toVector
   }
-
-  def collectAll(data: Data): Seq[String, Data] = {
-    // Collect all elements, add them to a map, then recursively all other
-    val all = mutable.Map[String, Data]()
-
-    DataMirror.collectMembers(data) {
-        case x: Element => all += (x.instanceName -> x) // TODO only use the last part of the name
-        case other: Data =>
-          val childs = collectLeafMembers(other)
-    }
-
-  }
 }
 
 object Transpiler  {
@@ -74,7 +62,7 @@ object Transpiler  {
       }
     store(paths.annoFile, firrtl.annotations.JsonProtocol.serialize(annos))
     freechips.rocketchip.util.ElaborationArtefacts.files.foreach {
-      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configName}.$ext"), contents())
+      case (ext, contents) => store(paths.systemDir.resolve(s"${c.topModuleName}.$ext"), contents())
     }
   }
 
@@ -94,7 +82,7 @@ object Transpiler  {
   def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate verilog")
     val verilogAnnos: Seq[Annotation] = Seq(
-      OutputFileAnnotation(paths.verilogSystem.toString),
+      OutputFileAnnotation(paths.verilogSrc.resolve(s"${c.topModuleName}.v").toString),
       FirrtlFileAnnotation(paths.lowFirrtlFile.toString),
     )
     var loweringArgs = mutable.Seq("-E=verilog", "--start-from=low-opt", s"-ll=${c.args.logLevel}")

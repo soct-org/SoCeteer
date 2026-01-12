@@ -82,7 +82,7 @@ case class SOCTArgs(
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
-                     singleVerilogFile: Boolean = false,
+                     singleVerilogFile: Boolean = true,
                      includeLocationInfo: Boolean = false,
                      target: Targets = Targets.Verilator,
                      userBootrom: Option[String] = None,
@@ -130,6 +130,9 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       case Targets.Vivado =>
         args
       case Targets.Yosys =>
+        if (!args.singleVerilogFile) {
+          log.warn("Overriding --single-verilog-file for Yosys target - Yosys requires a single verilog file.")
+        }
         args.copy(singleVerilogFile = true)
     }
   }

@@ -38,7 +38,7 @@ object Transpiler {
     Files.write(paths.firrtlFile, circuit.serialize.getBytes)
 
     freechips.rocketchip.util.ElaborationArtefacts.files.foreach {
-      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configName}.$ext"), contents())
+      case (ext, contents) => store(paths.systemDir.resolve(s"${c.topModuleName}.$ext"), contents())
     }
   }
 
@@ -51,25 +51,25 @@ object Transpiler {
 
     // Args for --lowering-options=
     var loweringOptions = mutable.Seq("disallowPortDeclSharing")
-    var loweringArgs = mutable.Seq(s"-o=${paths.verilogSystem.toString}")
 
-    loweringArgs ++= {
-      if (c.args.singleVerilogFile) {
-      Seq("--verilog", "--disable-layers=Verification")
+    // Other firtool args
+    var otherArgs = if (c.args.singleVerilogFile) {
+      val outFile = paths.verilogSrc.resolve(s"${c.topModuleName}.sv")
+      mutable.Seq(s"-o=${outFile.toString}", "--verilog", "--disable-layers=Verification")
     } else {
-      Seq("--split-verilog")
-    }}
+      mutable.Seq(s"-o=${paths.verilogSrc.toString}", "--split-verilog")
+    } ++ Seq("--disable-annotation-unknown", "--format=fir", "-O=release")
 
     if (!c.args.includeLocationInfo) {
       loweringOptions +:= "locationInfoStyle=none"
     }
 
     if (loweringOptions.nonEmpty) {
-      loweringArgs +:= s"--lowering-options=${loweringOptions.mkString(",")}"
+      otherArgs +:= s"--lowering-options=${loweringOptions.mkString(",")}"
     }
 
-    val args = Seq(paths.firtoolBinary.toString) ++ c.args.userFirtoolArgs ++
-      Seq("--disable-annotation-unknown", "--format=fir", "-O=release") ++ loweringArgs ++ Seq(paths.firrtlFile.toString)
+    val args = Seq(paths.firtoolBinary.toString) ++ c.args.userFirtoolArgs ++ otherArgs ++ Seq(paths.firrtlFile.toString)
+    println(args)
     new ProcessBuilder(args: _*)
       .inheritIO()
       .start()
