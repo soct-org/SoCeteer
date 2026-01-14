@@ -23,6 +23,14 @@ case class InlineConstant(value: UInt,
 
   override def friendlyName: String = s"constant_${nBits}bit_${value.litValue}"
 
+  override def ipType: String = "inline_hdl"
+
+  override def defaultProperties: Map[String, String] = Map(
+    "CONFIG.CONST_VAL" -> s"${value.litValue}",
+    "CONFIG.CONST_WIDTH" -> s"${nBits}"
+  )
+
+
   val outPort: String = "dout"
 
   /**

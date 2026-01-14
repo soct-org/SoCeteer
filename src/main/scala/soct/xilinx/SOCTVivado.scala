@@ -54,7 +54,7 @@ object FPGARegistry {
   }
 }
 
-class BDBuilder() {
+class BDBuilder {
   private val components = mutable.Set.empty[BdComp]
 
   private final case class TclVar(description: String, default: String)
@@ -92,15 +92,25 @@ class BDBuilder() {
   }
 
   /**
-   * Initialize the BDBuilder with parameters
-   *
-   * @param p Parameters
+   * Get the top-level instance representing the design in the block design
    */
-  def init(p: Parameters): Unit = {
+  var topInstance: () => InstantiableBdComp with IsModule = () => {
+    throw XilinxDesignException("Please call init before accessing topInstance")
+  }
+
+
+  /**
+   * Initialize the BDBuilder with parameters and top-level instance. MUST be called before generating scripts or adding components.
+   *
+   * @param p       Parameters
+   * @param topInst Top-level instantiable block design component
+   */
+  def init(p: Parameters, topInst: InstantiableBdComp with IsModule): Unit = {
     val paths = p(HasSOCTPaths).asInstanceOf[VivadoSOCTPaths]
     val config = p(HasSOCTConfig)
     val fpga = p(HasXilinxFPGA).get
     val aggressive = config.args.overrideVivadoProject
+    topInstance = () => topInst
 
     vars = Map(
       k.aggressive -> TclVar("Whether to aggressively overwrite existing Vivado projects and sources", if (aggressive) "1" else "0"),
@@ -165,8 +175,23 @@ class BDBuilder() {
         soct.log.warn(s"Unknown type: ${c.friendlyName}")
     }
 
+    // Get all components that have default properties that are not an empty map
+    val componentsWithProperties = components.collect {
+      case c: InstantiableBdComp if c.defaultProperties.nonEmpty => c
+    }
+
+    // Generate a set_property command for each component with default properties
+    val propertyCommands = componentsWithProperties.map { c =>
+      s"""
+         |# Set default properties for component ${c.friendlyName}
+         |set_property -dict [list \\
+         |${c.defaultProperties.map { case (k, v) => s"  $k {$v}" }.mkString(" \\\n") + " \\"}
+         |] $$${c.instanceName}
+         |""".stripMargin
+    }
+
     // Keys for TCL variables used in the script
-    val bdKeys = Seq(k.bdName, k.projectName)
+    val bdKeys = Seq(k.bdName, k.projectName, k.sources)
 
     // generate header with variable descriptions, using a subset of vals in vars
     val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) }
@@ -209,45 +234,43 @@ class BDBuilder() {
        |  }
        |}
        |
+       |# Save current BD context (best effort)
        |set cur_design [current_bd_design -quiet]
-       |set cur_inst [current_bd_instance -quiet]
-       |set bd_exists [llength [get_bd_designs -quiet ${k.bdName}]]
-       |if {$$bd_exists == 0} {
-       |  # If there is an existing block design opened, close it
-       |  if {[llength $$cur_design] != 0} {
-       |    warn_msg 2002 "Other block designs is currently opened. Closing it to continue."
-       |    save_bd_design $$cur_design
-       |    close_bd_design $$cur_design
-       |  }
-       |  create_bd_design ${k.bdName}
+       |set cur_inst   [current_bd_instance -quiet]
+       |
+       |# Construct BD file path (Vivado-standard layout)
+       |set bd_file [file join \\
+       |  [get_property DIRECTORY [current_project]] \\
+       |  ${k.projectName}.srcs \\
+       |  ${k.sources} \\
+       |  bd \\
+       |  ${k.bdName} \\
+       |  ${k.bdName}.bd]
+       |
+       |# Open existing BD or create a new one
+       |if {[file exists $$bd_file]} {
+       |  open_bd_design $$bd_file
        |} else {
-       |  # Ensure requested BD is the current BD for the emptiness check
-       |  if {[llength $$cur_design] == 0} {
-       |    open_bd_design ${k.bdName}
-       |  } elseif {$$cur_design ne ${k.bdName}} {
-       |    warn_msg 2003 "Other block design is currently opened. Closing it to validate / open the requested block design."
-       |    save_bd_design $$cur_design
-       |    close_bd_design $$cur_design
-       |    open_bd_design ${k.bdName}
-       |  } else {
-       |    # Same BD already current; no-op
-       |  }
+       |  create_bd_design ${k.bdName}
+       |}
        |
-       |  set n_cells [llength [get_bd_cells -quiet *]]
-       |  set n_ports [llength [get_bd_ports -quiet *]]
-       |  set n_iports [llength [get_bd_intf_ports -quiet *]]
-       |  set n_nets [llength [get_bd_nets -quiet *]]
+       |current_bd_design ${k.bdName}
        |
-       |  if {($$n_cells + $$n_ports + $$n_iports + $$n_nets) != 0} {
-       |    # Restore previous context (best effort)
-       |    if {[llength $$cur_design] != 0 && $$cur_design ne ${k.bdName}} {
-       |      open_bd_design $$cur_design
-       |      if {[llength $$cur_inst] != 0} {
-       |        catch { current_bd_instance $$cur_inst }
-       |      }
+       |# Check whether the BD is empty
+       |set n_cells  [llength [get_bd_cells -quiet *]]
+       |set n_ports  [llength [get_bd_ports -quiet *]]
+       |set n_iports [llength [get_bd_intf_ports -quiet *]]
+       |set n_nets   [llength [get_bd_nets -quiet *]]
+       |
+       |if {($$n_cells + $$n_ports + $$n_iports + $$n_nets) != 0} {
+       |  # Restore previous context (best effort)
+       |  if {[llength $$cur_design] != 0 && $$cur_design ne ${k.bdName}} {
+       |    open_bd_design $$cur_design
+       |    if {[llength $$cur_inst] != 0} {
+       |      catch { current_bd_instance $$cur_inst }
        |    }
-       |    error_exit 2004 "Block design ${k.bdName} already exists and is not empty. Aborting to avoid overwriting existing design."
        |  }
+       |  error_exit 2004 "Block design ${k.bdName} already exists and is not empty. Aborting to avoid overwriting existing design."
        |}
        |
        |info_msg 2005 "Created / opened block design ${k.bdName} successfully."
@@ -293,6 +316,9 @@ class BDBuilder() {
        |
        |# Instantiate components
        |${instantiateCommands.mkString("\n")}
+       |
+       |# Set default properties
+       |${propertyCommands.mkString("\n")}
        |
        |# Connect components
        |${connectCommands.mkString("\n")}
@@ -356,12 +382,11 @@ object SOCTVivado {
     name.toLowerCase.replace(".", "_")
   }
 
-  def toXilinxPortRef[T <: Data](x: T): String = {
+  /** Convert a Chisel Data port to a Xilinx port reference string */
+  def toXilinxPortRef[T <: Data](x: T)(implicit bd: BDBuilder): String = {
     require(DataMirror.isIO(x), s"Port ${x.instanceName} is not an IO port")
-    val inst = x.instanceName
-    val portName = inst.split('.').last
-    val top = inst.split('.')(0)
-    s"$top/$portName"
+    val topInst = bd.topInstance().instanceName
+    s"$topInst/${snake(x.instanceName)}"
   }
 
   /**
@@ -477,14 +502,17 @@ object SOCTVivado {
   }
 
 
-  def prepareForVivado(boardPaths: VivadoSOCTPaths, config: SOCTConfig, removeVerification: Boolean = true): Unit = {
+  def prepareForVivado(boardPaths: VivadoSOCTPaths, config: SOCTConfig, removeVerification: Boolean = true): Boolean = {
     val rs = LastRocketSystem.instance.getOrElse {
       throw XilinxDesignException("No RocketSystem instance found for Vivado generation - did you elaborate the design?")
     }
     implicit val p: Parameters = rs.p
-    implicit val bd: BDBuilder = p(HasBdBuilder).getOrElse(
-      throw XilinxDesignException("No BDBuilder found in parameters for SOCTVivadoTop")
-    )
+    val bdOpt = p(HasBdBuilder)
+    if (bdOpt.isEmpty) {
+      soct.log.warn("BDBuilder not found in parameters, not generating TCL scripts")
+      return false
+    }
+    implicit val bd: BDBuilder = bdOpt.get
 
 
     val topModuleFile: Path = getTopModuleFile(boardPaths, config)
@@ -511,6 +539,7 @@ object SOCTVivado {
         verificationDir.toFile.deleteRecursively()
       }
     }
+    true
   }
 
   def generateProject(tclFile: Path, vivado: Path, workdir: Path): Unit = {

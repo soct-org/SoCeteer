@@ -184,7 +184,7 @@ abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters) extends
   def instTclCommands: Seq[String] = {
     this match {
       case ip: IsXilinxIP =>
-        Seq(s"set $instanceName [create_bd_cell -type ip -vlnv ${ip.partName} $instanceName]")
+        Seq(s"set $instanceName [create_bd_cell -type ${ip.ipType} -vlnv ${ip.partName} $instanceName]")
       case module: IsModule =>
         Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
       case _ =>
@@ -198,7 +198,6 @@ abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters) extends
    */
   def connectTclCommands: Seq[String]
 }
-
 
 /**
  * Trait for custom module components
@@ -218,6 +217,11 @@ trait IsXilinxIP {
    * The part name of this Xilinx IP
    */
   def partName: String
+
+  /**
+   * The interface type of this Xilinx IP, usually "ip", "inline_hdl", etc.
+   */
+  def ipType: String = "ip"
 }
 
 trait HasFriendlyName {

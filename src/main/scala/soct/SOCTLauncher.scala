@@ -64,13 +64,15 @@ object SOCTLauncher {
 
     Transpiler.emitVerilog(config, boardPaths)
 
-    SOCTVivado.prepareForVivado(boardPaths, config)
+    val success = SOCTVivado.prepareForVivado(boardPaths, config)
 
     if (args.vivado.isEmpty) {
       log.warn("No Vivado path provided, cannot override existing Vivado project.")
-    } else {
+    } else if (success) {
       boardPaths.vivadoProjectDir.toFile.mkdirs()
       SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get, boardPaths.vivadoProjectDir)
+    } else {
+      log.warn("No Vivado project generated due to errors in design generation.")
     }
   }
 

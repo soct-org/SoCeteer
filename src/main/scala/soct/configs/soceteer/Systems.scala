@@ -52,50 +52,66 @@ class SOCTYosysSystem(implicit p: Parameters) extends RocketSystem
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
 class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
-  implicit val top: ChiselTop = Right(this.getClass)
-  implicit val bd: BDBuilder = p(HasBdBuilder).getOrElse(
-    throw new IllegalArgumentException("No BDBuilder found in parameters for SOCTVivadoTop")
-  )
+  if (p(HasBdBuilder).isDefined) {
+    implicit val bd: BDBuilder = p(HasBdBuilder).get
 
-  bd.init(p)
+    // This is the top-level instance representing this system in the block design
+    val topInstance: InstantiableBdComp with IsModule =
+      new InstantiableBdComp with IsModule {
+        private val c = p(HasSOCTConfig)
 
-  InModuleBody {
-    val dClock300 = DiffClockBdIntfPort(300.0)
-    val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
-    axiInfts.foreach { axiInft =>
-      AXIBdXInterface(axiInft)
-    }
+        override def reference: String = c.topModuleName
 
-    if (p(HasDDR4ExtMem).isDefined) {
-      DDR4(
-        ddr4Idx = p(HasDDR4ExtMem).get,
-        ddr4Intf = DDR4BdIntfPort(),
-        diffClock = dClock300
-      )
-    }
+        override def friendlyName: String = SOCTVivadoSystem.this.instanceName
 
-    if (p(HasSDCardPMOD).isDefined) {
-      SDCardPMOD(
-        pmodIdx = p(HasSDCardPMOD).get,
-        cdPort = SDIOCDPort(),
-        clkPort = SDIOClkPort(),
-        cmdPort = SDIOCmdPort(),
-        dataPort = SDIODataPort()
-      )
-    }
+        override def instanceName: String = friendlyName
 
-    if (debug.getWrappedValue.isDefined){
-      val debugIf = debug.getWrappedValue.get
-
-      if (debugIf.systemjtag.isDefined){
-        val jtagIO = debugIf.systemjtag.get
-        JTAGBdXInterface(jtagIO.jtag)
-        InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Some(jtagIO.mfr_id))
-        InlineConstant(0.U, jtagIO.part_number.getWidth, Some(jtagIO.part_number))
-        InlineConstant(0.U, jtagIO.version.getWidth, Some(jtagIO.version))
+        override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
       }
 
+    bd.init(p, topInstance)
+
+    InModuleBody {
+      val dClock300 = DiffClockBdIntfPort(300.0)
+      val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
+
+      axiInfts.foreach { axiInft =>
+        AXIBdXInterface(axiInft)
+      }
+
+      if (p(HasDDR4ExtMem).isDefined) {
+        DDR4(
+          ddr4Idx = p(HasDDR4ExtMem).get,
+          ddr4Intf = DDR4BdIntfPort(),
+          diffClock = dClock300
+        )
+      }
+
+      if (p(HasSDCardPMOD).isDefined) {
+        SDCardPMOD(
+          pmodIdx = p(HasSDCardPMOD).get,
+          cdPort = SDIOCDPort(),
+          clkPort = SDIOClkPort(),
+          cmdPort = SDIOCmdPort(),
+          dataPort = SDIODataPort()
+        )
+      }
+
+      if (debug.getWrappedValue.isDefined) {
+        val debugIf = debug.getWrappedValue.get
+
+        if (debugIf.systemjtag.isDefined) {
+          val jtagIO = debugIf.systemjtag.get
+          JTAGBdXInterface(jtagIO.jtag)
+          InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Some(jtagIO.mfr_id))
+          InlineConstant(0.U, jtagIO.part_number.getWidth, Some(jtagIO.part_number))
+          InlineConstant(0.U, jtagIO.version.getWidth, Some(jtagIO.version))
+        }
+      }
     }
+  } else {
+    log.info("No BDBuilder found in parameters - skipping block design generation and only elaborating Chisel design. " +
+      "If you intended to use Vivado, please ensure HasBdBuilder is set in the parameters.")
   }
 }
 
