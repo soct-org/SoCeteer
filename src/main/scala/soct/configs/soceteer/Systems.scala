@@ -103,9 +103,15 @@ class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
         if (debugIf.systemjtag.isDefined) {
           val jtagIO = debugIf.systemjtag.get
           JTAGBdXInterface(jtagIO.jtag)
-          InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Some(jtagIO.mfr_id))
-          InlineConstant(0.U, jtagIO.part_number.getWidth, Some(jtagIO.part_number))
-          InlineConstant(0.U, jtagIO.version.getWidth, Some(jtagIO.version))
+          // Tie off unused fields using inline constants
+          new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Some(jtagIO.mfr_id))
+          {override def friendlyName: String = "jtag_mfr_id_constant"}
+
+          new InlineConstant(0.U, jtagIO.part_number.getWidth, Some(jtagIO.part_number))
+          {override def friendlyName: String = "jtag_part_number_constant"}
+
+          new InlineConstant(0.U, jtagIO.version.getWidth, Some(jtagIO.version))
+          {override def friendlyName: String = "jtag_version_constant"}
         }
       }
     }
