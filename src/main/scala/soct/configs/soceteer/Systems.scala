@@ -60,17 +60,17 @@ class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
   bd.init(p)
 
   InModuleBody {
-    val peripheryClock = ClockDomain("periphery_clock", p(PeripheryClockFrequency)) // TODO allow to not have a separate periphery clock
-
+    val dClock300 = DiffClockBdIntfPort(300.0)
     val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
     axiInfts.foreach { axiInft =>
-      AXIBdXInterface(axiInft, peripheryClock)
+      AXIBdXInterface(axiInft)
     }
 
     if (p(HasDDR4ExtMem).isDefined) {
       DDR4(
         ddr4Idx = p(HasDDR4ExtMem).get,
-        intf = DDR4BdIntfPort()
+        ddr4Intf = DDR4BdIntfPort(),
+        diffClock = dClock300
       )
     }
 
@@ -82,6 +82,19 @@ class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
         cmdPort = SDIOCmdPort(),
         dataPort = SDIODataPort()
       )
+    }
+
+    if (debug.getWrappedValue.isDefined){
+      val debugIf = debug.getWrappedValue.get
+
+      if (debugIf.systemjtag.isDefined){
+        val jtagIO = debugIf.systemjtag.get
+        JTAGBdXInterface(jtagIO.jtag)
+        InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Some(jtagIO.mfr_id))
+        InlineConstant(0.U, jtagIO.part_number.getWidth, Some(jtagIO.part_number))
+        InlineConstant(0.U, jtagIO.version.getWidth, Some(jtagIO.version))
+      }
+
     }
   }
 }

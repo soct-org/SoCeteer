@@ -1,10 +1,12 @@
 package soct.xilinx
 
 
+import chisel3.Data
+import chisel3.reflect.DataMirror
 import org.chipsalliance.cde.config.Parameters
-import soct.{HasBdBuilder, HasSOCTConfig, HasSOCTPaths, HasXilinxFPGA, LastRocketSystem, VivadoSOCTPaths}
+import soct.{ChiselCompat, HasBdBuilder, HasSOCTConfig, HasSOCTPaths, HasXilinxFPGA, LastRocketSystem, VivadoSOCTPaths}
 import soct.SOCTLauncher.SOCTConfig
-import soct.xilinx.components._
+import soct.xilinx.components.{InstantiableBdComp, _}
 import soct.xilinx.fpga.{FPGA, ZCU104}
 
 import java.nio.file.{Files, Path}
@@ -55,11 +57,7 @@ object FPGARegistry {
 class BDBuilder() {
   private val components = mutable.Set.empty[BdComp]
 
-  private val instantiateCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-
-  private val portCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-
-  final case class TclVar(description: String, default: String)
+  private final case class TclVar(description: String, default: String)
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
     val varDecls = vars.map { case (v, TclVar(description, default)) =>
@@ -153,9 +151,12 @@ class BDBuilder() {
   }
 
   def generateBoardTcl(): String = {
+    val instantiateCommands, connectCommands, portCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty[String]
+
     components.foreach {
       case inst: InstantiableBdComp =>
-        instantiateCommands ++= inst.tclCommands
+        instantiateCommands ++= inst.instTclCommands
+        connectCommands ++= inst.connectTclCommands
       case port: BdPort =>
         portCommands ++= port.tclCommands
       case xport: XilinxBdIntfPort =>
@@ -163,11 +164,6 @@ class BDBuilder() {
       case c =>
         soct.log.warn(s"Unknown type: ${c.friendlyName}")
     }
-
-    // First declare all ports
-    val portsTcl = portCommands.mkString("\n")
-    // Then instantiate all components
-    val instTcl = instantiateCommands.mkString("\n")
 
     // Keys for TCL variables used in the script
     val bdKeys = Seq(k.bdName, k.projectName)
@@ -177,8 +173,11 @@ class BDBuilder() {
 
     // Collect all Xilinx IP components which are instantiable
     val xilinxIps = components.collect {
-      case ip: InstantiableBdComp if ip.isInstanceOf[IsXilinxIP] =>
-        ip.asInstanceOf[IsXilinxIP]
+      case ip: InstantiableBdComp if ip.isInstanceOf[IsXilinxIP] => ip.asInstanceOf[IsXilinxIP]
+    }
+
+    val modules = components.collect {
+      case m: InstantiableBdComp if m.isInstanceOf[IsModule] => m.asInstanceOf[IsModule]
     }
 
     s"""${genTCLHeader(bdVars)}
@@ -272,12 +271,32 @@ class BDBuilder() {
        |info_msg 2007 "All required Xilinx IPs are available."
        |
        |
-       |# Declare ports
-       |${portsTcl}
+       |######## Check for required Modules ########
        |
+       |set list_modules_missing {}
+       |set list_check_modules [list \\
+       |${modules.map(_.reference).map(m => s"  \"$m\"").mkString(" \\\n")}
+       |]
+       |foreach mod_name $$list_check_modules {
+       |  if {[llength [can_resolve_reference $$mod_name]] == 0} {
+       |    lappend list_modules_missing $$mod_name
+       |  }
+       |}
+       |if {[llength $$list_modules_missing] != 0} {
+       |  error_exit 2008 "The following required Modules are missing: \\n  [join $$list_modules_missing "\\n  "]\\nPlease ensure their collateral files are available in the sources directory before sourcing this script."
+       |}
+       |
+       |info_msg 2009 "All required Modules are available."
+       |
+       |# Declare ports
+       |${portCommands.mkString("\n")}
        |
        |# Instantiate components
-       |${instTcl}
+       |${instantiateCommands.mkString("\n")}
+       |
+       |# Connect components
+       |${connectCommands.mkString("\n")}
+       |
        |""".stripMargin
   }
 
@@ -335,6 +354,14 @@ object SOCTVivado {
   /** Convert a name to snake_case */
   def snake(name: String): String = {
     name.toLowerCase.replace(".", "_")
+  }
+
+  def toXilinxPortRef[T <: Data](x: T): String = {
+    require(DataMirror.isIO(x), s"Port ${x.instanceName} is not an IO port")
+    val inst = x.instanceName
+    val portName = inst.split('.').last
+    val top = inst.split('.')(0)
+    s"$top/$portName"
   }
 
   /**

@@ -3,13 +3,13 @@ package soct.xilinx.components
 import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MMIOPort, CanHaveSlaveAXI4Port}
 import org.chipsalliance.cde.config
 import org.chipsalliance.cde.config.Parameters
-import soct.{ChiselTop, HasXilinxFPGA}
+import soct.{ChiselTop, HasSOCTConfig, HasXilinxFPGA}
 import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 import java.nio.file.{Files, Path}
 
 
-case class SDIOCDPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+case class SDIOCDPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_cd"
 
   override def ifType: String = "data"
@@ -17,7 +17,7 @@ case class SDIOCDPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) e
   override def dir: String = "I"
 }
 
-case class SDIOClkPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+case class SDIOClkPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_clk"
 
   override def ifType: String = "clk"
@@ -25,7 +25,7 @@ case class SDIOClkPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) 
   override def dir: String = "O"
 }
 
-case class SDIOCmdPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+case class SDIOCmdPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_cmd"
 
   override def ifType: String = "data"
@@ -33,7 +33,7 @@ case class SDIOCmdPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) 
   override def dir: String = "IO"
 }
 
-case class SDIODataPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdPort {
+case class SDIODataPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_data"
 
   override def ifType: String = "data"
@@ -61,7 +61,7 @@ case class SDCardPMOD(pmodIdx: Int,
                       cmdPort: SDIOCmdPort,
                       dataPort: SDIODataPort
                      )
-                     (implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+                     (implicit bd: BDBuilder, p: Parameters)
   extends InstantiableBdComp with IsModule {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
@@ -69,6 +69,7 @@ case class SDCardPMOD(pmodIdx: Int,
   override def checkAvailable(): Unit = {
     super.checkAvailable()
     val fpga = p(HasXilinxFPGA).get
+    val top = p(HasSOCTConfig).topModule
 
     if (!fpga.portsPMOD.contains(pmodIdx)) {
       throw XilinxDesignException(s"PMOD index $pmodIdx is not available on the selected FPGA")
@@ -105,4 +106,8 @@ case class SDCardPMOD(pmodIdx: Int,
     Some(dest)
   }
 
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  override def connectTclCommands: Seq[String] = Seq.empty
 }

@@ -14,7 +14,7 @@ import scala.collection.mutable
  * builder happens in this base class constructor - before subclass constructors run. Only defs are safe to use, as
  * they are resolved at call time.
  */
-abstract class BdComp()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends HasFriendlyName {
+abstract class BdComp()(implicit bd: BDBuilder, p: Parameters) extends HasFriendlyName {
   /**
    * Check that this component is available in the current configuration.
    */
@@ -70,14 +70,14 @@ abstract class BdComp()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) e
  * @param name         The name of the clock domain
  * @param frequencyMHz The frequency of the clock domain in MHz
  */
-case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp
+case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: BDBuilder, p: Parameters) extends BdComp
 
 
 /**
  * Base class for Board Design X Interfaces.
  * Used to add extra annotations to ports in the design.
  */
-abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
+abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters) extends BdComp {
   /**
    * The name of the signal group for this port, relevant for example for X_INTERFACE_INFO annotations
    */
@@ -92,7 +92,7 @@ abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters, top: ChiselTo
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class BdPort(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
+abstract class BdPort(implicit bd: BDBuilder, p: Parameters) extends BdComp {
 
   /**
    * The name of this interface port
@@ -136,7 +136,7 @@ abstract class BdPort(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) ext
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class XilinxBdIntfPort(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp with IsXilinxIP {
+abstract class XilinxBdIntfPort(implicit bd: BDBuilder, p: Parameters) extends BdComp with IsXilinxIP {
   /**
    * The name of this interface, used to connect components to it
    */
@@ -158,7 +158,7 @@ abstract class XilinxBdIntfPort(implicit bd: BDBuilder, p: Parameters, top: Chis
 /**
  * Trait for components that can be instantiated in the design
  */
-abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters, top: ChiselTop) extends BdComp {
+abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters) extends BdComp {
 
   /**
    * Optional index to differentiate multiple instances of the same component
@@ -181,7 +181,7 @@ abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters, top: Ch
   /**
    * Emit the TCL command to instantiate this component in the design
    */
-  def tclCommands: Seq[String] = {
+  def instTclCommands: Seq[String] = {
     this match {
       case ip: IsXilinxIP =>
         Seq(s"set $instanceName [create_bd_cell -type ip -vlnv ${ip.partName} $instanceName]")
@@ -192,6 +192,11 @@ abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters, top: Ch
     }
   }
 
+
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  def connectTclCommands: Seq[String]
 }
 
 

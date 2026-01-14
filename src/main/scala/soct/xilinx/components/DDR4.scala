@@ -2,12 +2,12 @@ package soct.xilinx.components
 
 import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MemPort, ExtMem}
 import org.chipsalliance.cde.config.Parameters
-import soct.{ChiselTop, HasXilinxFPGA}
+import soct.{ChiselTop, HasSOCTConfig, HasXilinxFPGA}
 import soct.xilinx.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
 import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 
-case class DDR4BdIntfPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+case class DDR4BdIntfPort()(implicit bd: BDBuilder, p: Parameters)
   extends XilinxBdIntfPort {
   override def INTERFACE_NAME = "ddr4_sdram"
 
@@ -18,8 +18,9 @@ case class DDR4BdIntfPort()(implicit bd: BDBuilder, p: Parameters, top: ChiselTo
 
 
 case class DDR4(ddr4Idx: Int,
-                intf: XilinxBdIntfPort)
-               (implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+                ddr4Intf: DDR4BdIntfPort,
+                diffClock: DiffClockBdIntfPort)
+               (implicit bd: BDBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
@@ -27,6 +28,7 @@ case class DDR4(ddr4Idx: Int,
   override def checkAvailable(): Unit = {
     super.checkAvailable()
     val fpga = p(HasXilinxFPGA).get
+    val top = p(HasSOCTConfig).topModule
 
     val extMemOpt = p(ExtMem)
     if (extMemOpt.isEmpty) {
@@ -52,8 +54,13 @@ case class DDR4(ddr4Idx: Int,
 
   override def defaultProperties: Map[String, String] = {
     Map(
-      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> intf.INTERFACE_NAME
+      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.INTERFACE_NAME
     )
   }
+
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  override def connectTclCommands: Seq[String] =  Seq.empty
 }
 

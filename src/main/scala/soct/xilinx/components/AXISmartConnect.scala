@@ -11,8 +11,8 @@ import soct.xilinx.SOCTVivado.snake
 import scala.collection.mutable
 
 
-case class AXIBdXInterface(axiPort: AXI4Bundle, clockDomain: ClockDomain)
-                          (implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+case class AXIBdXInterface(axiPort: AXI4Bundle)
+                          (implicit bd: BDBuilder, p: Parameters)
 extends BdXInterface with IsXilinxIP {
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
@@ -54,12 +54,16 @@ extends BdXInterface with IsXilinxIP {
 }
 
 
-case class AXISmartConnect()(implicit bd: BDBuilder, p: Parameters, top: ChiselTop)
+case class AXISmartConnect()(implicit bd: BDBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
 
 
   override def partName: String = "xilinx.com:ip:smartconnect:1.0"
 
 
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  override def connectTclCommands: Seq[String] =  Seq.empty
 }
 
