@@ -19,7 +19,9 @@ case class DDR4BdIntfPort()(implicit bd: BDBuilder, p: Parameters)
 
 case class DDR4(ddr4Idx: Int,
                 ddr4Intf: DDR4BdIntfPort,
-                diffClock: DiffClockBdIntfPort)
+                clockIn: DiffClockBdIntfPort,
+                clockOut: ClockDomain
+               )
                (implicit bd: BDBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
 
@@ -54,13 +56,15 @@ case class DDR4(ddr4Idx: Int,
 
   override def defaultProperties: Map[String, String] = {
     Map(
-      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.INTERFACE_NAME
+      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.INTERFACE_NAME,
+      //"CONFIG.C0_CLOCK_BOARD_INTERFACE" -> clockIn.INTERFACE_NAME,
+      "CONFIG.ADDN_UI_CLKOUT1_FREQ_HZ" -> clockOut.frequencyMHz.toInt.toString
     )
   }
 
   /**
    * Emit the TCL commands to connect this component in the design
    */
-  override def connectTclCommands: Seq[String] =  Seq.empty
+  override def connectTclCommands: Seq[String] = Seq.empty
 }
 

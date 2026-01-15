@@ -65,15 +65,6 @@ abstract class BdComp()(implicit bd: BDBuilder, p: Parameters) extends HasFriend
 
 
 /**
- * Case class representing a clock domain in the design - TODO: Missing many parameters
- *
- * @param name         The name of the clock domain
- * @param frequencyMHz The frequency of the clock domain in MHz
- */
-case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: BDBuilder, p: Parameters) extends BdComp
-
-
-/**
  * Base class for Board Design X Interfaces.
  * Used to add extra annotations to ports in the design.
  */

@@ -1,17 +1,21 @@
 package soct
 
 import chisel3._
-import freechips.rocketchip.devices.debug.Debug
-import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, TLROM}
+import chisel3.util.log2Ceil
+import freechips.rocketchip.devices.debug.{Debug, HasPeripheryDebug}
+import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, CanHavePeripheryCLINT, CanHavePeripheryPLIC, TLROM}
+import freechips.rocketchip.diplomacy.AddressRange
+import freechips.rocketchip.prci.ClockGroupNode
+import freechips.rocketchip.resources.{AddressMapEntry, DTSCompat, DTSModel, DTSTimebase, Resource, ResourceAnchors, ResourceBinding, ResourceInt, ResourceString}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.system.SimAXIMem
 import freechips.rocketchip.tilelink.TLFragmenter
-import freechips.rocketchip.util.{AsyncResetReg, DontTouch}
+import freechips.rocketchip.util.{AsyncResetReg, DontTouch, ElaborationArtefacts, HasCoreMonitorBundles}
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
-import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule}
+import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule, LazyRawModuleImp}
 import soct.SOCTUtils.runCMakeCommand
-import soct.xilinx.BDBuilder
+import soct.xilinx.{BDBuilder, XilinxDesignException}
 import soct.xilinx.components._
 
 import java.nio.file.Files
@@ -24,12 +28,100 @@ object LastRocketSystem {
   var instance: Option[RocketSystem] = None
 }
 
+/** Base Subsystem class with no peripheral devices, ports or cores added yet */
+abstract class BaseSubsystem(val location: HierarchicalLocation = InSubsystem)
+                            (implicit p: Parameters) extends LazyModule
+    with HasDTS
+    with Attachable
+    with HasConfigurableTLNetworkTopology {
+  override val module: BaseSubsystemModuleImp[BaseSubsystem]
 
-class RocketSystem(implicit p: Parameters) extends RocketSubsystem
+  val busContextName = "subsystem"
+
+  viewpointBus.clockGroupNode := allClockGroupsNode
+
+  // TODO: Preserve legacy implicit-clock behavior for IBUS for now. If binding a PLIC to the CBUS, ensure it is synchronously coupled to the SBUS.
+  ibus.clockNode := viewpointBus.fixedClockNode
+
+  // Collect information for use in DTS
+  ResourceBinding {
+    val managers = topManagers
+    val max = managers.flatMap(_.address).map(_.max).max
+    val width = ResourceInt((log2Ceil(max) + 31) / 32)
+    val model = p(DTSModel)
+    val compat = p(DTSCompat)
+    val hertz = p(DTSTimebase) // add for timebase-frequency
+    val devCompat = (model +: compat).map(s => ResourceString(s + "-dev"))
+    val socCompat = (model +: compat).map(s => ResourceString(s + "-soc"))
+    devCompat.foreach {
+      Resource(ResourceAnchors.root, "compat").bind(_)
+    }
+    socCompat.foreach {
+      Resource(ResourceAnchors.soc, "compat").bind(_)
+    }
+    Resource(ResourceAnchors.root, "model").bind(ResourceString(model))
+    Resource(ResourceAnchors.root, "width").bind(width)
+    Resource(ResourceAnchors.soc, "width").bind(width)
+    Resource(ResourceAnchors.cpus, "width").bind(ResourceInt(1))
+    Resource(ResourceAnchors.cpus, "hertz").bind(ResourceInt(hertz))
+
+    managers.foreach { manager =>
+      val value = manager.toResource
+      manager.resources.foreach(resource =>
+        resource.bind(value))
+    }
+  }
+}
+
+abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends LazyRawModuleImp(_outer) with HasDTSImp[L] {
+  def dtsLM: L = _outer
+
+  private val mapping: Seq[AddressMapEntry] = {
+    dtsLM.collectResourceAddresses.groupBy(_._2).toList.flatMap { case (key, seq) =>
+      AddressRange.fromSets(key.address).map { r => AddressMapEntry(r, key.permissions, seq.map(_._1)) }
+    }.sortBy(_.range)
+  }
+
+  println("Generated Address Map")
+  mapping.foreach(entry => println(entry.toString((dtsLM.tlBusWrapperLocationMap(p(TLManagerViewpointLocated(dtsLM.location))).busView.bundle.addressBits - 1) / 4 + 1)))
+  println("")
+
+  ElaborationArtefacts.add("memmap.json", s"""{"mapping":[${mapping.map(_.toJSON).mkString(",")}]}""")
+
+  // Confirm that all memory was described by DTS
+  private val dtsRanges = AddressRange.unify(mapping.map(_.range))
+  private val allRanges = AddressRange.unify(dtsLM.topManagers.flatMap { m => AddressRange.fromSets(m.address) })
+
+  if (dtsRanges != allRanges) {
+    println("Address map described by DTS differs from physical implementation:")
+    AddressRange.subtract(allRanges, dtsRanges).foreach { case r =>
+      println(s"\texists, but undescribed by DTS: ${r}")
+    }
+    AddressRange.subtract(dtsRanges, allRanges).foreach { case r =>
+      println(s"\tdoes not exist, but described by DTS: ${r}")
+    }
+    println("")
+  }
+}
+
+class RocketSystem(implicit p: Parameters) extends BaseSubsystem
   with HasAsyncExtInterrupts
+  with HasExtInterrupts
   with CanHaveMasterAXI4MemPort
   with CanHaveMasterAXI4MMIOPort
-  with CanHaveSlaveAXI4Port {
+  with CanHaveSlaveAXI4Port
+  with InstantiatesHierarchicalElements
+  with HasTileNotificationSinks
+  with HasTileInputConstants
+  with CanHavePeripheryCLINT
+  with CanHavePeripheryPLIC
+  with HasPeripheryDebug
+  with HasHierarchicalElementsRootContext
+  with HasHierarchicalElements
+  with HasCoreMonitorBundles
+  with HasRocketTiles
+  with HasConfigurablePRCILocations // TODO Refactor this
+  {
   p(BootROMLocated(location)).foreach {
     SOCTBootROM.attach(_, this, CBUS)
   }
@@ -37,10 +129,13 @@ class RocketSystem(implicit p: Parameters) extends RocketSubsystem
   LastRocketSystem.instance = Some(this)
 }
 
-class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends RocketSubsystemModuleImp(_outer)
+class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends BaseSubsystemModuleImp(_outer)
+  with HasHierarchicalElementsRootContextModuleImp
   with HasRTCModuleImp
   with HasExtInterruptsModuleImp
-  with DontTouch
+  with DontTouch {
+  override lazy val outer = _outer
+}
 
 
 /**
@@ -69,10 +164,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
         override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
       }
 
-    bd.init(p, topInstance)
+    bd.init(p, topInstance) // Register this top instance with the BDBuilder.
+
 
     InModuleBody {
       val dClock300 = DiffClockBdIntfPort(300.0)
+      val coreCLock = ClockDomain("core", 100.0)
+      val peripheryCD = ClockDomain("periphery", p(PeripheryClockFrequency))
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
 
       axiInfts.foreach { axiInft =>
@@ -83,7 +181,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
         DDR4(
           ddr4Idx = p(HasDDR4ExtMem).get,
           ddr4Intf = DDR4BdIntfPort(),
-          diffClock = dClock300
+          clockIn = dClock300,
+          clockOut = coreCLock
         )
       }
 
@@ -103,14 +202,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
         if (debugIf.systemjtag.isDefined) {
           val jtagIO = debugIf.systemjtag.get
           JTAGBdXInterface(jtagIO.jtag)
-          // Tie off unused fields using inline constants
-          new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Some(jtagIO.mfr_id))
+          // Tie off unused fields using inline constants - rename for clarity in block design
+          new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Seq(jtagIO.mfr_id))
           {override def friendlyName: String = "jtag_mfr_id_constant"}
 
-          new InlineConstant(0.U, jtagIO.part_number.getWidth, Some(jtagIO.part_number))
+          new InlineConstant(0.U, jtagIO.part_number.getWidth, Seq(jtagIO.part_number))
           {override def friendlyName: String = "jtag_part_number_constant"}
 
-          new InlineConstant(0.U, jtagIO.version.getWidth, Some(jtagIO.version))
+          new InlineConstant(0.U, jtagIO.version.getWidth, Seq(jtagIO.version))
           {override def friendlyName: String = "jtag_version_constant"}
         }
       }

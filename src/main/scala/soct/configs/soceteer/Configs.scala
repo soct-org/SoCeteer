@@ -11,6 +11,8 @@ import soct.SOCTLauncher.SOCTConfig
 import soct.xilinx.BDBuilder
 import soct.xilinx.fpga.FPGA
 
+import java.util.concurrent.atomic.AtomicBoolean
+
 /*----------------- Base Configs ---------------*/
 class BaseSubsystemConfig extends Config((site, here, up) => {
   // Tile parameters
@@ -49,7 +51,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
 
 class RocketBaseConfig extends Config(
   new WithNExtTopInterrupts(8) ++
-    new WithSingleClockDomain(100.0) ++ // 100 MHz clock is the default
+    new WithSingleBusClockSpeed(100.0) ++ // 100 MHz clock is the default
     new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
     new WithEdgeDataBits(64) ++
     new WithDefaultMemPort ++
@@ -129,6 +131,7 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
 
 /**
  * Field to specify the periphery clock frequency in MHz - for parts like the SDCard controller and UART.
+ * Default is 100 MHz.
  */
 case object PeripheryClockFrequency extends Field[Double](100.0)
 
@@ -140,7 +143,7 @@ class WithPeripheryClockDomain(freqMHz: Double) extends Config((site, here, up) 
 })
 
 
-class WithSingleClockDomain(freqMHz: Double) extends Config(
+class WithSingleBusClockSpeed(freqMHz: Double) extends Config(
   new WithPeripheryBusFrequency(freqMHz) ++
     new WithSystemBusFrequency(freqMHz) ++
     new WithMemoryBusFrequency(freqMHz) ++
@@ -151,8 +154,19 @@ class WithSingleClockDomain(freqMHz: Double) extends Config(
 class WithHartBootFreqMHz(freqsMHz: Seq[Double]) extends Config((site, here, up) => {
   case TilesLocated(loc) if loc == InSubsystem =>
     val prev = up(TilesLocated(loc))
-    require(freqsMHz.length >= prev.length, s"Need at least ${prev.length} boot frequencies, got ${freqsMHz.length}")
-    prev.zip(freqsMHz).map { case (tap: RocketTileAttachParams, mhz) =>
+
+    val bootFreqsMHz = if (freqsMHz.length == 1 && prev.length > 1) {
+      if (!WithHartBootFreqMHz.printed.getAndSet(true)) {
+        log.info(s"Broadcasting single boot frequency ${freqsMHz.head} MHz to all ${prev.length} tiles")
+      }
+      Seq.fill(prev.length)(freqsMHz.head)
+    } else if (freqsMHz.length == prev.length) {
+      freqsMHz
+    } else {
+      throw new Exception(s"WithHartBootFreqMHz: number of frequencies (${freqsMHz.length}) does not match number of tiles (${prev.length})")
+    }
+
+    prev.zip(bootFreqsMHz).map { case (tap: RocketTileAttachParams, mhz) =>
       val tp = tap.tileParams
       tap.copy(tileParams = tp.copy(
         core = tp.core.copy(
@@ -165,6 +179,10 @@ class WithHartBootFreqMHz(freqsMHz: Seq[Double]) extends Config((site, here, up)
   case LookupByHartId =>
     PriorityMuxHartIdFromSeq(site(TilesLocated(InSubsystem)).map(_.tileParams))
 })
+
+object WithHartBootFreqMHz {
+  private[soct] val printed = new AtomicBoolean(false)
+}
 
 /*----------------- FPGA ---------------*/
 
