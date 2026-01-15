@@ -1,16 +1,15 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.ChiselTop
-import soct.xilinx.BDBuilder
-import soct.xilinx.SOCTVivado.snake
+import soct.system.vivado.SOCTBdBuilder
 
 import scala.collection.mutable
 
 
 case class JTAGBdXInterface(jtagio: JTAGIO)
-                          (implicit bd: BDBuilder, p: Parameters)
+                          (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdXInterface with IsXilinxIP {
 
   override def partName: String = "xilinx.com:interface:jtag:1.0"

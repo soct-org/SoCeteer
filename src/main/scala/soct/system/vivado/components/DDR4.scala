@@ -1,13 +1,13 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MemPort, ExtMem}
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.{ChiselTop, HasSOCTConfig, HasXilinxFPGA}
-import soct.xilinx.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
-import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 
-case class DDR4BdIntfPort()(implicit bd: BDBuilder, p: Parameters)
+case class DDR4BdIntfPort()(implicit bd: SOCTBdBuilder, p: Parameters)
   extends XilinxBdIntfPort {
   override def INTERFACE_NAME = "ddr4_sdram"
 
@@ -22,7 +22,7 @@ case class DDR4(ddr4Idx: Int,
                 clockIn: DiffClockBdIntfPort,
                 clockOut: ClockDomain
                )
-               (implicit bd: BDBuilder, p: Parameters)
+               (implicit bd: SOCTBdBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"

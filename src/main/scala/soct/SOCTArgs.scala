@@ -2,12 +2,14 @@ package soct
 
 import chisel3.Module
 import scopt.OptionParser
-import soct.xilinx.FPGARegistry
-import soct.xilinx.fpga.FPGA
 
 import java.nio.file.{Path, Paths}
 import org.chipsalliance.cde.config
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
+import soct.system.sim.SOCTSimSystem
+import soct.system.vivado.SOCTVivadoSystem
+import soct.system.vivado.fpga.{FPGA, FPGARegistry}
+import soct.system.yosys.SOCTYosysSystem
 
 
 // Define the supported targets

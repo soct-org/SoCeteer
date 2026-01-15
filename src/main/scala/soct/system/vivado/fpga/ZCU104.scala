@@ -1,4 +1,4 @@
-package soct.xilinx.fpga
+package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config
 

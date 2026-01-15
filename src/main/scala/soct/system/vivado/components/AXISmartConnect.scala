@@ -1,18 +1,16 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import chisel3.reflect.DataMirror
 import chisel3.{Bundle, Data}
 import freechips.rocketchip.amba.axi4.AXI4Bundle
 import org.chipsalliance.cde.config.Parameters
-import soct.ChiselTop
-import soct.xilinx.BDBuilder
-import soct.xilinx.SOCTVivado.snake
+import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 
 import scala.collection.mutable
 
 
 case class AXIBdXInterface(axiPort: AXI4Bundle)
-                          (implicit bd: BDBuilder, p: Parameters)
+                          (implicit bd: SOCTBdBuilder, p: Parameters)
 extends BdXInterface with IsXilinxIP {
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
@@ -30,7 +28,7 @@ extends BdXInterface with IsXilinxIP {
         .foldLeft(Map.empty[String, Data])(_ ++ _)
         .filterNot { case (fieldName, _) => ignoredPorts.contains(fieldName) }
         .foreach { case (fieldName, port) =>
-          val portName = snake(port.instanceName)
+          val portName = SOCTVivado.snake(port.instanceName)
           val xilinxName = s"${channelName.toUpperCase}${fieldName.toUpperCase()}"
           val intfString = s"(* X_INTERFACE_INFO = \"$partName $ifName $xilinxName\" *)"
           val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {
@@ -54,7 +52,7 @@ extends BdXInterface with IsXilinxIP {
 }
 
 
-case class AXISmartConnect()(implicit bd: BDBuilder, p: Parameters)
+case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
 
 

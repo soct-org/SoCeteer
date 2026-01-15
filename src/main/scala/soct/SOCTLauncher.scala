@@ -2,9 +2,8 @@ package soct
 
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
-import soct.xilinx.SOCTVivado
+import soct.system.vivado.SOCTVivado
 
-import java.nio.file.Files
 import scala.reflect.io.Path.jfile2path
 
 object SOCTLauncher {

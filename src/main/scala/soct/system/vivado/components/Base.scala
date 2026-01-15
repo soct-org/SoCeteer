@@ -1,8 +1,8 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.{ChiselTop, HasXilinxFPGA}
-import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 import java.io.File
 import java.nio.file.{Files, Path}
@@ -14,7 +14,7 @@ import scala.collection.mutable
  * builder happens in this base class constructor - before subclass constructors run. Only defs are safe to use, as
  * they are resolved at call time.
  */
-abstract class BdComp()(implicit bd: BDBuilder, p: Parameters) extends HasFriendlyName {
+abstract class BdComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
   /**
    * Check that this component is available in the current configuration.
    */
@@ -68,7 +68,7 @@ abstract class BdComp()(implicit bd: BDBuilder, p: Parameters) extends HasFriend
  * Base class for Board Design X Interfaces.
  * Used to add extra annotations to ports in the design.
  */
-abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters) extends BdComp {
+abstract class BdXInterface(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
   /**
    * The name of the signal group for this port, relevant for example for X_INTERFACE_INFO annotations
    */
@@ -83,7 +83,7 @@ abstract class BdXInterface(implicit bd: BDBuilder, p: Parameters) extends BdCom
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class BdPort(implicit bd: BDBuilder, p: Parameters) extends BdComp {
+abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
 
   /**
    * The name of this interface port
@@ -127,7 +127,7 @@ abstract class BdPort(implicit bd: BDBuilder, p: Parameters) extends BdComp {
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class XilinxBdIntfPort(implicit bd: BDBuilder, p: Parameters) extends BdComp with IsXilinxIP {
+abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with IsXilinxIP {
   /**
    * The name of this interface, used to connect components to it
    */
@@ -149,7 +149,7 @@ abstract class XilinxBdIntfPort(implicit bd: BDBuilder, p: Parameters) extends B
 /**
  * Trait for components that can be instantiated in the design
  */
-abstract class InstantiableBdComp(implicit bd: BDBuilder, p: Parameters) extends BdComp {
+abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
 
   /**
    * Optional index to differentiate multiple instances of the same component

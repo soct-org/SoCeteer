@@ -8,8 +8,8 @@ import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tile.{LookupByHartId, MaxHartIdBits, PriorityMuxHartIdFromSeq}
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTLauncher.SOCTConfig
-import soct.xilinx.BDBuilder
-import soct.xilinx.fpga.FPGA
+import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.fpga.FPGA
 
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -71,7 +71,7 @@ class RocketSimBaseConfig extends Config(
 
 class RocketVivadoBaseConfig extends Config(
   new WithDTS("freechips,rocketchip-vivado", Nil) ++
-    new WithBdBuilder(new BDBuilder) ++
+    new WithBdBuilder(new SOCTBdBuilder) ++
     new WithDefaultSlavePort ++
     new WithJtagDTM ++
     new WithDebugSBA ++
@@ -195,14 +195,14 @@ case object HasXilinxFPGA extends Field[Option[FPGA]](None)
 /**
  * Field to hold the BDBuilder instance for Xilinx FPGA designs.
  */
-case object HasBdBuilder extends Field[Option[BDBuilder]](None)
+case object HasBdBuilder extends Field[Option[SOCTBdBuilder]](None)
 
 
 /**
  * Class to add a BDBuilder to the configuration. Used to generate Vivado block designs.
  * @param bd The BDBuilder instance to add to the configuration.
  */
-class WithBdBuilder(bd: BDBuilder) extends Config((_, _, _) => {
+class WithBdBuilder(bd: SOCTBdBuilder) extends Config((_, _, _) => {
   case HasBdBuilder => Some(bd)
 })
 

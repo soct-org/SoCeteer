@@ -1,22 +1,19 @@
-package soct
+package soct.system.soceteer
 
 import chisel3._
 import chisel3.util.log2Ceil
-import freechips.rocketchip.devices.debug.{Debug, HasPeripheryDebug}
+import freechips.rocketchip.devices.debug.HasPeripheryDebug
 import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, CanHavePeripheryCLINT, CanHavePeripheryPLIC, TLROM}
 import freechips.rocketchip.diplomacy.AddressRange
-import freechips.rocketchip.prci.ClockGroupNode
 import freechips.rocketchip.resources.{AddressMapEntry, DTSCompat, DTSModel, DTSTimebase, Resource, ResourceAnchors, ResourceBinding, ResourceInt, ResourceString}
 import freechips.rocketchip.subsystem._
-import freechips.rocketchip.system.SimAXIMem
 import freechips.rocketchip.tilelink.TLFragmenter
-import freechips.rocketchip.util.{AsyncResetReg, DontTouch, ElaborationArtefacts, HasCoreMonitorBundles}
+import freechips.rocketchip.util.{DontTouch, ElaborationArtefacts, HasCoreMonitorBundles}
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule, LazyRawModuleImp}
 import soct.SOCTUtils.runCMakeCommand
-import soct.xilinx.{BDBuilder, XilinxDesignException}
-import soct.xilinx.components._
+import soct.{DTSCMakeGenerator, HasSOCTConfig, HasSOCTPaths, SOCTPaths, log}
 
 import java.nio.file.Files
 
@@ -25,15 +22,49 @@ import java.nio.file.Files
  * This is mainly due to Chisel limitations and unstable API for inspecting an elaborated design
  */
 object LastRocketSystem {
-  var instance: Option[RocketSystem] = None
+  var instance: Option[SOCTSystem] = None
+}
+
+
+class SOCTSystem(implicit p: Parameters) extends BaseSubsystem
+  with HasAsyncExtInterrupts
+  with HasExtInterrupts
+  with CanHaveMasterAXI4MemPort
+  with CanHaveMasterAXI4MMIOPort
+  with CanHaveSlaveAXI4Port
+  with InstantiatesHierarchicalElements
+  with HasTileNotificationSinks
+  with HasTileInputConstants
+  with CanHavePeripheryCLINT
+  with CanHavePeripheryPLIC
+  with HasPeripheryDebug
+  with HasHierarchicalElementsRootContext
+  with HasHierarchicalElements
+  with HasCoreMonitorBundles
+  with HasRocketTiles
+  with HasConfigurablePRCILocations // TODO Refactor this
+{
+  p(BootROMLocated(location)).foreach {
+    SOCTBootROM.attach(_, this, CBUS)
+  }
+  override lazy val module = new SOCTSystemModuleImp(this)
+  LastRocketSystem.instance = Some(this)
+}
+
+class SOCTSystemModuleImp[+L <: SOCTSystem](_outer: L) extends BaseSubsystemModuleImp(_outer)
+  with HasHierarchicalElementsRootContextModuleImp
+  with HasRTCModuleImp
+  with HasExtInterruptsModuleImp
+  with DontTouch {
+  override lazy val outer = _outer
 }
 
 /** Base Subsystem class with no peripheral devices, ports or cores added yet */
 abstract class BaseSubsystem(val location: HierarchicalLocation = InSubsystem)
                             (implicit p: Parameters) extends LazyModule
-    with HasDTS
-    with Attachable
-    with HasConfigurableTLNetworkTopology {
+  with HasDTS
+  with Attachable
+  with HasConfigurableTLNetworkTopology {
   override val module: BaseSubsystemModuleImp[BaseSubsystem]
 
   val busContextName = "subsystem"
@@ -82,9 +113,9 @@ abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends La
     }.sortBy(_.range)
   }
 
-  println("Generated Address Map")
-  mapping.foreach(entry => println(entry.toString((dtsLM.tlBusWrapperLocationMap(p(TLManagerViewpointLocated(dtsLM.location))).busView.bundle.addressBits - 1) / 4 + 1)))
-  println("")
+  soct.log.debug("Generated Address Map")
+  mapping.foreach(entry => soct.log.debug(entry.toString((dtsLM.tlBusWrapperLocationMap(p(TLManagerViewpointLocated(dtsLM.location))).busView.bundle.addressBits - 1) / 4 + 1)))
+
 
   ElaborationArtefacts.add("memmap.json", s"""{"mapping":[${mapping.map(_.toJSON).mkString(",")}]}""")
 
@@ -93,163 +124,10 @@ abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends La
   private val allRanges = AddressRange.unify(dtsLM.topManagers.flatMap { m => AddressRange.fromSets(m.address) })
 
   if (dtsRanges != allRanges) {
-    println("Address map described by DTS differs from physical implementation:")
-    AddressRange.subtract(allRanges, dtsRanges).foreach { case r =>
-      println(s"\texists, but undescribed by DTS: ${r}")
-    }
-    AddressRange.subtract(dtsRanges, allRanges).foreach { case r =>
-      println(s"\tdoes not exist, but described by DTS: ${r}")
-    }
-    println("")
+    soct.log.warn("Address map described by DTS differs from physical implementation:")
+    AddressRange.subtract(allRanges, dtsRanges).foreach(r => soct.log.warn(s"\texists, but undescribed by DTS: $r"))
+    AddressRange.subtract(dtsRanges, allRanges).foreach(r => soct.log.warn(s"\tdoes not exist, but described by DTS: $r"))
   }
-}
-
-class RocketSystem(implicit p: Parameters) extends BaseSubsystem
-  with HasAsyncExtInterrupts
-  with HasExtInterrupts
-  with CanHaveMasterAXI4MemPort
-  with CanHaveMasterAXI4MMIOPort
-  with CanHaveSlaveAXI4Port
-  with InstantiatesHierarchicalElements
-  with HasTileNotificationSinks
-  with HasTileInputConstants
-  with CanHavePeripheryCLINT
-  with CanHavePeripheryPLIC
-  with HasPeripheryDebug
-  with HasHierarchicalElementsRootContext
-  with HasHierarchicalElements
-  with HasCoreMonitorBundles
-  with HasRocketTiles
-  with HasConfigurablePRCILocations // TODO Refactor this
-  {
-  p(BootROMLocated(location)).foreach {
-    SOCTBootROM.attach(_, this, CBUS)
-  }
-  override lazy val module = new RocketSystemModuleImp(this)
-  LastRocketSystem.instance = Some(this)
-}
-
-class RocketSystemModuleImp[+L <: RocketSystem](_outer: L) extends BaseSubsystemModuleImp(_outer)
-  with HasHierarchicalElementsRootContextModuleImp
-  with HasRTCModuleImp
-  with HasExtInterruptsModuleImp
-  with DontTouch {
-  override lazy val outer = _outer
-}
-
-
-/**
- * Top-level module for Yosys synthesis of the RocketSystem within SOCT
- */
-class SOCTYosysSystem(implicit p: Parameters) extends RocketSystem
-
-/**
- * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
- */
-class SOCTVivadoSystem(implicit p: Parameters) extends RocketSystem {
-  if (p(HasBdBuilder).isDefined) {
-    implicit val bd: BDBuilder = p(HasBdBuilder).get
-
-    // This is the top-level instance representing this system in the block design
-    val topInstance: InstantiableBdComp with IsModule =
-      new InstantiableBdComp with IsModule {
-        private val c = p(HasSOCTConfig)
-
-        override def reference: String = c.topModuleName
-
-        override def friendlyName: String = SOCTVivadoSystem.this.instanceName
-
-        override def instanceName: String = friendlyName
-
-        override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
-      }
-
-    bd.init(p, topInstance) // Register this top instance with the BDBuilder.
-
-
-    InModuleBody {
-      val dClock300 = DiffClockBdIntfPort(300.0)
-      val coreCLock = ClockDomain("core", 100.0)
-      val peripheryCD = ClockDomain("periphery", p(PeripheryClockFrequency))
-      val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
-
-      axiInfts.foreach { axiInft =>
-        AXIBdXInterface(axiInft)
-      }
-
-      if (p(HasDDR4ExtMem).isDefined) {
-        DDR4(
-          ddr4Idx = p(HasDDR4ExtMem).get,
-          ddr4Intf = DDR4BdIntfPort(),
-          clockIn = dClock300,
-          clockOut = coreCLock
-        )
-      }
-
-      if (p(HasSDCardPMOD).isDefined) {
-        SDCardPMOD(
-          pmodIdx = p(HasSDCardPMOD).get,
-          cdPort = SDIOCDPort(),
-          clkPort = SDIOClkPort(),
-          cmdPort = SDIOCmdPort(),
-          dataPort = SDIODataPort()
-        )
-      }
-
-      if (debug.getWrappedValue.isDefined) {
-        val debugIf = debug.getWrappedValue.get
-
-        if (debugIf.systemjtag.isDefined) {
-          val jtagIO = debugIf.systemjtag.get
-          JTAGBdXInterface(jtagIO.jtag)
-          // Tie off unused fields using inline constants - rename for clarity in block design
-          new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth, Seq(jtagIO.mfr_id))
-          {override def friendlyName: String = "jtag_mfr_id_constant"}
-
-          new InlineConstant(0.U, jtagIO.part_number.getWidth, Seq(jtagIO.part_number))
-          {override def friendlyName: String = "jtag_part_number_constant"}
-
-          new InlineConstant(0.U, jtagIO.version.getWidth, Seq(jtagIO.version))
-          {override def friendlyName: String = "jtag_version_constant"}
-        }
-      }
-    }
-  } else {
-    log.info("No BDBuilder found in parameters - skipping block design generation and only elaborating Chisel design. " +
-      "If you intended to use Vivado, please ensure HasBdBuilder is set in the parameters.")
-  }
-}
-
-/**
- * Top-level module for simulation of the RocketSystem within SOCT
- */
-class SOCTSimSystem()(implicit p: Parameters) extends Module {
-  val io = IO(new Bundle {
-    val success = Output(Bool())
-  })
-  val ldut = LazyModule(new RocketSystem)
-  val dut = Module(ldut.module)
-
-  ldut.io_clocks.get.elements.values.foreach(_.clock := clock)
-  // Allow the debug ndreset to reset the dut, but not until the initial reset has completed
-  val dut_reset = (reset.asBool | ldut.debug.map { debug => AsyncResetReg(debug.ndreset) }.getOrElse(false.B)).asBool
-  ldut.io_clocks.get.elements.values.foreach(_.reset := dut_reset)
-
-  dut.dontTouchPorts()
-  dut.tieOffInterrupts()
-  SimAXIMem.connectMem(ldut)
-  SimAXIMem.connectMMIO(ldut)
-  ldut.l2_frontend_bus_axi4.foreach(a => {
-    a.ar.valid := false.B
-    a.ar.bits := DontCare
-    a.aw.valid := false.B
-    a.aw.bits := DontCare
-    a.w.valid := false.B
-    a.w.bits := DontCare
-    a.r.ready := false.B
-    a.b.ready := false.B
-  })
-  Debug.connectDebug(ldut.debug, ldut.resetctrl, ldut.psd, clock, reset.asBool, io.success)
 }
 
 

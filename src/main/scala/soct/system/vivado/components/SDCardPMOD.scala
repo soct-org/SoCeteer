@@ -1,15 +1,15 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MMIOPort, CanHaveSlaveAXI4Port}
 import org.chipsalliance.cde.config
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.{ChiselTop, HasSOCTConfig, HasXilinxFPGA}
-import soct.xilinx.{BDBuilder, XilinxDesignException}
 
 import java.nio.file.{Files, Path}
 
 
-case class SDIOCDPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
+case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_cd"
 
   override def ifType: String = "data"
@@ -17,7 +17,7 @@ case class SDIOCDPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def dir: String = "I"
 }
 
-case class SDIOClkPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
+case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_clk"
 
   override def ifType: String = "clk"
@@ -25,7 +25,7 @@ case class SDIOClkPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def dir: String = "O"
 }
 
-case class SDIOCmdPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
+case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_cmd"
 
   override def ifType: String = "data"
@@ -33,7 +33,7 @@ case class SDIOCmdPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
   override def dir: String = "IO"
 }
 
-case class SDIODataPort()(implicit bd: BDBuilder, p: Parameters) extends BdPort {
+case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
   override def INTERFACE_NAME = "sdio_data"
 
   override def ifType: String = "data"
@@ -61,7 +61,7 @@ case class SDCardPMOD(pmodIdx: Int,
                       cmdPort: SDIOCmdPort,
                       dataPort: SDIODataPort
                      )
-                     (implicit bd: BDBuilder, p: Parameters)
+                     (implicit bd: SOCTBdBuilder, p: Parameters)
   extends InstantiableBdComp with IsModule {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE

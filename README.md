@@ -223,9 +223,9 @@ To not build the simulator, add `--no-sim`. In order to generate Vivado project 
 ### Important Files
 * **[build.sbt](build.sbt)** – dependencies and project definition. CLI users: note `assemblyOutputPath` which defines the JAR output path.
 * **[RocketLauncher.scala](src/main/scala/soct/RocketLauncher.scala)** – main entry point, parses arguments, triggers Verilog emission.
-* **[Configs Directory](src/main/scala/soct/configs)** - Contains several predefined SoC configurations for [boom](src/main/scala/soct/configs/boom), [rocket](src/main/scala/soct/configs/rocketchip) and [gemmini](src/main/scala/soct/configs/gemmini) based systems.
-* **[Systems.scala](src/main/scala/soct/configs/soceteer/Systems.scala)** – processor and harness definitions for SoCeteer.
-* **[Configs.scala](src/main/scala/soct/configs/soceteer/Configs.scala)** – configurations for synthesis and simulation for SoCeteer.
+* **[Configs Directory](src/main/scala/soct/config)** - Contains several predefined SoC configurations for [boom](src/main/scala/soct/config/boom), [rocket](src/main/scala/soct/config/rocketchip) and [gemmini](src/main/scala/soct/config/gemmini) based systems.
+* **[Systems.scala](src/main/scala/soct/config/soceteer/Systems.scala)** – processor and harness definitions for SoCeteer.
+* **[Configs.scala](src/main/scala/soct/config/soceteer/Configs.scala)** – configurations for synthesis and simulation for SoCeteer.
 
 ### Development on Windows
 Windows support is available but not prioritized. Some features may not function as expected.

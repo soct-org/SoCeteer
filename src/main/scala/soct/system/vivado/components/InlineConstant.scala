@@ -1,9 +1,8 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import chisel3.{Data, UInt}
 import org.chipsalliance.cde.config.Parameters
-import soct.xilinx.BDBuilder
-import soct.xilinx.SOCTVivado.toXilinxPortRef
+import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 
 /**
  * Constant IP core for Xilinx FPGAs
@@ -15,7 +14,7 @@ import soct.xilinx.SOCTVivado.toXilinxPortRef
 case class InlineConstant(value: UInt,
                           nBits: Int,
                           chiselData: Seq[Data] = Seq.empty
-                   )(implicit bd: BDBuilder, p: Parameters)
+                   )(implicit bd: SOCTBdBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -36,7 +35,7 @@ case class InlineConstant(value: UInt,
    */
   override def connectTclCommands: Seq[String] = {
     chiselData.map { data =>
-      val ref = toXilinxPortRef(data)
+      val ref = SOCTVivado.toXilinxPortRef(data)
       s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $ref]"
     }
   }

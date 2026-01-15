@@ -1,13 +1,13 @@
-package soct.xilinx.components
+package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.xilinx.BDBuilder
+import soct.system.vivado.SOCTBdBuilder
 
 import scala.collection.mutable
 
 
 
-case class DiffClockBdIntfPort(freqMhz: Double) (implicit bd: BDBuilder, p: Parameters) extends XilinxBdIntfPort {
+case class DiffClockBdIntfPort(freqMhz: Double) (implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort {
   override def INTERFACE_NAME: String = {
     s"diff_clock_${freqMhz.toInt}mhz"
   }
@@ -24,13 +24,13 @@ case class DiffClockBdIntfPort(freqMhz: Double) (implicit bd: BDBuilder, p: Para
  * @param name         The name of the clock domain
  * @param frequencyMHz The frequency of the clock domain in MHz
  */
-case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: BDBuilder, p: Parameters) extends BdComp
+case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
 
 
 
 
 case class ClockWizClk(freqMhz: Double)
-                      (implicit bd: BDBuilder, p: Parameters) extends InstantiableBdComp with IsXilinxIP {
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp with IsXilinxIP {
 
 
   /**
