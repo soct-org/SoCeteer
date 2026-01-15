@@ -1,11 +1,24 @@
 package soct
 
-import freechips.rocketchip.subsystem.SystemBusKey
+import freechips.rocketchip.rocket.{WithNBigCores, WithNBreakpoints}
+import freechips.rocketchip.subsystem.{SystemBusKey, WithEdgeDataBits, WithInclusiveCache}
 import freechips.rocketchip.tile.BuildRoCC
 import gemmini.{Gemmini, GemminiConfigs, GemminiFPConfigs}
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.chipsalliance.diplomacy.ValName
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
+
+
+class RocketB1Gem4Fp extends Config(
+  new WithGemminiFp(4, 64).orElse(
+    new WithInclusiveCache).orElse(
+    new WithNBigCores(1)))
+
+class RocketB1Gem4 extends Config(
+  new WithGemmini(4, 64).orElse(
+    new RocketB1()).orElse(
+    new WithInclusiveCache()))
+
 
 class WithGemmini(mesh_size: Int, bus_bits: Int) extends Config((site, here, up) => {
   case BuildRoCC => up(BuildRoCC) ++ Seq(
