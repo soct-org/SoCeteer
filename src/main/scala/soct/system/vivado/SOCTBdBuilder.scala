@@ -202,6 +202,10 @@ class SOCTBdBuilder {
        |
        |# Open existing BD or create a new one
        |if {[file exists $$bd_file]} {
+       |  # Ensure the BD is part of the current project before opening
+       |  if {[llength [get_files -quiet $$bd_file]] == 0} {
+       |    add_files -norecurse $$bd_file
+       |  }
        |  open_bd_design $$bd_file
        |} else {
        |  create_bd_design ${k.bdName}
