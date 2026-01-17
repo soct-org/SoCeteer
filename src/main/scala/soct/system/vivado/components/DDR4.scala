@@ -9,7 +9,7 @@ import soct.{ChiselTop, HasSOCTConfig, HasXilinxFPGA}
 
 case class DDR4BdIntfPort()(implicit bd: SOCTBdBuilder, p: Parameters)
   extends XilinxBdIntfPort {
-  override def INTERFACE_NAME = "ddr4_sdram"
+  override def ifName = "ddr4_sdram"
 
   override def mode: String = "Master"
 
@@ -56,7 +56,7 @@ case class DDR4(ddr4Idx: Int,
 
   override def defaultProperties: Map[String, String] = {
     Map(
-      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.INTERFACE_NAME,
+      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ifName,
       //"CONFIG.C0_CLOCK_BOARD_INTERFACE" -> clockIn.INTERFACE_NAME,
       "CONFIG.ADDN_UI_CLKOUT1_FREQ_HZ" -> clockOut.frequencyMHz.toInt.toString
     )

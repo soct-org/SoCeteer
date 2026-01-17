@@ -10,7 +10,7 @@ import java.nio.file.{Files, Path}
 
 
 case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
-  override def INTERFACE_NAME = "sdio_cd"
+  override def ifName = "sdio_cd"
 
   override def ifType: String = "data"
 
@@ -18,7 +18,7 @@ case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPor
 }
 
 case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
-  override def INTERFACE_NAME = "sdio_clk"
+  override def ifName = "sdio_clk"
 
   override def ifType: String = "clk"
 
@@ -26,7 +26,7 @@ case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPo
 }
 
 case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
-  override def INTERFACE_NAME = "sdio_cmd"
+  override def ifName = "sdio_cmd"
 
   override def ifType: String = "data"
 
@@ -34,7 +34,7 @@ case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPo
 }
 
 case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
-  override def INTERFACE_NAME = "sdio_data"
+  override def ifName = "sdio_data"
 
   override def ifType: String = "data"
 

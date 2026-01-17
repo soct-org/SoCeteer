@@ -1,10 +1,10 @@
 package soct.system.vivado.components
 
+import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.{ChiselTop, HasXilinxFPGA}
+import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
+import soct.HasXilinxFPGA
 
-import java.io.File
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
@@ -68,7 +68,7 @@ abstract class BdComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFr
  * Base class for Board Design X Interfaces.
  * Used to add extra annotations to ports in the design.
  */
-abstract class BdXInterface(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
+abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
   /**
    * The name of the signal group for this port, relevant for example for X_INTERFACE_INFO annotations
    */
@@ -88,7 +88,7 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp 
   /**
    * The name of this interface port
    */
-  def INTERFACE_NAME: String
+  def ifName: String
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -118,9 +118,9 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp 
     val range = (from, to) match {
       case (Some(f), Some(t)) => s"-from $f -to $t "
       case (None, None) => ""
-      case _ => throw new IllegalStateException(s"BdPort $INTERFACE_NAME must have either both or neither of from/to defined")
+      case _ => throw new IllegalStateException(s"BdPort $ifName must have either both or neither of from/to defined")
     }
-    Seq(s"set ${INTERFACE_NAME} [create_bd_port -type $ifType -dir $dir $range$INTERFACE_NAME]")
+    Seq(s"set ${ifName} [create_bd_port -type $ifType -dir $dir $range$ifName]")
   }
 }
 
@@ -131,7 +131,7 @@ abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) exten
   /**
    * The name of this interface, used to connect components to it
    */
-  def INTERFACE_NAME: String
+  def ifName: String
 
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
@@ -142,7 +142,7 @@ abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) exten
    * Emit the TCL command to create the port for this component
    */
   def tclCommands: Seq[String] = {
-    Seq(s"set $INTERFACE_NAME [create_bd_intf_port -mode $mode -vlnv $partName $INTERFACE_NAME]")
+    Seq(s"set $ifName [create_bd_intf_port -mode $mode -vlnv $partName $ifName]")
   }
 }
 
@@ -150,6 +150,22 @@ abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) exten
  * Trait for components that can be instantiated in the design
  */
 abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
+
+  /**
+   * The list of receivers connected to this component
+   */
+  protected[components] val receivers: mutable.ArrayBuffer[Any] = mutable.ArrayBuffer.empty[Any]
+
+  /**
+   * Request output from this component for the given receiver component.
+   * @param receiver The receiving component
+   * @tparam T The type of the receiving component
+   * @return True if output is request is accepted, false otherwise
+   */
+  def outputTo[T](receiver : T): Boolean = {
+    receivers += receiver
+    true
+  }
 
   /**
    * Optional index to differentiate multiple instances of the same component
@@ -165,7 +181,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters) ext
     val name = friendlyName.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase
     index match {
       case Some(i) => s"${name}_$i"
-      case None => name
+      case None => s"${name}_0"
     }
   }
 
@@ -179,15 +195,26 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters) ext
       case module: IsModule =>
         Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
       case _ =>
-        throw new UnsupportedOperationException(s"Component ${friendlyName} must be either IsXilinxIP or IsModule to be instantiated.")
+        throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
     }
   }
-
 
   /**
    * Emit the TCL commands to connect this component in the design
    */
   def connectTclCommands: Seq[String]
+
+
+  // Helper functions for common connection patterns:
+  def connectNet[T <: Data](port: T, outPort: String): String = {
+    val ref = SOCTVivado.toXilinxPortRef(port)
+    s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $ref]"
+  }
+
+  def connectIfNet[T <: Data](intfPort: T, outPort: String): String = {
+    val ref = SOCTVivado.toXilinxPortRef(intfPort)
+    s"connect_bd_intf_net [get_bd_intf_pins $instanceName/$outPort] [get_bd_intf_pins $ref]"
+  }
 }
 
 /**

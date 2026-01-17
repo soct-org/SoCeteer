@@ -7,14 +7,12 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 /**
  * Constant IP core for Xilinx FPGAs
  *
- * @param value      The constant value
- * @param nBits      The number of bits
- * @param chiselData Optional Chisel data to connect the output to
+ * @param value The constant value
+ * @param nBits The number of bits
  */
 case class InlineConstant(value: UInt,
-                          nBits: Int,
-                          chiselData: Seq[Data] = Seq.empty
-                   )(implicit bd: SOCTBdBuilder, p: Parameters)
+                          nBits: Int
+                         )(implicit bd: SOCTBdBuilder, p: Parameters)
   extends InstantiableBdComp with IsXilinxIP {
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -27,16 +25,18 @@ case class InlineConstant(value: UInt,
     "CONFIG.CONST_WIDTH" -> s"${nBits}"
   )
 
+  val outPort = "dout" // Check doc of Inline Constant IP core for port name
 
-  val outPort: String = "dout"
+  private def validReceivers: Seq[Data] = receivers.collect {
+    case data: Data => data
+  }.toSeq
 
   /**
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = {
-    chiselData.map { data =>
-      val ref = SOCTVivado.toXilinxPortRef(data)
-      s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $ref]"
+    validReceivers.map {
+      data: Data => connectNet(data, outPort)
     }
   }
 }

@@ -9,17 +9,17 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 import scala.collection.mutable
 
 
-case class AXIBdXInterface(axiPort: AXI4Bundle)
-                          (implicit bd: SOCTBdBuilder, p: Parameters)
-extends BdXInterface with IsXilinxIP {
+case class AXIXIntfPort(axiPort: AXI4Bundle)
+                       (implicit bd: SOCTBdBuilder, p: Parameters)
+extends XIntfPort with IsXilinxIP {
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
 
-  override def ifName: String = axiPort.instanceName
-
-  val ignoredPorts: Set[String] = Set("bits", "user", "echo")
+  override def ifName: String = SOCTVivado.snake(axiPort.instanceName).toUpperCase()
 
   override def portMapping: Map[String, Seq[String]] = {
+    val ignoredPorts: Set[String] = Set("bits", "user", "echo")
+
     val portMappings = mutable.Map.empty[String, Seq[String]]
     axiPort.elements.foreach { case (channelName, channel) =>
       DataMirror.collectMembers(channel) {

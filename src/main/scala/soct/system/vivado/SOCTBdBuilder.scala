@@ -2,7 +2,7 @@ package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, HasXilinxFPGA, VivadoSOCTPaths}
-import soct.system.vivado.components.{BdComp, BdPort, BdXInterface, InstantiableBdComp, IsModule, IsXilinxIP, XilinxBdIntfPort}
+import soct.system.vivado.components.{BdComp, BdPort, XIntfPort, InstantiableBdComp, IsModule, IsXilinxIP, XilinxBdIntfPort}
 
 import java.nio.file.Path
 import scala.collection.mutable
@@ -95,7 +95,7 @@ class SOCTBdBuilder {
   def portModifications(): Map[String, Seq[String]] = {
     val allPortMods = mutable.Map.empty[String, Seq[String]]
     components.foreach {
-      case xIntf: BdXInterface =>
+      case xIntf: XIntfPort =>
         val portMods = xIntf.portMapping
         portMods.foreach { case (portName, annotations) =>
           // Append to existing annotations if present

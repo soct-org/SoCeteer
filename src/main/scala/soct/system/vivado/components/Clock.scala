@@ -8,7 +8,7 @@ import scala.collection.mutable
 
 
 case class DiffClockBdIntfPort(freqMhz: Double) (implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort {
-  override def INTERFACE_NAME: String = {
+  override def ifName: String = {
     s"diff_clock_${freqMhz.toInt}mhz"
   }
 

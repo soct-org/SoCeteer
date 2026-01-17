@@ -17,8 +17,12 @@ import scala.util.matching.Regex
 /**
  * Exception thrown during evaluation of a Xilinx design
  */
-case class XilinxDesignException(private val message: String = "",
+class XilinxDesignException(private val message: String = "",
                                  private val cause: Throwable = None.orNull) extends Exception(message, cause)
+
+object XilinxDesignException {
+  def apply(message: String): XilinxDesignException = new XilinxDesignException(message)
+}
 
 
 
@@ -30,8 +34,6 @@ object SOCTVivado {
   val DEFAULT_MEMORY_ADDR_32: BigInt = BigInt("40000000", 16)
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
-
-  val TAB_SIZE = 2
 
   /** Convert a name to snake_case */
   def snake(name: String): String = {
@@ -65,10 +67,9 @@ object SOCTVivado {
         soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")
       } else {
         val lineIdx = lineIdxOpt.get
-        val ws = "\t" * TAB_SIZE
         // Insert the annotations before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
         attrStrings.reverse.foreach { attrString =>
-          lines.insert(lineIdx, ws + attrString)
+          lines.insert(lineIdx, "  " + attrString)
         }
       }
     }
