@@ -1,6 +1,6 @@
 package soct.system.vivado.fpga
 
-import org.chipsalliance.cde.config
+import soct.system.vivado.components.ClockDomain
 
 object ZCU104 extends FPGA {
 
@@ -10,7 +10,11 @@ object ZCU104 extends FPGA {
 
   override val partName: String = "xilinx.com:zcu104:part0:1.1"
 
-  override val portsDDR4: Seq[Int] = Seq(0) // DDR4 port 0 is available
+  override val portsDDR4: Seq[DDR4Port] = Seq(DDR4Port(
+    ddr4Port = "ddr4_sdram",
+    defaultClock = ClockDomain("clk_300mhz", 300.0),
+    defaultReset = "reset"
+  ))
 
   override val portsPMOD: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1 are available, 2 is I2C
 }

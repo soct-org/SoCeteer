@@ -4,33 +4,15 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 
+trait ProvidesClock {
 
-case class DiffClockBdIntfPort(freqMhz: Double) (implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort {
-  override def ifName: String = {
-    s"diff_clock_${freqMhz.toInt}mhz"
-  }
-
-  override def mode: String = "Slave"
-
-  override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
 }
 
-
-/**
- * Case class representing a clock domain in the design
- *
- * @param name         The name of the clock domain
- * @param frequencyMHz The frequency of the clock domain in MHz
- */
-case class ClockDomain(name: String, frequencyMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
-
-
-
-
-case class ClockWizClk(freqMhz: Double)
-                      (implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp with IsXilinxIP {
+case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends InstantiableBdComp with IsXilinxIP with ProvidesClock {
 
 
   /**
@@ -45,7 +27,38 @@ case class ClockWizClk(freqMhz: Double)
 
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
-
-
-  override def friendlyName: String = s"clk_wiz_${freqMhz.toInt}mhz"
 }
+
+
+/**
+ * Case class representing a clock domain in the design
+ *
+ * @param name    The name of the clock domain / port
+ * @param freqMHz The frequency of the clock domain in MHz
+ */
+case class ClockDomain(name: String, freqMHz: Double) {
+
+  protected[components] val clkReceivers: ArrayBuffer[BdComp] = mutable.ArrayBuffer.empty[BdComp]
+
+  /**
+   * Register a component as a receiver of this clock
+   *
+   * @param comp The component to register
+   * @tparam T The type of the component
+   * @return The registered component
+   */
+  def add[T <: BdComp](comp: T): T = {
+    clkReceivers += comp
+    comp
+  }
+}
+
+object WithDomain {
+  def apply[T](cd: ClockDomain)(
+    block: ClockDomain => T
+  ): T = {
+    block(cd)
+  }
+}
+
+
