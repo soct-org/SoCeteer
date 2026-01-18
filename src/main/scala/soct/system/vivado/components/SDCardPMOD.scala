@@ -61,7 +61,7 @@ case class SDCardPMOD(pmodIdx: Int,
                       cmdPort: SDIOCmdPort,
                       dataPort: SDIODataPort
                      )
-                     (implicit bd: SOCTBdBuilder, p: Parameters)
+                     (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
   extends InstantiableBdComp with IsModule {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
@@ -106,8 +106,24 @@ case class SDCardPMOD(pmodIdx: Int,
     Some(dest)
   }
 
+  // See collateral files for port names
+  val sdioCD = "sdio_cd"
+
+  val sdioCMD = "sdio_cmd"
+
+  val sdioDat = "sdio_dat"
+
+  val sdioClk = "sdio_clk"
+
   /**
    * Emit the TCL commands to connect this component in the design
    */
-  override def connectTclCommands: Seq[String] = Seq.empty
+  override def connectTclCommands: Seq[String] = {
+    Seq(
+      s"connect_bd_net [get_bd_ports ${cdPort.ifName}] [get_bd_pins $instanceName/$sdioCD]",
+      s"connect_bd_net [get_bd_ports ${cmdPort.ifName}] [get_bd_pins $instanceName/$sdioCMD]",
+      s"connect_bd_net [get_bd_ports ${dataPort.ifName}] [get_bd_pins $instanceName/$sdioDat]",
+      s"connect_bd_net [get_bd_ports ${clkPort.ifName}] [get_bd_pins $instanceName/$sdioClk]"
+    )
+  }
 }

@@ -5,7 +5,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{HasBdBuilder, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasXilinxFPGA, PeripheryClockFrequency, log}
-import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort}
+import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -14,24 +14,27 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   if (p(HasBdBuilder).isDefined) {
     implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
     val fpga = p(HasXilinxFPGA).get
+    val fpgaDomain = fpga.clocks.headOption.getOrElse(
+      throw XilinxDesignException(s"FPGA ${fpga.friendlyName} does not define any clock domains.")
+    )
     val coreDomain = ClockDomain("core", 100.0)
     val peripheryDomain = ClockDomain("periphery", p(PeripheryClockFrequency))
     val cklWiz = ClkWiz(Seq(coreDomain, peripheryDomain))
 
     // This is the top-level instance representing this system in the block design
-    val topInstance: InstantiableBdComp with IsModule =
-      new InstantiableBdComp with IsModule {
-        private val c = p(HasSOCTConfig)
+    val topInstance = WithDomain(coreDomain) { implicit dom =>
+        new InstantiableBdComp with IsModule {
+          private val c = p(HasSOCTConfig)
 
-        override def reference: String = c.topModuleName
+          override def reference: String = c.topModuleName
 
-        override def friendlyName: String = SOCTVivadoSystem.this.instanceName
+          override def friendlyName: String = SOCTVivadoSystem.this.instanceName
 
-        override def instanceName: String = friendlyName
+          override def instanceName: String = friendlyName
 
-        override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
+          override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
+        }
       }
-
     bd.init(p, topInstance) // Register this top instance with the BDBuilder.
 
 
@@ -42,7 +45,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         // get index or throw error if out of range
         require(portIdx >= 0 && portIdx < fpga.portsDDR4.length, s"DDR4 port index $portIdx out of range for FPGA ${fpga.friendlyName} which has ${fpga.portsDDR4.length} DDR4 ports.")
         val ddr4Port = fpga.portsDDR4(portIdx)
-        val ddr4 = DDR4(ddr4Intf = ddr4Port)
+        val ddr4 = {
+          WithDomain(fpgaDomain) { implicit dom =>
+            DDR4(ddr4Intf = ddr4Port)
+          }
+        }
         ddr4.outputTo(cklWiz)
       }
 
@@ -53,13 +60,15 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
 
       if (p(HasSDCardPMOD).isDefined) {
-        SDCardPMOD(
-          pmodIdx = p(HasSDCardPMOD).get,
-          cdPort = SDIOCDPort(),
-          clkPort = SDIOClkPort(),
-          cmdPort = SDIOCmdPort(),
-          dataPort = SDIODataPort()
-        )
+        WithDomain(peripheryDomain) { implicit dom =>
+          SDCardPMOD(
+            pmodIdx = p(HasSDCardPMOD).get,
+            cdPort = SDIOCDPort(),
+            clkPort = SDIOClkPort(),
+            cmdPort = SDIOCmdPort(),
+            dataPort = SDIODataPort()
+          )
+        }
       }
 
       if (debug.getWrappedValue.isDefined) {

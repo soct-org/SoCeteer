@@ -149,7 +149,7 @@ abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) exten
 /**
  * Trait for components that can be instantiated in the design
  */
-abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, clk: Option[ClockDomain] = None) extends BdComp {
+abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp {
 
   /**
    * The list of receivers connected to this component
@@ -211,8 +211,8 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, clk
     s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $ref]"
   }
 
-  // Register with the clock provider if available
-  clk.foreach(_.add(this))
+  // Register with the clock domain if provided
+  dom.foreach(_.add(this))
 }
 
 /**

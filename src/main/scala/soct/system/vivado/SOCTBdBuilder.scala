@@ -53,7 +53,7 @@ class SOCTBdBuilder {
 
 
   /**
-   * Initialize the BDBuilder with parameters and top-level instance. MUST be called before generating scripts or adding components.
+   * Initialize the BDBuilder with parameters and top-level instance.
    *
    * @param p       Parameters
    * @param topInst Top-level instantiable block design component

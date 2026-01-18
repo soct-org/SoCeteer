@@ -4,7 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 
 
-case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters)
+case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
   extends InstantiableBdComp with IsXilinxIP {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"

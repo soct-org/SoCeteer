@@ -38,7 +38,8 @@ case class JTAGXIntfPort(jtagio: JTAGIO, TDT: Bool)
 /**
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
-case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp with IsModule {
+case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
+  extends InstantiableBdComp with IsModule {
 
   /**
    * The reference name of this module - as defined in the collateral files

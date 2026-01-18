@@ -11,7 +11,7 @@ trait ProvidesClock {
 
 }
 
-case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters)
+case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
   extends InstantiableBdComp with IsXilinxIP with ProvidesClock {
 
 
@@ -55,9 +55,9 @@ case class ClockDomain(name: String, freqMHz: Double) {
 
 object WithDomain {
   def apply[T](cd: ClockDomain)(
-    block: ClockDomain => T
+    block: Option[ClockDomain] => T
   ): T = {
-    block(cd)
+    block(Some(cd))
   }
 }
 

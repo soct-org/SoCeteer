@@ -52,7 +52,7 @@ extends XIntfPort with IsXilinxIP {
 }
 
 
-case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters)
+case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
   extends InstantiableBdComp with IsXilinxIP {
 
 

@@ -12,7 +12,7 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
  */
 case class InlineConstant(value: UInt,
                           nBits: Int
-                         )(implicit bd: SOCTBdBuilder, p: Parameters)
+                         )(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
   extends InstantiableBdComp with IsXilinxIP {
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 

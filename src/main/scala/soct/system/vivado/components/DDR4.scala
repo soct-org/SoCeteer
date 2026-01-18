@@ -4,12 +4,12 @@ import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MemPort, ExtMem}
 import org.apache.commons.lang3.NotImplementedException
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
-import soct.system.vivado.fpga.DDR4Port
+import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.HasSOCTConfig
 
 
-case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
   extends InstantiableBdComp with IsXilinxIP {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
@@ -43,10 +43,9 @@ case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters)
     clkWizs.zipWithIndex.flatMap {
       case (cw, idx) =>
         if (cw.cds.nonEmpty) {
-          require(cw.cds.forall(cd => cd.freqMHz <= ddr4Intf.defaultClock.freqMHz),
-            s"DDR4 clock ${ddr4Intf.defaultClock.freqMHz} MHz cannot drive clock wizard output clocks higher than itself (${cw.cds.map(cd => s"${cd.name}: ${cd.freqMHz} MHz").mkString(", ")})")
+          require(cw.cds.forall(cd => cd.freqMHz <= dom.get.freqMHz), s"Requested clock domain frequency for clkout ${idx + 1} exceeds DDR4 source frequency")
           val maxFreq = cw.cds.map(_.freqMHz).max
-          soct.log.debug(s"DDR4 driving clock wizard output ${idx + 1} at ${maxFreq} MHz")
+          soct.log.debug(s"DDR4 driving clock wizard output ${idx + 1} at $maxFreq MHz")
           Map(s"CONFIG.ADDN_UI_CLKOUT${idx + 1}_FREQ_HZ" -> maxFreq.toInt.toString) // clkout indices are 1-based
         } else {
           Map.empty[String, String]
@@ -58,11 +57,12 @@ case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters)
     if (receivers.exists(r => !r.isInstanceOf[ClkWiz])) {
       throw new NotImplementedException(s"DDR4 can only output to ClkWiz components for now")
     }
+    require(dom.isDefined && dom.get.isInstanceOf[FPGAClockDomain], s"DDR4 component must be instantiated within the FPGA clock domain for now")
 
 
     Map(
       "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ddr4Port,
-      "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> ddr4Intf.defaultClock.name,
+      "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.name,
       "CONFIG.RESET_BOARD_INTERFACE" -> ddr4Intf.defaultReset
     ) ++ clkWizConnects
   }
