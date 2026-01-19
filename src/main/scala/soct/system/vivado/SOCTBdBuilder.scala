@@ -28,6 +28,12 @@ class SOCTBdBuilder {
        |$varDecls""".stripMargin
   }
 
+  /**
+   * Map of block design specific TCL variables that are instantiated in the BD script
+   */
+  private val bdVars: mutable.Map[String, TclVar] = mutable.Map.empty
+
+
   // Map of variable names to their descriptions and default values
   private var vars: Map[String, TclVar] = Map.empty
 
@@ -53,6 +59,17 @@ class SOCTBdBuilder {
 
 
   /**
+   * Add a block design TCL variable
+   * @param name The name, INCLUDING the dereferencing $
+   * @param description A description of the variable
+   * @param default The default value of the variable
+   */
+  def addBdVar(name: String, description: String, default: String): Unit = {
+    bdVars += (name -> TclVar(description, default))
+  }
+
+
+  /**
    * Initialize the BDBuilder with parameters and top-level instance.
    *
    * @param p       Parameters
@@ -65,7 +82,7 @@ class SOCTBdBuilder {
     val aggressive = config.args.overrideVivadoProject
     topInstance = () => topInst
 
-    vars = Map(
+    vars ++= Map(
       k.aggressive -> TclVar("Whether to aggressively overwrite existing Vivado projects and sources", if (aggressive) "1" else "0"),
       k.sources -> TclVar("The name of the fileset containing the design sources", "sources_1"),
       k.projectName -> TclVar("The name of the Vivado project to create or open", s"${config.topModuleName}"),
@@ -147,7 +164,7 @@ class SOCTBdBuilder {
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)
 
     // generate header with variable descriptions, using a subset of vals in vars
-    val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) }
+    val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ this.bdVars
 
     // Collect all Xilinx IP components which are instantiable
     val xilinxIps = components.collect {

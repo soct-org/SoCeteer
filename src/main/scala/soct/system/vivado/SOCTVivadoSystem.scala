@@ -17,8 +17,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val fpgaDomain = fpga.clocks.headOption.getOrElse(
       throw XilinxDesignException(s"FPGA ${fpga.friendlyName} does not define any clock domains.")
     )
-    val coreDomain = ClockDomain("core", 100.0)
-    val peripheryDomain = ClockDomain("periphery", p(PeripheryClockFrequency))
+    val coreDomain = ClockDomain("core", 100.0, tclVarName=Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
+    val peripheryDomain = ClockDomain("periphery", p(PeripheryClockFrequency), tclVarName=Some("$periphery_clk_freq"))
     val cklWiz = ClkWiz(Seq(coreDomain, peripheryDomain))
 
     // This is the top-level instance representing this system in the block design
