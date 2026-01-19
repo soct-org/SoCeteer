@@ -9,7 +9,13 @@ import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.HasSOCTConfig
 
 
-case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
+case class DDR4(
+                 ddr4Intf: DDR4Port,
+                 addnClkOut1: Option[ClockDomain] = None,
+                 addnClkOut2: Option[ClockDomain] = None,
+                 addnClkOut3: Option[ClockDomain] = None,
+                 addnClkOut4: Option[ClockDomain] = None
+               )(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
   extends InstantiableBdComp with IsXilinxIP {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
@@ -37,20 +43,22 @@ case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters, d
       throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MemPort")
   }
 
-  private def clkWizConnects: Map[String, String] = {
-    val clkWizs = receivers.collect { case cw@ClkWiz(_) => cw }
-    require(clkWizs.length <= 4, s"DDR4 can drive up to 4 clock wizards, got ${clkWizs.length}")
-    clkWizs.zipWithIndex.flatMap {
-      case (cw, idx) =>
-        if (cw.cds.nonEmpty) {
-          require(cw.cds.forall(cd => cd.freqMHz <= dom.get.freqMHz), s"Requested clock domain frequency for clkout ${idx + 1} exceeds DDR4 source frequency")
-          val maxFreq = cw.cds.map(_.freqMHz).max
-          soct.log.debug(s"DDR4 driving clock wizard output ${idx + 1} at $maxFreq MHz")
-          Map(s"CONFIG.ADDN_UI_CLKOUT${idx + 1}_FREQ_HZ" -> maxFreq.toInt.toString) // clkout indices are 1-based
-        } else {
-          Map.empty[String, String]
-        }
-    }.toMap
+
+  private def outFreqs() : Map[String, String] = {
+    var freqs = Map.empty[String, String]
+    if (addnClkOut1.isDefined) {
+      freqs += s"CONFIG.ADDN_UI_CLKOUT1_FREQ_HZ" -> addnClkOut1.get.freqMHz.toInt.toString
+    }
+    if (addnClkOut2.isDefined) {
+      freqs += s"CONFIG.ADDN_UI_CLKOUT2_FREQ_HZ" -> addnClkOut2.get.freqMHz.toInt.toString
+    }
+    if (addnClkOut3.isDefined) {
+      freqs += s"CONFIG.ADDN_UI_CLKOUT3_FREQ_HZ" -> addnClkOut3.get.freqMHz.toInt.toString
+    }
+    if (addnClkOut4.isDefined) {
+      freqs += s"CONFIG.ADDN_UI_CLKOUT4_FREQ_HZ" -> addnClkOut4.get.freqMHz.toInt.toString
+    }
+    freqs
   }
 
   override def defaultProperties: Map[String, String] = {
@@ -64,12 +72,25 @@ case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters, d
       "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ddr4Port,
       "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.name,
       "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.name
-    ) ++ clkWizConnects
+    ) ++ outFreqs
   }
 
   /**
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = Seq.empty
+    /*
+      connect_bd_net -net ddr4_0_addn_ui_clkout1  [get_bd_pins ddr4_0/addn_ui_clkout1] \
+  [get_bd_pins clk_wiz_0/clk_in1]
+  connect_bd_net -net ddr4_0_c0_ddr4_ui_clk  [get_bd_pins ddr4_0/c0_ddr4_ui_clk] \
+  [get_bd_pins axi_smc/aclk1] \
+     */
+
 }
 
+
+case object DDR4 {
+  val C0_DDR4 = "C0_DDR4"
+
+  val SyncReset = "c0_ddr4_ui_clk_sync_rst"
+}

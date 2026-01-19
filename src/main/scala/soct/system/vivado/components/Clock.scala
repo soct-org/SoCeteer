@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.fpga.FPGAClockDomain
+import soct.system.vivado.fpga.{FPGAClockDomain, FPGAReset}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -33,9 +33,8 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
     }
 
     m += "CONFIG.NUM_OUT_CLKS" -> nCds.toString
-    if (dom.isDefined && dom.get.isInstanceOf[FPGAClockDomain] && dom.get.reset.isDefined) {
+    if (dom.isDefined && dom.get.reset.isDefined && dom.get.reset.get.isInstanceOf[FPGAReset])
       m += "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.name
-    }
 
     // Enable board flow by default
     m += "CONFIG.USE_BOARD_FLOW" -> "true"
