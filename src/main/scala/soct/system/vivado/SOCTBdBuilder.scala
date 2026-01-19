@@ -152,10 +152,19 @@ class SOCTBdBuilder {
 
     // Generate a set_property command for each component with default properties
     val propertyCommands = componentsWithProperties.map { c =>
+      def tclLiteral(v: String): String = {
+        if (v.startsWith("$") || v.startsWith("[")) {  // leave Tcl variable/expr references as-is so they are evaluated at runtime
+          v
+        } else {
+          val esc = v.replace("}", "\\}") // escape any '}' inside the value to avoid breaking braced string
+          s"{$esc}"
+        }
+      }
+
       s"""
          |# Set default properties for component ${c.friendlyName}
          |set_property -dict [list \\
-         |${c.defaultProperties.map { case (k, v) => s"  $k {$v}" }.mkString(" \\\n") + " \\"}
+         |${c.defaultProperties.map { case (k, v) => s"  $k ${tclLiteral(v)}" }.mkString(" \\\n") + " \\"}
          |] $$${c.instanceName}
          |""".stripMargin
     }

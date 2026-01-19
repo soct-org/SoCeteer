@@ -13,6 +13,7 @@ import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, C
 class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   if (p(HasBdBuilder).isDefined) {
     implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
+    implicit val bdOpt: Option[SOCTBdBuilder] = Some(bd) // Some components have an implicit Option[BDBuilder]
     val fpga = p(HasXilinxFPGA).get
     val fpgaDomain = fpga.clocks.headOption.getOrElse(
       throw XilinxDesignException(s"FPGA ${fpga.friendlyName} does not define any clock domains.")
