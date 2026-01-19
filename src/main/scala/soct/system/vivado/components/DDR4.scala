@@ -58,12 +58,12 @@ case class DDR4(ddr4Intf: DDR4Port)(implicit bd: SOCTBdBuilder, p: Parameters, d
       throw new NotImplementedException(s"DDR4 can only output to ClkWiz components for now")
     }
     require(dom.isDefined && dom.get.isInstanceOf[FPGAClockDomain], s"DDR4 component must be instantiated within the FPGA clock domain for now")
-
+    require(dom.get.reset.isDefined, s"DDR4 component requires a reset signal in its clock domain for now")
 
     Map(
       "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ddr4Port,
       "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.name,
-      "CONFIG.RESET_BOARD_INTERFACE" -> ddr4Intf.defaultReset
+      "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.name
     ) ++ clkWizConnects
   }
 

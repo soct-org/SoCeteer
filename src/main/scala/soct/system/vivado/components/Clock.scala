@@ -14,13 +14,6 @@ trait ProvidesClock {
 case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
   extends InstantiableBdComp with IsXilinxIP with ProvidesClock {
 
-
-  /**
-   * Remember all components that want to be connected to this clock output
-   * Maps the full port name, e.g., "axi_uartlite_0/s_axi_aclk" to the component
-   */
-  var slavePorts = mutable.Map.empty[String, BdComp]
-
   override def connectTclCommands: Seq[String] = {
     Seq.empty
   }
@@ -29,14 +22,21 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 }
 
+/**
+ * Case class representing a reset signal in the design
+ * @param name The name of the reset signal
+ */
+case class Reset(name: String)
+
 
 /**
  * Case class representing a clock domain in the design
  *
- * @param name    The name of the clock domain / port
+ * @param name    The name of the clock domain
  * @param freqMHz The frequency of the clock domain in MHz
+ * @param reset   Optional reset provider that is synced to this clock domain
  */
-case class ClockDomain(name: String, freqMHz: Double) {
+case class ClockDomain(name: String, freqMHz: Double, reset: Option[Reset] = None) {
 
   protected[components] val clkReceivers: ArrayBuffer[BdComp] = mutable.ArrayBuffer.empty[BdComp]
 

@@ -61,7 +61,7 @@ object SOCTVivado {
     val lines = mutable.Buffer.from(portLines)
     portMappings.foreach { case (portName, attrStrings) =>
       val lineIdxOpt = lines.zipWithIndex.find { case (line, _) =>
-        line.contains(s"$portName")
+        line.toLowerCase.contains(portName.toLowerCase) // FIXME: This will fail for ports like "reset" which match other ports like "reset_n"
       }.map { case (_, idx) => idx }
       if (lineIdxOpt.isEmpty) {
         soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")

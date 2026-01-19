@@ -1,6 +1,6 @@
 package soct.system.vivado.fpga
 
-import soct.system.vivado.components.{ClockDomain, HasFriendlyName, IsXilinxIP}
+import soct.system.vivado.components.{ClockDomain, HasFriendlyName, IsXilinxIP, Reset}
 
 
 /**
@@ -35,23 +35,28 @@ object FPGARegistry {
 }
 
 /**
- * Case class representing a port that provides a clock domain on the FPGA board
+ * Case class representing a DDR4 port on the FPGA board.
  *
- * @param name    The name of the clock port
- * @param freqMHz The frequency of the clock domain in MHz
+ * @param ddr4Port     The name of the DDR4 port
  */
-final class FPGAClockDomain(override val name: String, override val freqMHz: Double)
-  extends ClockDomain(name, freqMHz)
+case class DDR4Port(ddr4Port: String)
 
 
 /**
- * Case class representing a DDR4 port on the FPGA board. While many boards allow custom wiring of DDR4,
- * this class captures the default clock and reset signals associated with the DDR4 port.
- *
- * @param ddr4Port     The name of the DDR4 port
- * @param defaultReset The default reset signal for the DDR4 port
+ * Case class representing a reset signal provided on the FPGA board
+ * @param name The name of the reset port provided by the board, usable in e.g. RESET_BOARD_INTERFACE
  */
-case class DDR4Port(ddr4Port: String, defaultReset: String)
+final class FPGAReset(override val name: String) extends Reset(name)
+
+/**
+ * Case class representing a port that provides a clock domain on the FPGA board
+ *
+ * @param name    The name of the clock port provided board, usable in e.g. C0_CLOCK_BOARD_INTERFACE
+ * @param freqMHz The frequency of the clock domain in MHz
+ * @param reset   Optional reset provider that is synced to this clock domain
+ */
+final class FPGAClockDomain(override val name: String, override val freqMHz: Double, override val reset: Option[FPGAReset] = None)
+  extends ClockDomain(name, freqMHz, reset)
 
 
 abstract case class FPGA() extends IsXilinxIP with HasFriendlyName {
