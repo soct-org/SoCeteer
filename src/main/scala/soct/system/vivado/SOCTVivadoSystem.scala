@@ -4,27 +4,31 @@ import chisel3._
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
-import soct.{HasBdBuilder, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasXilinxFPGA, PeripheryClockFrequency, log}
+import soct.system.vivado.SOCTVivado.snake
+import soct.{HasBdBuilder, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasXilinxFPGA, PeripheryClockDomain, log}
 import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
+
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
 class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
-  if (p(HasBdBuilder).isDefined) {
-    implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
-    implicit val bdOpt: Option[SOCTBdBuilder] = Some(bd) // Some components have an implicit Option[BDBuilder]
-    val fpga = p(HasXilinxFPGA).get
-    val fpgaDomain = fpga.clocks.headOption.getOrElse(
-      throw XilinxDesignException(s"FPGA ${fpga.friendlyName} does not define any clock domains.")
-    )
-    val coreDomain = ClockDomain("core", 100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
-    val peripheryDomain = ClockDomain("periphery", p(PeripheryClockFrequency), tclVarName = Some("$periphery_clk_freq"))
-
+  // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
+  private def genTopInst(coreDomain: ClockDomain)(implicit p: Parameters, bd: SOCTBdBuilder):
+  InstantiableBdComp with IsModule = {
     // This is the top-level instance representing this system in the block design
-    val topInstance = WithDomain(coreDomain) { implicit dom =>
+    WithDomain(coreDomain) { implicit dom =>
       new InstantiableBdComp with IsModule {
         private val c = p(HasSOCTConfig)
+
+        override def clockInPorts: Seq[String] = {
+          io_clocks
+            .map(_.getWrappedValue)
+            .map(_.data)           // Option[Iterable[ClockBundle]]
+            .toSeq                 // Seq[Iterable[ClockBundle]] (0 or 1 element)
+            .flatten               // Seq[ClockBundle]
+            .map(bundle => s"$instanceName/${snake(bundle.clock.instanceName)}")
+        }
 
         override def reference: String = c.topModuleName
 
@@ -35,8 +39,21 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
       }
     }
-    bd.init(p, topInstance) // Register this top instance with the BDBuilder.
+  }
 
+
+  if (p(HasBdBuilder).isDefined) {
+    implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
+    implicit val bdOpt: Option[SOCTBdBuilder] = Some(bd) // Some components have an implicit Option[BDBuilder]
+    val fpga = p(HasXilinxFPGA).get
+    val fpgaDomain = fpga.clocks.headOption.getOrElse(
+      throw XilinxDesignException(s"FPGA ${fpga.friendlyName} does not define any clock domains.")
+    )
+    val coreDomain = ClockDomain("core", 100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
+    val peripheryDomain = p(PeripheryClockDomain)
+    val topInstance = genTopInst(coreDomain)
+
+    bd.init(p, topInstance) // Register this top instance with the BDBuilder.
 
     InModuleBody {
       // Connect DDR4 if present - it outputs to the clock wizard
@@ -46,11 +63,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         require(portIdx >= 0 && portIdx < fpga.portsDDR4.length, s"DDR4 port index $portIdx out of range for FPGA ${fpga.friendlyName} which has ${fpga.portsDDR4.length} DDR4 ports.")
         val ddr4Port = fpga.portsDDR4(portIdx)
         // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
-        val ddr4ClkWizDom = ClockDomain("clk_wiz_clk_in", coreDomain.freqMHz, reset = fpgaDomain.reset)
+        val ddr4OutDom = ClockDomain("ddr4", coreDomain.freqMHz, reset = fpgaDomain.reset)
         WithDomain(fpgaDomain) { implicit dom =>
-          DDR4(ddr4Intf = ddr4Port, addnClkOut1 = Some(ddr4ClkWizDom))
+          DDR4(ddr4Intf = ddr4Port, addnClkOut1 = Some(ddr4OutDom))
         }
-        WithDomain(ddr4ClkWizDom) { implicit dom =>
+        WithDomain(ddr4OutDom) { implicit dom =>
           ClkWiz(Seq(coreDomain, peripheryDomain))
         }
       }

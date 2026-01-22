@@ -9,6 +9,7 @@ import freechips.rocketchip.tile.{LookupByHartId, MaxHartIdBits, PriorityMuxHart
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.components.ClockDomain
 import soct.system.vivado.fpga.FPGA
 
 import java.util.concurrent.atomic.AtomicBoolean
@@ -77,7 +78,6 @@ class RocketVivadoBaseConfig extends Config(
     new WithDebugSBA ++
     new WithDDR4ExtMem ++
     new WithSDCardPMOD ++
-    new WithPeripheryClockDomain(100.0) ++ // 100 MHz periphery clock
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )
@@ -130,16 +130,16 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
 /*----------------- Clock Speeds ---------------*/
 
 /**
- * Field to specify the periphery clock frequency in MHz - for parts like the SDCard controller and UART.
- * Default is 100 MHz.
+ * Field to specify the periphery clock domain - for parts like the SDCard controller and UART.
  */
-case object PeripheryClockFrequency extends Field[Double](100.0)
+case object PeripheryClockDomain extends Field[ClockDomain](
+  ClockDomain("periphery", freqMHz=100.0, tclVarName = Some("$periphery_clk_freq")))
 
 /**
  * Field to specify the system bus clock frequency in MHz.
  */
-class WithPeripheryClockDomain(freqMHz: Double) extends Config((site, here, up) => {
-  case PeripheryClockFrequency => freqMHz
+class WithCustomPeripheryClockDomain(dom: ClockDomain) extends Config((site, here, up) => {
+  case PeripheryClockDomain => dom
 })
 
 

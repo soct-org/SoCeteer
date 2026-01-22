@@ -56,7 +56,7 @@ final class FPGAReset(override val name: String) extends Reset(name)
  * @param reset   Optional reset provider that is synced to this clock domain
  */
 final class FPGAClockDomain(override val name: String, override val freqMHz: Double, override val reset: Option[FPGAReset] = None)
-  extends ClockDomain(name, freqMHz, reset)
+  extends ClockDomain(name, freqMHz, reset = reset)
 
 
 abstract case class FPGA() extends IsXilinxIP with HasFriendlyName {

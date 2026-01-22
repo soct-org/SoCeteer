@@ -1,7 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGAReset}
 
 import scala.collection.mutable
@@ -13,17 +13,18 @@ import scala.collection.mutable.ArrayBuffer
 trait ProvidesClock
 
 /**
- *
- * @param cds
- * @param bd
- * @param p
- * @param dom
+ * Case class representing a Xilinx Clocking Wizard IP core in the block design.
+ * For now, the ClkWiz IP can only be driven by a single clock input, but can provide multiple clock outputs.
+ * @param cds The output clock domains
+ * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
 case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
   extends InstantiableBdComp with IsXilinxIP with ProvidesClock {
-  var m = mutable.Map.empty[String, String]
+
+  override def clockInPorts: Seq[String] = Seq(s"$instanceName/${ClkWiz.CLKIn}")
 
   override def defaultProperties: Map[String, String] = {
+    val m = mutable.Map.empty[String, String]
     val nCds = cds.length
     cds.zipWithIndex.foreach {
       case (cd, idx) =>
@@ -43,12 +44,20 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
   }
 
   override def connectTclCommands: Seq[String] = {
-    Seq.empty
+    for {
+      (opt, idx) <- cds.zipWithIndex
+      port <- opt.clkReceiverPorts.flatMap(_._2())
+      clkoutIdx = idx + 1
+    } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/clk_out$clkoutIdx] [get_bd_pins $port]"
   }
-
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 }
+
+object ClkWiz {
+  val CLKIn = "clk_in1" // Standard name for the input clock port on the clk_wiz IP
+}
+
 
 /**
  * Case class representing a reset signal in the design
@@ -66,19 +75,17 @@ case class Reset(name: String)
  * @param reset      Optional reset provider that is synced to this clock domain
  * @param tclVarName Optional name of the dereferenced TCL variable representing this clock domain in the block design, e.g, "$clock_freq"
  */
-case class ClockDomain(name: String, freqMHz: Double, reset: Option[Reset] = None, tclVarName: Option[String] = None)
-                      (implicit bd: Option[SOCTBdBuilder] = None) {
-
-  // If the bd builder is defined, register this clock domain with it
-  bd.foreach{ bd =>
-    if (tclVarName.isDefined){
-      bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
-    }
+case class ClockDomain(name: String,
+                       freqMHz: Double,
+                       reset: Option[Reset] = None,
+                       tclVarName: Option[String] = None) {
+  if (tclVarName.isDefined) {
+    SOCTBdBuilder.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
   }
 
-
-
-  protected[components] val clkReceivers: ArrayBuffer[BdComp] = mutable.ArrayBuffer.empty[BdComp]
+  // On which ports the receivers want to connect to this clock - keyed by component.
+  // The ports must be fully qualified names in the block design, usually of form <instance>/<port>
+  protected[components] val clkReceiverPorts = mutable.Map.empty[BdComp, () => Seq[String]]
 
   /**
    * Register a component as a receiver of this clock
@@ -87,8 +94,8 @@ case class ClockDomain(name: String, freqMHz: Double, reset: Option[Reset] = Non
    * @tparam T The type of the component
    * @return The registered component
    */
-  def add[T <: BdComp](comp: T): T = {
-    clkReceivers += comp
+  def add[T <: BdComp](comp: T, ports: () => Seq[String]): T = {
+    clkReceiverPorts += (comp -> ports)
     comp
   }
 }

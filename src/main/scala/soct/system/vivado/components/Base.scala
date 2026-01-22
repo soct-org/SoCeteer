@@ -205,6 +205,11 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   def connectTclCommands: Seq[String]
 
 
+  /**
+   * The clock input ports for this component, to be connected to the clock domain
+   */
+  def clockInPorts: Seq[String] = Seq.empty
+
   // Helper functions for common connection patterns:
   def connectNet[T <: Data](port: T, outPort: String): String = {
     val ref = SOCTVivado.toXilinxPortRef(port)
@@ -212,7 +217,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
   // Register with the clock domain if provided
-  dom.foreach(_.add(this))
+  dom.foreach(_.add(this, () => clockInPorts))
 }
 
 /**

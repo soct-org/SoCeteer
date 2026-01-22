@@ -44,7 +44,7 @@ case class DDR4(
   }
 
 
-  private def outFreqs() : Map[String, String] = {
+  private def outFreqs(): Map[String, String] = {
     var freqs = Map.empty[String, String]
     if (addnClkOut1.isDefined) {
       freqs += s"CONFIG.ADDN_UI_CLKOUT1_FREQ_HZ" -> addnClkOut1.get.freqMHz.toInt.toString
@@ -78,14 +78,13 @@ case class DDR4(
   /**
    * Emit the TCL commands to connect this component in the design
    */
-  override def connectTclCommands: Seq[String] = Seq.empty
-    /*
-      connect_bd_net -net ddr4_0_addn_ui_clkout1  [get_bd_pins ddr4_0/addn_ui_clkout1] \
-  [get_bd_pins clk_wiz_0/clk_in1]
-  connect_bd_net -net ddr4_0_c0_ddr4_ui_clk  [get_bd_pins ddr4_0/c0_ddr4_ui_clk] \
-  [get_bd_pins axi_smc/aclk1] \
-     */
-
+  override def connectTclCommands: Seq[String] =
+    for {
+      (opt, idx) <- Seq(addnClkOut1, addnClkOut2, addnClkOut3, addnClkOut4).zipWithIndex
+      cd <- opt.toList
+      port <- cd.clkReceiverPorts.flatMap(_._2())
+      clkoutIdx = idx + 1
+    } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/addn_ui_clkout$clkoutIdx] [get_bd_pins $port]"
 }
 
 

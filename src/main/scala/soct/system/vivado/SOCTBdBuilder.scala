@@ -7,10 +7,10 @@ import soct.system.vivado.components.{BdComp, BdPort, XIntfPort, InstantiableBdC
 import java.nio.file.Path
 import scala.collection.mutable
 
+final case class TclVar(description: String, default: String)
+
 class SOCTBdBuilder {
   private val components = mutable.Set.empty[BdComp]
-
-  private final case class TclVar(description: String, default: String)
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
     val varDecls = vars.map { case (v, TclVar(description, default)) =>
@@ -27,12 +27,6 @@ class SOCTBdBuilder {
        |# Header with variable descriptions - modify as needed
        |$varDecls""".stripMargin
   }
-
-  /**
-   * Map of block design specific TCL variables that are instantiated in the BD script
-   */
-  private val bdVars: mutable.Map[String, TclVar] = mutable.Map.empty
-
 
   // Map of variable names to their descriptions and default values
   private var vars: Map[String, TclVar] = Map.empty
@@ -56,18 +50,6 @@ class SOCTBdBuilder {
   var topInstance: () => InstantiableBdComp with IsModule = () => {
     throw XilinxDesignException("Please call init before accessing topInstance")
   }
-
-
-  /**
-   * Add a block design TCL variable
-   * @param name The name, INCLUDING the dereferencing $
-   * @param description A description of the variable
-   * @param default The default value of the variable
-   */
-  def addBdVar(name: String, description: String, default: String): Unit = {
-    bdVars += (name -> TclVar(description, default))
-  }
-
 
   /**
    * Initialize the BDBuilder with parameters and top-level instance.
@@ -173,7 +155,8 @@ class SOCTBdBuilder {
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)
 
     // generate header with variable descriptions, using a subset of vals in vars
-    val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ this.bdVars
+    // Add the BD-specific variables which are defined statically in SOCTBdBuilder
+    val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ SOCTBdBuilder.bdVars
 
     // Collect all Xilinx IP components which are instantiable
     val xilinxIps = components.collect {
@@ -345,5 +328,23 @@ class SOCTBdBuilder {
        |source ${k.bdLoadFile}
        |
        |""".stripMargin
+  }
+}
+
+object SOCTBdBuilder {
+  /**
+   * Static map of block design specific TCL variables that are instantiated in the BD script.
+   */
+  private val bdVars: mutable.Map[String, TclVar] = mutable.Map.empty
+
+
+  /**
+   * Add a block design TCL variable
+   * @param name The name, INCLUDING the dereferencing $
+   * @param description A description of the variable
+   * @param default The default value of the variable
+   */
+  def addBdVar(name: String, description: String, default: String): Unit = {
+    bdVars += (name -> TclVar(description, default))
   }
 }
