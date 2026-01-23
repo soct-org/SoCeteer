@@ -49,8 +49,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
     val fpga = p(HasXilinxFPGA).get
     val fpgaDomain = fpga.fastestClock()
-    val coreDomain = ClockDomain("core", 100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
-    val peripheryDomain = ClockDomain("periphery", freqMHz=p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
+    val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
+    val peripheryDomain = ClockDomain(freqMHz=p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
     val topInstance = genTopInst(coreDomain)
 
     bd.init(p, topInstance) // Register this top instance with the BDBuilder.
@@ -59,10 +59,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       // Connect DDR4 if present - it outputs to the clock wizard
       if (p(HasDDR4ExtMem)) {
         val ddr4Port = fpga.portsDDR4().headOption.getOrElse(
-          throw new XilinxDesignException()(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
+          throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
         )
         // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
-        val ddr4OutDom = fpgaDomain.copy(name="ddr4", freqMHz=coreDomain.freqMHz)
+        val ddr4OutDom = fpgaDomain.copy(freqMHz=coreDomain.freqMHz)
         WithDomain(fpgaDomain) { implicit fpgaDom =>
           DDR4(ddr4Intf = ddr4Port, addnClkOut1 = Some(ddr4OutDom))
         }

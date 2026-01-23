@@ -4,9 +4,11 @@ import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MemPort, ExtMem}
 import org.apache.commons.lang3.NotImplementedException
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
-import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain}
+import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPort}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.HasSOCTConfig
+
+import scala.collection.mutable
 
 /**
  *
@@ -17,7 +19,7 @@ import soct.HasSOCTConfig
  * @param addnClkOut4
  * @param bd
  * @param p
- * @param dom  The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
+ * @param dom The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
 case class DDR4(
                  ddr4Intf: DDR4Port,
@@ -75,14 +77,25 @@ case class DDR4(
     if (receivers.exists(r => !r.isInstanceOf[ClkWiz])) {
       throw new NotImplementedException(s"DDR4 can only output to ClkWiz components for now")
     }
-    require(dom.isDefined && dom.get.isInstanceOf[FPGAClockDomain], s"DDR4 component must be instantiated within the FPGA clock domain for now")
-    require(dom.get.reset.isDefined, s"DDR4 component requires a reset signal in its clock domain for now")
 
-    Map(
-      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.portName,
-      "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.name,
-      "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.portName
-    ) ++ outFreqs()
+    val props = mutable.Map.empty[String, String]
+
+    dom.foreach {
+      case fpgaDom: FPGAClockDomain =>
+        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.portName
+        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.portName
+
+        fpgaDom.reset.foreach{
+          case r: FPGAResetPort =>
+            props += "CONFIG.RESET_BOARD_INTERFACE" -> r.portName
+          case _ => // Ignore other reset types for now
+        }
+
+      case _ =>
+        throw XilinxDesignException(s"DDR4 must be instantiated in an FPGAClockDomain")
+    }
+
+    props.toMap ++ outFreqs()
   }
 
   /**
@@ -92,7 +105,7 @@ case class DDR4(
     for {
       (opt, idx) <- Seq(addnClkOut1, addnClkOut2, addnClkOut3, addnClkOut4).zipWithIndex
       cd <- opt.toList
-      port <- cd.clkReceiverPorts.flatMap(_._2())
+      port <- cd.receiverPorts.flatMap(_._2())
       clkoutIdx = idx + 1
     } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/addn_ui_clkout$clkoutIdx] [get_bd_pins $port]"
 }

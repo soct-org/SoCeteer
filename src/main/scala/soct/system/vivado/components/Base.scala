@@ -218,7 +218,30 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
   // Register with the clock domain if provided
-  dom.foreach(_.add(this, () => clockInPorts))
+  dom.foreach(_.addPorts(this, () => clockInPorts))
+}
+
+/**
+ * Trait for components that can accept connections from other components
+ */
+trait AcceptsConnections {
+
+  // On which ports the receivers want to connect to this - keyed by component.
+  // The ports must be fully qualified names in the block design, usually of form <instance>/<port>
+  protected[components] val receiverPorts = mutable.Map.empty[BdComp, () => Seq[String]]
+
+  /**
+   * Register a component as a receiver of this component's output on the specified ports.
+   *
+   * @param comp  The component to register
+   * @param ports Function returning the list of ports on the receiver to connect to
+   * @tparam T The type of the component
+   * @return The registered component
+   */
+  def addPorts[T <: BdComp](comp: T, ports: () => Seq[String]): T = {
+    receiverPorts += (comp -> ports)
+    comp
+  }
 }
 
 /**
