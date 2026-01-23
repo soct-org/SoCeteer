@@ -6,7 +6,7 @@ import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTVivado.toXilinxPortRef
 import soct.{HasBdBuilder, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasXilinxFPGA, PeripheryClockDomain, log}
-import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
+import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
 import soct.system.vivado.fpga.FPGARegistry
 
 
@@ -53,10 +53,15 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val fpga = FPGARegistry.resolveBoardInstance(p(HasXilinxFPGA).get)
     val fpgaDomain = fpga.fastestClock()
     val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
-    val peripheryDomain = ClockDomain(freqMHz=p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
     val topInstance = genTopInst(coreDomain)
 
     bd.init(p, topInstance, fpga) // Register this top instance with the BDBuilder.
+
+    // Periphery domain
+    val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"), reset = fpgaDomain.reset)
+    val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
+    peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
+
 
     InModuleBody {
       // Connect DDR4 if present - it outputs to the clock wizard
@@ -65,7 +70,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
           throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
         )
         // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
-        val ddr4OutDom = fpgaDomain.copy(freqMHz=coreDomain.freqMHz)
+        val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDomain.reset)
         WithDomain(fpgaDomain) { implicit fpgaDom =>
           DDR4(ddr4Intf = ddr4Port, addnClkOut1 = Some(ddr4OutDom))
         }

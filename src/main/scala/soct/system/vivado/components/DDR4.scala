@@ -13,11 +13,11 @@ import scala.collection.mutable
 
 /**
  *
- * @param ddr4Intf
- * @param addnClkOut1
- * @param addnClkOut2
- * @param addnClkOut3
- * @param addnClkOut4
+ * @param ddr4Intf The DDR4 interface port
+ * @param addnClkOut1 The optional additional clock output 1 domain
+ * @param addnClkOut2 The optional additional clock output 2 domain
+ * @param addnClkOut3 The optional additional clock output 3 domain
+ * @param addnClkOut4 The optional additional clock output 4 domain
  * @param dom The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
 case class DDR4(
@@ -99,16 +99,27 @@ case class DDR4(
   /**
    * Emit the TCL commands to connect this component in the design
    */
-  override def connectTclCommands: Seq[String] =
-    for {
+  override def connectTclCommands: Seq[String] = {
+    val outClks = for {
       (opt, idx) <- Seq(addnClkOut1, addnClkOut2, addnClkOut3, addnClkOut4).zipWithIndex
       cd <- opt.toList
       port <- cd.receiverPorts.flatMap(_._2())
       clkoutIdx = idx + 1
     } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/${clkOut(clkoutIdx)}] [get_bd_pins $port]"
+
+    // connect to the interface ports
+    val intfConns = Seq(
+      s"connect_bd_intf_net [get_bd_intf_ports ${ddr4Intf.portName}] [get_bd_intf_pins ${this.instanceName}/$C0_DDR4]",
+      s"connect_bd_intf_net [get_bd_intf_ports ${dom.get.port.portName}] [get_bd_intf_pins ${this.instanceName}/$C0_SYS_CLK]"
+    )
+
+    outClks ++ intfConns
+  }
 }
 
 
 object DDR4 {
   private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
+  private val C0_SYS_CLK = "C0_SYS_CLK"
+  private val C0_DDR4 = "C0_DDR4"
 }

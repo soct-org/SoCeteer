@@ -371,32 +371,42 @@ proc create_root_design { parentCell } {
   # Create port connections
   connect_bd_net -net Net  [get_bd_ports PMOD0_1] \
   [get_bd_pins sdc_controller_0/sdio_cmd]
+
   connect_bd_net -net Net1  [get_bd_ports PMOD0_SD_DATA] \
   [get_bd_pins sdc_controller_0/sdio_dat]
+
   connect_bd_net -net PMOD0_6_1  [get_bd_ports PMOD0_6] \
   [get_bd_pins sdc_controller_0/sdio_cd]
+
   connect_bd_net -net axi_uartlite_0_interrupt  [get_bd_pins axi_uartlite_0/interrupt] \
   [get_bd_pins xlconcat_0/In0]
+
   connect_bd_net -net clk_wiz_0_clk_out1  [get_bd_pins clk_wiz_0/clk_out2] \
   [get_bd_pins rst_clk_wiz_0_100M/slowest_sync_clk] \
   [get_bd_pins axi_uartlite_0/s_axi_aclk] \
   [get_bd_pins smartconnect_0/aclk] \
   [get_bd_pins smartconnect_1/aclk] \
   [get_bd_pins sdc_controller_0/clock]
+
   connect_bd_net -net clk_wiz_0_clk_out2  [get_bd_pins clk_wiz_0/clk_out1] \
   [get_bd_pins RocketChip/clock] \
   [get_bd_pins smartconnect_1/aclk1] \
   [get_bd_pins smartconnect_0/aclk1] \
   [get_bd_pins axi_smc/aclk]
+
   connect_bd_net -net clk_wiz_0_locked  [get_bd_pins clk_wiz_0/locked] \
   [get_bd_pins rst_clk_wiz_0_100M/dcm_locked]
+
   connect_bd_net -net ddr4_0_addn_ui_clkout1  [get_bd_pins ddr4_0/addn_ui_clkout1] \
   [get_bd_pins clk_wiz_0/clk_in1]
+
   connect_bd_net -net ddr4_0_c0_ddr4_ui_clk  [get_bd_pins ddr4_0/c0_ddr4_ui_clk] \
   [get_bd_pins axi_smc/aclk1] \
   [get_bd_pins rst_ddr4_0_266M/slowest_sync_clk]
+
   connect_bd_net -net ddr4_0_c0_ddr4_ui_clk_sync_rst  [get_bd_pins ddr4_0/c0_ddr4_ui_clk_sync_rst] \
   [get_bd_pins rst_ddr4_0_266M/ext_reset_in]
+
   connect_bd_net -net reset_1  [get_bd_ports reset] \
   [get_bd_pins clk_wiz_0/reset] \
   [get_bd_pins rst_clk_wiz_0_100M/ext_reset_in] \
@@ -412,14 +422,19 @@ proc create_root_design { parentCell } {
 
   connect_bd_net -net rst_ddr4_0_266M_peripheral_aresetn  [get_bd_pins rst_ddr4_0_266M/peripheral_aresetn] \
   [get_bd_pins ddr4_0/c0_ddr4_aresetn]
+
   connect_bd_net -net sdc_controller_0_interrupt  [get_bd_pins sdc_controller_0/interrupt] \
   [get_bd_pins xlconcat_0/In1]
+
   connect_bd_net -net sdc_controller_0_sdio_clk  [get_bd_pins sdc_controller_0/sdio_clk] \
   [get_bd_ports PMOD0_3]
+
   connect_bd_net -net util_vector_logic_0_Res  [get_bd_pins util_vector_logic_0/Res] \
   [get_bd_pins RocketChip/sys_reset]
+
   connect_bd_net -net xlconcat_0_dout  [get_bd_pins xlconcat_0/dout] \
   [get_bd_pins RocketChip/interrupts]
+
   connect_bd_net -net xlconstant_0_dout  [get_bd_pins xlconstant_0/dout] \
   [get_bd_pins RocketChip/clock_ok] \
   [get_bd_pins RocketChip/io_ok] \

@@ -86,7 +86,11 @@ case class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuild
   }
 }
 
-
+/**
+ * Case class representing a clock port on the FPGA board
+ * @param portName The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
+ * @param freqMHz The frequency of the clock in MHz
+ */
 case class FPGAClockPort(override val portName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends FPGAPort
 
@@ -96,7 +100,7 @@ case class FPGAClockPort(override val portName: String, freqMHz: Double)(implici
  * @param port    The clock port provided by the board
  * @param reset   Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(val port: FPGAClockPort, override val reset: Option[FPGAResetPort] = None)
+final class FPGAClockDomain(val port: FPGAClockPort, reset: Option[FPGAResetPort] = None)
                            (implicit bd: SOCTBdBuilder) extends ClockDomain(port.freqMHz, reset) {
 }
 

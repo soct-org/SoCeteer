@@ -17,7 +17,7 @@ trait Reset extends AcceptsConnections
  * @param tclVarName Optional name of the dereferenced TCL variable representing this clock domain in the block design, e.g, "$clock_freq"
  */
 case class ClockDomain(freqMHz: Double,
-                       reset: Option[Reset] = None,
+                       var reset: Option[Reset] = None,
                        tclVarName: Option[String] = None)
                       (implicit bd: SOCTBdBuilder) extends AcceptsConnections {
   if (tclVarName.isDefined) {bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)}
