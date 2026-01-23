@@ -3,6 +3,7 @@ package soct.system.vivado.components
 import chisel3.{Bool, Data}
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.components.BSCAN2JTAG._
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
 
 import java.nio.file.{Files, Path}
@@ -46,10 +47,6 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[C
    */
   override def reference: String = "bscan2jtag"
 
-  val bscanIntf = "S_BSCAN" // Check collateral where the XInterface name is defined
-
-  private val jtagIntf = "JTAG" // Check collateral where the XInterface name is defined
-
   override def dumpCollaterals(outDir: Path, createDir: Boolean): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, createDir = true).get
     val path = "/bscan/"
@@ -80,4 +77,10 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[C
       s"connect_bd_intf_net [get_bd_intf_pins $instanceName/$jtagIntf] [get_bd_intf_pins $topInst/${jtag.ifName}]"
     }
   }
+}
+
+object BSCAN2JTAG {
+  // Check collateral where the XInterface name is defined
+  val bscanIntf = "S_BSCAN"
+  private val jtagIntf = "JTAG"
 }

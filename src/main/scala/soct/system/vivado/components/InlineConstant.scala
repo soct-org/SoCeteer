@@ -2,6 +2,7 @@ package soct.system.vivado.components
 
 import chisel3.{Data, UInt}
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.components.InlineConstant._
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 
 /**
@@ -25,7 +26,6 @@ case class InlineConstant(value: UInt,
     "CONFIG.CONST_WIDTH" -> s"${nBits}"
   )
 
-  val outPort = "dout" // Check doc of Inline Constant IP core for port name
 
   private def validReceivers: Seq[Data] = receivers.collect {
     case data: Data => data
@@ -39,4 +39,8 @@ case class InlineConstant(value: UInt,
       data: Data => connectNet(data, outPort)
     }
   }
+}
+
+object InlineConstant {
+  val outPort = "dout"
 }

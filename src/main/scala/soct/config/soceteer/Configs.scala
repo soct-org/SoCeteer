@@ -104,13 +104,13 @@ class ExtMem64Bit extends Config(new WithExtMemSize(0x380000000L))
 class ExtMem32Bit extends Config(new WithExtMemSize(0x80000000L))
 
 /**
- * Field to indicate whether the design should include DDR4 external memory on a specified port (index).
+ * Field to indicate whether the design should include DDR4 external memory.
  */
-case object HasDDR4ExtMem extends Field[Option[Int]](None)
+case object HasDDR4ExtMem extends Field[Boolean](false)
 
 
-class WithDDR4ExtMem(ddr4Idx: Int = 0) extends Config((_, _, _) => {
-  case HasDDR4ExtMem => Some(ddr4Idx)
+class WithDDR4ExtMem extends Config((_, _, _) => {
+  case HasDDR4ExtMem => true
 }
 )
 
@@ -130,16 +130,15 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
 /*----------------- Clock Speeds ---------------*/
 
 /**
- * Field to specify the periphery clock domain - for parts like the SDCard controller and UART.
+ * Field to specify the periphery clock domain frequency - for parts like the SDCard controller and UART.
  */
-case object PeripheryClockDomain extends Field[ClockDomain](
-  ClockDomain("periphery", freqMHz=100.0, tclVarName = Some("$periphery_clk_freq")))
+case object PeripheryClockDomain extends Field[Double](100.0)
 
 /**
  * Field to specify the system bus clock frequency in MHz.
  */
-class WithCustomPeripheryClockDomain(dom: ClockDomain) extends Config((site, here, up) => {
-  case PeripheryClockDomain => dom
+class WithCustomPeripheryClockDomain(freqMHz: Double) extends Config((site, here, up) => {
+  case PeripheryClockDomain => freqMHz
 })
 
 

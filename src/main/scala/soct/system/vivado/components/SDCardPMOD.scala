@@ -1,15 +1,15 @@
 package soct.system.vivado.components
 
 import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MMIOPort, CanHaveSlaveAXI4Port}
-import org.chipsalliance.cde.config
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.{ChiselTop, HasSOCTConfig, HasXilinxFPGA}
+import soct.{HasSOCTConfig, HasXilinxFPGA}
 
 import java.nio.file.{Files, Path}
 
 
-case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort {
   override def ifName = "sdio_cd"
 
   override def ifType: String = "data"
@@ -17,7 +17,7 @@ case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPor
   override def dir: String = "I"
 }
 
-case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort {
   override def ifName = "sdio_clk"
 
   override def ifType: String = "clk"
@@ -25,7 +25,7 @@ case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPo
   override def dir: String = "O"
 }
 
-case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort {
   override def ifName = "sdio_cmd"
 
   override def ifType: String = "data"
@@ -33,7 +33,7 @@ case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPo
   override def dir: String = "IO"
 }
 
-case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort {
   override def ifName = "sdio_data"
 
   override def ifType: String = "data"
@@ -65,6 +65,8 @@ case class SDCardPMOD(pmodIdx: Int,
   extends InstantiableBdComp with IsModule {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
+
+  override def clockInPorts: Seq[String] = Seq(s"$instanceName/$clock")
 
   override def checkAvailable(): Unit = {
     super.checkAvailable()
@@ -106,15 +108,6 @@ case class SDCardPMOD(pmodIdx: Int,
     Some(dest)
   }
 
-  // See collateral files for port names
-  val sdioCD = "sdio_cd"
-
-  val sdioCMD = "sdio_cmd"
-
-  val sdioDat = "sdio_dat"
-
-  val sdioClk = "sdio_clk"
-
   /**
    * Emit the TCL commands to connect this component in the design
    */
@@ -126,4 +119,16 @@ case class SDCardPMOD(pmodIdx: Int,
       s"connect_bd_net [get_bd_ports ${clkPort.ifName}] [get_bd_pins $instanceName/$sdioClk]"
     )
   }
+}
+
+object SDCardPMOD {
+  private val sdioCD = "sdio_cd"
+
+  private val sdioCMD = "sdio_cmd"
+
+  private val sdioDat = "sdio_dat"
+
+  private val sdioClk = "sdio_clk"
+
+  private val clock = "clock"
 }

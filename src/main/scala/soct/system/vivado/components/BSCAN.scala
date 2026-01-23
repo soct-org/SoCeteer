@@ -29,7 +29,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockD
    */
   override def connectTclCommands: Seq[String] = {
     validReceivers.zipWithIndex.map { case (jtag, idx) =>
-      s"connect_bd_intf_net [get_bd_intf_pins $instanceName/${outPort(idx)}] [get_bd_intf_pins ${jtag.instanceName}/${jtag.bscanIntf}]"
+      s"connect_bd_intf_net [get_bd_intf_pins $instanceName/${outPort(idx)}] [get_bd_intf_pins ${jtag.instanceName}/${BSCAN2JTAG.bscanIntf}]"
     }
   }
 }

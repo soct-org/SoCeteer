@@ -1,6 +1,8 @@
 package soct.system.vivado.fpga
 
-import soct.system.vivado.components.{ClockDomain, HasFriendlyName, IsXilinxIP, Reset}
+import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.components.{BdComp, ClockDomain, HasFriendlyName, IsXilinxIP, Reset}
 
 
 /**
@@ -34,19 +36,26 @@ object FPGARegistry {
   }
 }
 
+case class FPGAPort(portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
+
+}
+
+
 /**
  * Case class representing a DDR4 port on the FPGA board.
- *
- * @param ddr4Port     The name of the DDR4 port
  */
-case class DDR4Port(ddr4Port: String)
+final class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAPort(portName)
 
 
 /**
  * Case class representing a reset signal provided on the FPGA board
- * @param name The name of the reset port provided by the board, usable in e.g. RESET_BOARD_INTERFACE
+ * @param portName The name of the reset port provided by the board, usable in e.g. RESET_BOARD_INTERFACE
  */
-final class FPGAReset(override val name: String) extends Reset(name)
+final class FPGAReset(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends FPGAPort(portName) with Reset {
+
+  override def ref: String = portName
+}
 
 /**
  * Case class representing a port that provides a clock domain on the FPGA board
@@ -56,18 +65,18 @@ final class FPGAReset(override val name: String) extends Reset(name)
  * @param reset   Optional reset provider that is synced to this clock domain
  */
 final class FPGAClockDomain(override val name: String, override val freqMHz: Double, override val reset: Option[FPGAReset] = None)
-  extends ClockDomain(name, freqMHz, reset = reset)
+                           (implicit bd: SOCTBdBuilder, p: Parameters) extends ClockDomain(name, freqMHz, reset = reset)
 
 
 abstract case class FPGA() extends IsXilinxIP with HasFriendlyName {
   val xilinxPart: String
 
   /**
-   * The clock domains provided by this FPGA board - must be sorted by frequency descending - highest first
+   * The fastest clock domains provided by this FPGA board
    */
-  val clocks: Seq[FPGAClockDomain] = Seq.empty
+  def fastestClock()(implicit bd: SOCTBdBuilder, p:Parameters): FPGAClockDomain
 
-  val portsDDR4: Seq[DDR4Port] = Seq.empty
+  def portsDDR4()(implicit bd: SOCTBdBuilder, p:Parameters): Seq[DDR4Port] = Seq.empty
 
   val portsPMOD: Seq[Int] = Seq.empty
 

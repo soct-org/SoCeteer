@@ -8,18 +8,14 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * Trait indicating that a component provides a clock signal
- */
-trait ProvidesClock
-
-/**
  * Case class representing a Xilinx Clocking Wizard IP core in the block design.
  * For now, the ClkWiz IP can only be driven by a single clock input, but can provide multiple clock outputs.
+ *
  * @param cds The output clock domains
  * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
 case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
-  extends InstantiableBdComp with IsXilinxIP with ProvidesClock {
+  extends InstantiableBdComp with IsXilinxIP  {
 
   override def clockInPorts: Seq[String] = Seq(s"$instanceName/${ClkWiz.CLKIn}")
 
@@ -34,11 +30,12 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
     }
 
     m += "CONFIG.NUM_OUT_CLKS" -> nCds.toString
-    if (dom.isDefined && dom.get.reset.isDefined && dom.get.reset.get.isInstanceOf[FPGAReset])
-      m += "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.name
 
     // Enable board flow by default
     m += "CONFIG.USE_BOARD_FLOW" -> "true"
+
+    if (dom.isDefined && dom.get.reset.isDefined && dom.get.reset.get.isInstanceOf[FPGAReset])
+      m += "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.ref
 
     m.toMap
   }
@@ -60,11 +57,14 @@ object ClkWiz {
 
 
 /**
- * Case class representing a reset signal in the design
- *
- * @param name The name of the reset signal
+ * Marker trait for reset providers
  */
-case class Reset(name: String)
+trait Reset {
+  /**
+   * The reference name of the reset provider in the block design - e.g., instance/port or a board port
+   */
+  def ref: String
+}
 
 
 /**
@@ -78,9 +78,10 @@ case class Reset(name: String)
 case class ClockDomain(name: String,
                        freqMHz: Double,
                        reset: Option[Reset] = None,
-                       tclVarName: Option[String] = None) {
+                       tclVarName: Option[String] = None)
+                      (implicit bd: SOCTBdBuilder) {
   if (tclVarName.isDefined) {
-    SOCTBdBuilder.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
+    bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
   }
 
   // On which ports the receivers want to connect to this clock - keyed by component.
@@ -90,7 +91,8 @@ case class ClockDomain(name: String,
   /**
    * Register a component as a receiver of this clock
    *
-   * @param comp The component to register
+   * @param comp  The component to register
+   * @param ports Function returning the list of ports on the component to connect to this clock
    * @tparam T The type of the component
    * @return The registered component
    */
@@ -99,10 +101,35 @@ case class ClockDomain(name: String,
     comp
   }
 }
+/*
+  connect_bd_net -net reset_1  [get_bd_ports reset] \
+  [get_bd_pins clk_wiz_0/reset] \
+  [get_bd_pins rst_clk_wiz_0_100M/ext_reset_in] \
+  [get_bd_pins ddr4_0/sys_rst]
+  connect_bd_net -net rst_clk_wiz_0_100M_peripheral_aresetn  [get_bd_pins rst_clk_wiz_0_100M/peripheral_aresetn] \
+  [get_bd_pins axi_smc/aresetn] \
+  [get_bd_pins axi_uartlite_0/s_axi_aresetn] \
+  [get_bd_pins smartconnect_0/aresetn] \
+  [get_bd_pins smartconnect_1/aresetn] \
+  [get_bd_pins sdc_controller_0/async_resetn] \
+  [get_bd_pins util_vector_logic_0/Op1]
+ */
 
+/**
+ * Helper object to instantiate components within a given clock domain
+ */
 object WithDomain {
-  def apply[T](cd: ClockDomain)(
-    block: Option[ClockDomain] => T
+
+  /**
+   * Instantiate a block within the given clock domain
+   *
+   * @param cd    The clock domain
+   * @param block The block to instantiate
+   * @tparam T The return type of the block
+   * @return The result of the block
+   */
+  def apply[T, C <: ClockDomain](cd: C)(
+    block: Option[C] => T
   ): T = {
     block(Some(cd))
   }

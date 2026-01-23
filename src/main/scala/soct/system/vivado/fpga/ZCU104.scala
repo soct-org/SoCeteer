@@ -1,5 +1,8 @@
 package soct.system.vivado.fpga
 
+import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.SOCTBdBuilder
+
 object ZCU104 extends FPGA {
 
   override val friendlyName: String = "ZCU104"
@@ -8,10 +11,11 @@ object ZCU104 extends FPGA {
 
   override val partName: String = "xilinx.com:zcu104:part0:1.1"
 
-  override val portsDDR4: Seq[DDR4Port] = Seq(DDR4Port(ddr4Port = "ddr4_sdram"))
+  override def portsDDR4()(implicit bd: SOCTBdBuilder, p:Parameters): Seq[DDR4Port] =
+    Seq(new DDR4Port(portName = "ddr4_sdram"))
 
-  override val clocks: Seq[FPGAClockDomain] = Seq(
-    new FPGAClockDomain("clk_300mhz", 300.0, Some(new FPGAReset("reset")))
+  override def fastestClock()(implicit bd: SOCTBdBuilder, p:Parameters): FPGAClockDomain =
+    new FPGAClockDomain("clk_300mhz", 300.0, Some(new FPGAReset("reset"))
   )
 
   override val portsPMOD: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1 are available, 2 is I2C

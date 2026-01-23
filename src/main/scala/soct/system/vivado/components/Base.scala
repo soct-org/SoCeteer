@@ -83,7 +83,7 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdCo
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
+abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
 
   /**
    * The name of this interface port
@@ -113,7 +113,7 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp 
   /**
    * Emit the TCL command to create the port for this component
    */
-  def tclCommands: Seq[String] = {
+  def createTclCommands: Seq[String] = {
     // Either none or both of from/to must be defined
     val range = (from, to) match {
       case (Some(f), Some(t)) => s"-from $f -to $t "
@@ -209,6 +209,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
    * The clock input ports for this component, to be connected to the clock domain
    */
   def clockInPorts: Seq[String] = Seq.empty
+
 
   // Helper functions for common connection patterns:
   def connectNet[T <: Data](port: T, outPort: String): String = {

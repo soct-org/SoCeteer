@@ -8,14 +8,24 @@ import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.HasSOCTConfig
 
-
+/**
+ *
+ * @param ddr4Intf
+ * @param addnClkOut1
+ * @param addnClkOut2
+ * @param addnClkOut3
+ * @param addnClkOut4
+ * @param bd
+ * @param p
+ * @param dom  The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
+ */
 case class DDR4(
                  ddr4Intf: DDR4Port,
                  addnClkOut1: Option[ClockDomain] = None,
                  addnClkOut2: Option[ClockDomain] = None,
                  addnClkOut3: Option[ClockDomain] = None,
                  addnClkOut4: Option[ClockDomain] = None
-               )(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
+               )(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
   extends InstantiableBdComp with IsXilinxIP {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
@@ -69,10 +79,10 @@ case class DDR4(
     require(dom.get.reset.isDefined, s"DDR4 component requires a reset signal in its clock domain for now")
 
     Map(
-      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ddr4Port,
+      "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.portName,
       "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.name,
-      "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.name
-    ) ++ outFreqs
+      "CONFIG.RESET_BOARD_INTERFACE" -> dom.get.reset.get.portName
+    ) ++ outFreqs()
   }
 
   /**
@@ -85,11 +95,4 @@ case class DDR4(
       port <- cd.clkReceiverPorts.flatMap(_._2())
       clkoutIdx = idx + 1
     } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/addn_ui_clkout$clkoutIdx] [get_bd_pins $port]"
-}
-
-
-case object DDR4 {
-  val C0_DDR4 = "C0_DDR4"
-
-  val SyncReset = "c0_ddr4_ui_clk_sync_rst"
 }
