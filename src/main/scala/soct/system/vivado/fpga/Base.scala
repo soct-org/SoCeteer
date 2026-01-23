@@ -2,7 +2,7 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{BdComp, ClockDomain, HasFriendlyName, IsXilinxIP, Reset}
+import soct.system.vivado.components.{BdComp, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, Reset}
 
 import scala.annotation.unused
 
@@ -57,6 +57,9 @@ object FPGARegistry {
   }
 }
 
+/**
+ * Abstract base class for FPGA ports provided by the board.
+ */
 abstract class FPGAPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
   val portName: String
 }
@@ -74,10 +77,17 @@ case class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p
  * @param portName The name of the reset port provided by the board, usable in e.g. RESET_BOARD_INTERFACE
  */
 case class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends FPGAPort with Reset
+  extends FPGAPort with Reset with HasConnections {
+
+  override def connectTclCommands: Seq[String] = {
+    receiverPorts.flatMap(_._2()).map { port =>
+      s"connect_bd_net [get_bd_ports $portName] [get_bd_pins $port]"
+    }.toSeq
+  }
+}
 
 
-case class FPGAClockPort(override val portName: String, val freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class FPGAClockPort(override val portName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends FPGAPort
 
 /**

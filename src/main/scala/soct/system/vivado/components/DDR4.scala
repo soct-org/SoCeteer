@@ -7,6 +7,7 @@ import soct.system.vivado.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADD
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPort}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.HasSOCTConfig
+import soct.system.vivado.components.DDR4._
 
 import scala.collection.mutable
 
@@ -53,7 +54,6 @@ case class DDR4(
       throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MemPort")
   }
 
-
   private def outFreqs(): Map[String, String] = {
     var freqs = Map.empty[String, String]
     if (addnClkOut1.isDefined) {
@@ -83,7 +83,7 @@ case class DDR4(
         props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.portName
         props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.portName
 
-        fpgaDom.reset.foreach{
+        fpgaDom.reset.foreach {
           case r: FPGAResetPort =>
             props += "CONFIG.RESET_BOARD_INTERFACE" -> r.portName
           case _ => // Ignore other reset types for now
@@ -105,5 +105,10 @@ case class DDR4(
       cd <- opt.toList
       port <- cd.receiverPorts.flatMap(_._2())
       clkoutIdx = idx + 1
-    } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/addn_ui_clkout$clkoutIdx] [get_bd_pins $port]"
+    } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/${clkOut(clkoutIdx)}] [get_bd_pins $port]"
+}
+
+
+object DDR4 {
+  private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
 }

@@ -2,8 +2,9 @@ package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, HasXilinxFPGA, VivadoSOCTPaths}
-import soct.system.vivado.components.{BdComp, VirtualPort, XIntfPort, InstantiableBdComp, IsModule, IsXilinxIP, XilinxBdIntfPort}
-import soct.system.vivado.fpga.FPGA
+import soct.system.vivado.components.{BdComp, HasConnections, InstantiableBdComp, IsModule, IsXilinxIP, VirtualPort, XIntfPort, XilinxBdIntfPort}
+import soct.system.vivado.fpga.{FPGA, FPGAClockPort, FPGAPort}
+
 import java.nio.file.Path
 import scala.collection.mutable
 
@@ -153,6 +154,8 @@ class SOCTBdBuilder {
         portCommands ++= port.createTclCommands
       case xport: XilinxBdIntfPort =>
         portCommands ++= xport.tclCommands
+      case con: HasConnections =>
+        connectCommands ++= con.connectTclCommands
       case c =>
         soct.log.warn(s"Unknown type: ${c.friendlyName}")
     }

@@ -149,7 +149,8 @@ abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) exten
 /**
  * Trait for components that can be instantiated in the design
  */
-abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp {
+abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp
+  with HasConnections {
 
   /**
    * The list of receivers connected to this component
@@ -199,11 +200,6 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
     }
   }
 
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  def connectTclCommands: Seq[String]
-
 
   /**
    * The clock input ports for this component, to be connected to the clock domain if available
@@ -224,9 +220,27 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
   // Register with the clock domain if provided
+  // Print warning if dom is None
+  if (dom.isEmpty) {
+    soct.log.warn(s"InstantiableBdComp ${this} is not associated with any clock domain.")
+  } else if (dom.get.reset.isEmpty) {
+    soct.log.warn(s"InstantiableBdComp ${this} is associated with a clock domain that has no reset.")
+  }
+
+
   dom.foreach(_.addPorts(this, () => clockInPorts))
   dom.foreach(_.reset.foreach(_.addPorts(this, () => resetInPorts)))
 }
+
+
+trait HasConnections {
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  def connectTclCommands: Seq[String]
+}
+
+
 
 /**
  * Trait for components that can accept connections from other components

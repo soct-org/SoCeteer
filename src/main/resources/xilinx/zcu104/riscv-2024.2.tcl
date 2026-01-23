@@ -401,6 +401,7 @@ proc create_root_design { parentCell } {
   [get_bd_pins clk_wiz_0/reset] \
   [get_bd_pins rst_clk_wiz_0_100M/ext_reset_in] \
   [get_bd_pins ddr4_0/sys_rst]
+
   connect_bd_net -net rst_clk_wiz_0_100M_peripheral_aresetn  [get_bd_pins rst_clk_wiz_0_100M/peripheral_aresetn] \
   [get_bd_pins axi_smc/aresetn] \
   [get_bd_pins axi_uartlite_0/s_axi_aresetn] \
@@ -408,6 +409,7 @@ proc create_root_design { parentCell } {
   [get_bd_pins smartconnect_1/aresetn] \
   [get_bd_pins sdc_controller_0/async_resetn] \
   [get_bd_pins util_vector_logic_0/Op1]
+
   connect_bd_net -net rst_ddr4_0_266M_peripheral_aresetn  [get_bd_pins rst_ddr4_0_266M/peripheral_aresetn] \
   [get_bd_pins ddr4_0/c0_ddr4_aresetn]
   connect_bd_net -net sdc_controller_0_interrupt  [get_bd_pins sdc_controller_0/interrupt] \
