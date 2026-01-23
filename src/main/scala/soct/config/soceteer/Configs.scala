@@ -188,7 +188,7 @@ object WithHartBootFreqMHz {
 /**
  * Field to indicate whether the design runs on a Xilinx FPGA.
  */
-case object HasXilinxFPGA extends Field[Option[FPGA]](None)
+case object HasXilinxFPGA extends Field[Option[Class[_ <: FPGA]]](None)
 
 
 /**
@@ -205,8 +205,8 @@ class WithBdBuilder(bd: SOCTBdBuilder) extends Config((_, _, _) => {
   case HasBdBuilder => Some(bd)
 })
 
-class WithXilinxFPGA(fpga: FPGA) extends Config((_, _, _) => {
-  case HasXilinxFPGA => Some(fpga)
+class WithXilinxFPGA(fpgaClass: Class[_ <: FPGA]) extends Config((_, _, _) => {
+  case HasXilinxFPGA => Some(fpgaClass)
 })
 
 

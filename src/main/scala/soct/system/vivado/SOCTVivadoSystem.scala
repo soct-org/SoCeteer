@@ -7,12 +7,14 @@ import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTVivado.toXilinxPortRef
 import soct.{HasBdBuilder, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasXilinxFPGA, PeripheryClockDomain, log}
 import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
+import soct.system.vivado.fpga.FPGARegistry
 
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
 class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
+
   // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
   private def genTopInst(coreDomain: ClockDomain)(implicit p: Parameters, bd: SOCTBdBuilder):
   InstantiableBdComp with IsModule = {
@@ -47,13 +49,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
   if (p(HasBdBuilder).isDefined) {
     implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
-    val fpga = p(HasXilinxFPGA).get
+    // Instantiate the FPGA board from class stored in parameters
+    val fpga = FPGARegistry.resolveBoardInstance(p(HasXilinxFPGA).get)
     val fpgaDomain = fpga.fastestClock()
     val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
     val peripheryDomain = ClockDomain(freqMHz=p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
     val topInstance = genTopInst(coreDomain)
 
-    bd.init(p, topInstance) // Register this top instance with the BDBuilder.
+    bd.init(p, topInstance, fpga) // Register this top instance with the BDBuilder.
 
     InModuleBody {
       // Connect DDR4 if present - it outputs to the clock wizard

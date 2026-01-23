@@ -4,48 +4,68 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.components.{BdComp, ClockDomain, HasFriendlyName, IsXilinxIP, Reset}
 
+import scala.annotation.unused
+
 
 /**
  * Registry for known FPGA boards.
  */
 object FPGARegistry {
 
-  /**
-   * Resolve a board by name
-   *
-   * @param name Name of the board
-   * @return Some(FPGA) if found, None otherwise
-   */
-  def resolve(name: String): Option[FPGA] = {
-    val comp = name.toLowerCase
+  // TODO ADD YOUR BOARD HERE! - Use uppercase names as keys
+  private val registry: Map[String, Class[_ <: FPGA]] = Map(
+    "ZCU104" -> classOf[ZCU104]
+  )
 
-    if (comp == ZCU104.friendlyName.toLowerCase) {
-      Some(ZCU104)
-    } else {
-      None
+  def isKnownBoard(name: String): Boolean = registry.contains(name)
+
+  def getKnownBoards: Seq[String] = registry.keys.toSeq
+
+  /** name -> Board (throws if not found) */
+  def n2b(name: String): Class[_ <: FPGA] = {
+    registry.getOrElse(name.toUpperCase, throw new Exception(s"Unknown FPGA board: $name"))
+  }
+
+  /** name -> Board */
+  def n2bOpt(name: String): Option[Class[_ <: FPGA]] = {
+    registry.get(name.toUpperCase)
+  }
+
+  /** Board -> name (throws if not found) */
+  def b2n(clazz: Class[_ <: FPGA]): String = {
+    registry.find(_._2 == clazz) match {
+      case Some((name, _)) => name
+      case None => throw new Exception(s"FPGA class ${clazz.getName} not found in registry")
+    }
+  }
+
+  /** Board -> name */
+  def b2nOpt(clazz: Class[_ <: FPGA]): Option[String] = {
+    registry.find(_._2 == clazz) match {
+      case Some((name, _)) => Some(name)
+      case None => None
     }
   }
 
   /**
-   * List of available boards
+   * Instantiate an FPGA board given its class.
+   * @param clazz The class of the FPGA board to instantiate
+   * @return An instance of the FPGA board
    */
-  def availableBoards: Seq[String] = {
-    Seq(
-      ZCU104.friendlyName
-    )
+  def resolveBoardInstance(clazz: Class[_ <: FPGA])(implicit bd: SOCTBdBuilder, p: Parameters): FPGA = {
+    clazz.getConstructor(classOf[SOCTBdBuilder], classOf[Parameters]).newInstance(bd, p)
   }
 }
 
-trait FPGAPort extends BdComp {
+abstract class FPGAPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
   val portName: String
-  // TODO the port should be able to receive connections
 }
 
 
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-final class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAPort
+case class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAPort
 
 
 /**
@@ -53,21 +73,30 @@ final class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, 
  *
  * @param portName The name of the reset port provided by the board, usable in e.g. RESET_BOARD_INTERFACE
  */
-final class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends FPGAPort with Reset
 
+
+case class FPGAClockPort(override val portName: String, val freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends FPGAPort
+
 /**
- * Case class representing a port that provides a clock domain on the FPGA board
+ * Class representing a port that provides a clock domain on the FPGA board
  *
- * @param freqMHz The frequency of the clock domain in MHz
+ * @param port    The clock port provided by the board
  * @param reset   Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(val portName: String, override val freqMHz: Double, override val reset: Option[FPGAResetPort] = None)
-                           (implicit bd: SOCTBdBuilder, p: Parameters) extends ClockDomain(freqMHz, reset) {
+final class FPGAClockDomain(val port: FPGAClockPort, override val reset: Option[FPGAResetPort] = None)
+                           (implicit bd: SOCTBdBuilder) extends ClockDomain(port.freqMHz, reset) {
 }
 
-
-abstract case class FPGA() extends IsXilinxIP with HasFriendlyName {
+/**
+ * Abstract base class for FPGA boards. Subclasses must provide information about the specific FPGA board,
+ * such as the Xilinx part number, available clock domains, DDR4 ports, and PMOD ports.
+ * For instance, see the ZCU104 implementation.
+ * Subclasses must provide a SOCTBdBuilder and Parameters context for instantiation.
+ */
+abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) extends IsXilinxIP with HasFriendlyName {
 
   /**
    * The Xilinx part number for this FPGA board - e.g., "xczu7ev-ffvc1156-2-e"
@@ -77,12 +106,12 @@ abstract case class FPGA() extends IsXilinxIP with HasFriendlyName {
   /**
    * The fastest clock domains provided by this FPGA board
    */
-  def fastestClock()(implicit bd: SOCTBdBuilder, p: Parameters): FPGAClockDomain
+  def fastestClock(): FPGAClockDomain
 
   /**
    * The DDR4 ports provided by this FPGA board
    */
-  def portsDDR4()(implicit bd: SOCTBdBuilder, p: Parameters): Seq[DDR4Port] = Seq.empty
+  def portsDDR4(): Seq[DDR4Port] = Seq.empty
 
   /**
    * The PMOD ports available on this FPGA board

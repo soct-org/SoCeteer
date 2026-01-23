@@ -3,14 +3,15 @@ package soct.system.vivado
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, HasXilinxFPGA, VivadoSOCTPaths}
 import soct.system.vivado.components.{BdComp, VirtualPort, XIntfPort, InstantiableBdComp, IsModule, IsXilinxIP, XilinxBdIntfPort}
-
+import soct.system.vivado.fpga.FPGA
 import java.nio.file.Path
 import scala.collection.mutable
 
 /**
  * Tcl variable with description and default value
+ *
  * @param description Description of the variable
- * @param default Default value of the variable
+ * @param default     Default value of the variable
  */
 final case class TclVar(description: String, default: String)
 
@@ -63,12 +64,17 @@ class SOCTBdBuilder {
     throw XilinxDesignException("Please call init before accessing topInstance")
   }
 
+  var fpgaInstance: () => FPGA = () => {
+    throw XilinxDesignException("Please call init before accessing fpgaInstance")
+  }
+
 
   /**
    * Add a block design TCL variable
-   * @param name The name, INCLUDING the dereferencing $
+   *
+   * @param name        The name, INCLUDING the dereferencing $
    * @param description A description of the variable
-   * @param default The default value of the variable
+   * @param default     The default value of the variable
    */
   def addBdVar(name: String, description: String, default: String): Unit = {
     bdVars += (name -> TclVar(description, default))
@@ -79,13 +85,14 @@ class SOCTBdBuilder {
    *
    * @param p       Parameters
    * @param topInst Top-level instantiable block design component
+   * @param fpga    Target FPGA
    */
-  def init(p: Parameters, topInst: InstantiableBdComp with IsModule): Unit = {
+  def init(p: Parameters, topInst: InstantiableBdComp with IsModule, fpga: FPGA): Unit = {
     val paths = p(HasSOCTPaths).asInstanceOf[VivadoSOCTPaths]
     val config = p(HasSOCTConfig)
-    val fpga = p(HasXilinxFPGA).get
     val aggressive = config.args.overrideVivadoProject
     topInstance = () => topInst
+    fpgaInstance = () => fpga
 
     vars ++= Map(
       k.aggressive -> TclVar("Whether to aggressively overwrite existing Vivado projects and sources", if (aggressive) "1" else "0"),
@@ -158,7 +165,7 @@ class SOCTBdBuilder {
     // Generate a set_property command for each component with default properties
     val propertyCommands = componentsWithProperties.map { c =>
       def tclLiteral(v: String): String = {
-        if (v.startsWith("$") || v.startsWith("[")) {  // leave Tcl variable/expr references as-is so they are evaluated at runtime
+        if (v.startsWith("$") || v.startsWith("[")) { // leave Tcl variable/expr references as-is so they are evaluated at runtime
           v
         } else {
           val esc = v.replace("}", "\\}") // escape any '}' inside the value to avoid breaking braced string

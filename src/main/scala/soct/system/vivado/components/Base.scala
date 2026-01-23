@@ -206,9 +206,15 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
 
 
   /**
-   * The clock input ports for this component, to be connected to the clock domain
+   * The clock input ports for this component, to be connected to the clock domain if available
    */
   def clockInPorts: Seq[String] = Seq.empty
+
+
+  /**
+   * The reset input ports for this component, to be connected to the reset provider of the clock domain if available
+   */
+  def resetInPorts: Seq[String] = Seq.empty
 
 
   // Helper functions for common connection patterns:
@@ -219,6 +225,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
 
   // Register with the clock domain if provided
   dom.foreach(_.addPorts(this, () => clockInPorts))
+  dom.foreach(_.reset.foreach(_.addPorts(this, () => resetInPorts)))
 }
 
 /**
@@ -226,8 +233,10 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
  */
 trait AcceptsConnections {
 
-  // On which ports the receivers want to connect to this - keyed by component.
-  // The ports must be fully qualified names in the block design, usually of form <instance>/<port>
+  /**
+   * On which ports the receivers want to connect to this - keyed by component.
+   * The ports must be fully qualified names in the block design, usually of form instance/port
+   */
   protected[components] val receiverPorts = mutable.Map.empty[BdComp, () => Seq[String]]
 
   /**

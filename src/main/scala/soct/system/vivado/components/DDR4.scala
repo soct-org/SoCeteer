@@ -17,8 +17,6 @@ import scala.collection.mutable
  * @param addnClkOut2
  * @param addnClkOut3
  * @param addnClkOut4
- * @param bd
- * @param p
  * @param dom The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
 case class DDR4(
@@ -83,7 +81,7 @@ case class DDR4(
     dom.foreach {
       case fpgaDom: FPGAClockDomain =>
         props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.portName
-        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.portName
+        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.portName
 
         fpgaDom.reset.foreach{
           case r: FPGAResetPort =>

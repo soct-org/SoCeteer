@@ -108,7 +108,7 @@ case class SOCTArgs(
                      overrideSimFiles: Boolean = true,
                      // Vivado specific options
                      vivado: Option[Path] = None,
-                     board: Option[FPGA] = None,
+                     board: Option[Class[_ <: FPGA]] = None,
                      freqsMHz: Seq[Double] = Seq(100.0),
                      overrideVivadoProject: Boolean = true,
                      // Terminating options
@@ -191,12 +191,12 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   // Vivado specific options
   opt[String]("vivado").action((x, c) => c.copy(vivado = Some(Paths.get(x)))).text(s"The vivado executable script to use. Default is ${defaultSOCTArgs.vivado}.")
   opt[String]('b', "board")
-    .action((x, c) => c.copy(board = FPGARegistry.resolve(x)))
+    .action((x, c) => c.copy(board = FPGARegistry.n2bOpt(x)))
     .validate(x =>
-      if (FPGARegistry.resolve(x).isDefined) success
-      else failure(s"Invalid FPGA board. Available boards: ${FPGARegistry.availableBoards.mkString(", ")}")
+      if (FPGARegistry.isKnownBoard(x)) success
+      else failure(s"Invalid FPGA board $x. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
     )
-    .text(s"The FPGA board to target for synthesis. Available boards: ${FPGARegistry.availableBoards.mkString(", ")}.")
+    .text(s"The FPGA board to target for synthesis. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
   opt[String]("freq-mhz").action((x, c) => c.copy(freqsMHz = Seq(x.split(",").map(_.toDouble): _*)))
     .validate(x => {
       val freqs = x.split(",").map(_.toDouble)

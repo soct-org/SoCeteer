@@ -1,6 +1,7 @@
 package soct
 
 import soct.SOCTLauncher.SOCTConfig
+import soct.system.vivado.fpga.FPGARegistry
 
 import java.nio.file.{Files, Path, Paths}
 
@@ -147,11 +148,16 @@ private class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPat
 }
 
 private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
-  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(args.board.get.friendlyName)
+  private val fpgaBoardName: String = args.board match {
+    case Some(boardClass) => FPGARegistry.b2n(boardClass)
+    case None => throw new InternalBugException("FPGA board not set in SOCTArgs for VivadoSOCTPaths")
+  }
+
+  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(fpgaBoardName)
   /**
    * Path to the Vivado project directory - where the Vivado project files like the .xpr file will be stored
    */
-  val vivadoProjectDir: Path = args.vivadoProjectDir.resolve(config.configName).resolve(args.board.get.friendlyName)
+  val vivadoProjectDir: Path = args.vivadoProjectDir.resolve(config.configName).resolve(fpgaBoardName)
 
   /**
    * Path to the TCL file that initializes the Vivado project (loading sources, constraints, etc.)

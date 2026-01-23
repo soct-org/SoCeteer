@@ -62,7 +62,7 @@ object ClkWiz {
 /**
  * Marker trait for reset providers
  */
-trait Reset
+trait Reset extends AcceptsConnections
 
 
 /**

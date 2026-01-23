@@ -68,9 +68,11 @@ case class SDCardPMOD(pmodIdx: Int,
 
   override def clockInPorts: Seq[String] = Seq(s"$instanceName/$clock")
 
+  override def resetInPorts: Seq[String] = Seq(s"$instanceName/$reset")
+
   override def checkAvailable(): Unit = {
     super.checkAvailable()
-    val fpga = p(HasXilinxFPGA).get
+    val fpga = bd.fpgaInstance()
     val top = p(HasSOCTConfig).topModule
 
     if (!fpga.portsPMOD.contains(pmodIdx)) {
@@ -131,4 +133,6 @@ object SDCardPMOD {
   private val sdioClk = "sdio_clk"
 
   private val clock = "clock"
+
+  private val reset = "async_resetn"
 }
