@@ -4,7 +4,7 @@ import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MMIOPort, CanHaveSlaveAX
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.{HasSOCTConfig, HasXilinxFPGA}
+import soct.{HasSOCTConfig, XilinxFPGAKey}
 
 import java.nio.file.{Files, Path}
 
@@ -62,13 +62,13 @@ case class SDCardPMOD(pmodIdx: Int,
                       dataPort: SDIODataPort
                      )
                      (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with IsModule {
+  extends InstantiableBdComp with IsModule with AutoConnect {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
   override def clockInPorts: Seq[String] = Seq(s"$instanceName/$clock")
 
-  override def resetInPorts: Seq[String] = Seq(s"$instanceName/$reset")
+  override def resetNInPorts: Seq[String] = Seq(s"$instanceName/$resetN")
 
   override def checkAvailable(): Unit = {
     super.checkAvailable()
@@ -134,5 +134,5 @@ object SDCardPMOD {
 
   private val clock = "clock"
 
-  private val reset = "async_resetn"
+  private val resetN = "async_resetn"
 }

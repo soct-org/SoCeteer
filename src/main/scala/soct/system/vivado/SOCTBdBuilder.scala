@@ -1,10 +1,9 @@
 package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
-import soct.{HasSOCTConfig, HasSOCTPaths, HasXilinxFPGA, VivadoSOCTPaths}
+import soct.{HasSOCTConfig, HasSOCTPaths, XilinxFPGAKey, VivadoSOCTPaths}
 import soct.system.vivado.components.{BdComp, HasConnections, InstantiableBdComp, IsModule, IsXilinxIP, VirtualPort, XIntfPort, XilinxBdIntfPort}
-import soct.system.vivado.fpga.{FPGA, FPGAClockPort, FPGAPort}
-
+import soct.system.vivado.fpga.FPGA
 import java.nio.file.Path
 import scala.collection.mutable
 

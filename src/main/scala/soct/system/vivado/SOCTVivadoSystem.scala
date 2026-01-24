@@ -5,8 +5,8 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTVivado.toXilinxPortRef
-import soct.{HasBdBuilder, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, HasXilinxFPGA, PeripheryClockDomain, log}
-import soct.system.vivado.components.{AXIXIntfPort, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
+import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, PeripheryClockDomain, XilinxFPGAKey, log}
+import soct.system.vivado.components.{AXIXIntfPort, AutoConnect, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
 import soct.system.vivado.fpga.FPGARegistry
 
 
@@ -18,7 +18,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
   private def genTopInst()(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain]): InstantiableBdComp with IsModule = {
     // This is the top-level instance representing this system in the block design
-    new InstantiableBdComp with IsModule {
+    new InstantiableBdComp with IsModule with AutoConnect {
       private val c = p(HasSOCTConfig)
 
       // Returns either port refs for clocks or resets depending on the parameter
@@ -41,8 +41,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         busClockOrResetPorts :+ debugClockOrResetPort
       }
 
-      override def resetInPorts: Seq[String] = {
-        ioClockOrReset(isReset = true)
+      override def resetHInPorts: Seq[String] = {
+        ioClockOrReset(isReset = true) // Active-high resets
       }
 
       override def clockInPorts: Seq[String] = {
@@ -60,13 +60,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   }
 
 
-  if (p(HasBdBuilder).isDefined) {
-    implicit val bd: SOCTBdBuilder = p(HasBdBuilder).get
+  if (p(BdBuilderKey).isDefined) {
+    implicit val bd: SOCTBdBuilder = p(BdBuilderKey).get
     // Instantiate the FPGA board from class stored in parameters
-    val fpga = FPGARegistry.resolveBoardInstance(p(HasXilinxFPGA).get)
+    val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
     val fpgaDomain = fpga.fastestClock()
 
-    val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"), reset = fpgaDomain.reset)
+    val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
     val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
     peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
 

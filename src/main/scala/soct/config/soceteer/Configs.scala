@@ -188,29 +188,59 @@ object WithHartBootFreqMHz {
 /**
  * Field to indicate whether the design runs on a Xilinx FPGA.
  */
-case object HasXilinxFPGA extends Field[Option[Class[_ <: FPGA]]](None)
+case object XilinxFPGAKey extends Field[Option[Class[_ <: FPGA]]](None)
 
 
 /**
  * Field to hold the BDBuilder instance for Xilinx FPGA designs.
  */
-case object HasBdBuilder extends Field[Option[SOCTBdBuilder]](None)
+case object BdBuilderKey extends Field[Option[SOCTBdBuilder]](None)
 
 
 /**
  * Class to add a BDBuilder to the configuration. Used to generate Vivado block designs.
+ *
  * @param bd The BDBuilder instance to add to the configuration.
  */
 class WithBdBuilder(bd: SOCTBdBuilder) extends Config((_, _, _) => {
-  case HasBdBuilder => Some(bd)
+  case BdBuilderKey => Some(bd)
 })
 
+/**
+ * Class to specify the Xilinx FPGA board class for the design.
+ *
+ * @param fpgaClass The class of the Xilinx FPGA board.
+ */
 class WithXilinxFPGA(fpgaClass: Class[_ <: FPGA]) extends Config((_, _, _) => {
-  case HasXilinxFPGA => Some(fpgaClass)
+  case XilinxFPGAKey => Some(fpgaClass)
 })
 
 
 /*----------------- Reset Schemes ---------------*/
+
+/**
+ * Field to specify the reset polarity of the FPGA reset signal.
+ * True for active high, false for active low.
+ */
+case object FPGAResetPolarity extends Field[Boolean](true)
+
+
+/**
+ * Class to specify the polarity of the FPGA reset signal.
+ *
+ * @param activeHigh True if the reset is active high, false if active low.
+ */
+class WithFPGAResetPolarity(activeHigh: Boolean) extends Config((_, _, _) => {
+  case FPGAResetPolarity => activeHigh
+})
+
+
+/**
+ * Class to specify the reset scheme for the design.
+ *
+ * @param scheme The reset scheme to use.
+ */
 class WithResetScheme(scheme: SubsystemResetScheme) extends Config((site, here, up) => {
   case SubsystemResetSchemeKey => scheme
 })
+

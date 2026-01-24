@@ -1,8 +1,9 @@
 package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
+import soct.FPGAResetPolarity
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{BdComp, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, Reset}
+import soct.system.vivado.components.{AResetH, AResetN, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, XilinxBdIntfPort}
 
 import scala.annotation.unused
 
@@ -49,6 +50,7 @@ object FPGARegistry {
 
   /**
    * Instantiate an FPGA board given its class.
+   *
    * @param clazz The class of the FPGA board to instantiate
    * @return An instance of the FPGA board
    */
@@ -57,50 +59,66 @@ object FPGARegistry {
   }
 }
 
-/**
- * Abstract base class for FPGA ports provided by the board.
- */
-abstract class FPGAPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
-  val portName: String
-}
-
 
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAPort
+case class DDR4Port(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort {
 
+  override def mode: String = "Master"
+
+  override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
+}
 
 /**
- * Case class representing a reset signal provided on the FPGA board
- *
- * @param portName The name of the reset port provided by the board, usable in e.g. RESET_BOARD_INTERFACE
+ * Case class representing a reset port on the FPGA board
  */
-case class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends FPGAPort with Reset with HasConnections {
+abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort with ResetType with HasConnections {
+  override def ifType: String = "rst"
 
-  override def connectTclCommands: Seq[String] = {
-    receiverPorts.flatMap(_._2()).map { port =>
-      s"connect_bd_net [get_bd_ports $portName] [get_bd_pins $port]"
-    }.toSeq
-  }
+  override def dir: String = "I"
+}
+
+case class FPGAResetHPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with AResetH {
+  override def connectTclCommands: Seq[String] = defaultConnect(ifName)
+
+  override def defaultProperties: Map[String, String] = Map(
+    "POLARITY" -> "ACTIVE_HIGH"
+  )
+}
+
+case class FPGAResetNPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with AResetN {
+  override def connectTclCommands: Seq[String] = defaultConnect(ifName)
+
+  override def defaultProperties: Map[String, String] = Map(
+    "POLARITY" -> "ACTIVE_LOW"
+  )
 }
 
 /**
  * Case class representing a clock port on the FPGA board
- * @param portName The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
+ *
+ * @param ifName  The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
  * @param freqMHz The frequency of the clock in MHz
  */
-case class FPGAClockPort(override val portName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends FPGAPort
+case class FPGAClockPort(override val ifName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort  {
+
+  override def mode: String = "Slave"
+
+  override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
+
+  override def defaultProperties: Map[String, String] = Map(
+    "FREQ_HZ" -> (freqMHz * 1e6).toInt.toString
+  )
+}
 
 /**
  * Class representing a port that provides a clock domain on the FPGA board
  *
- * @param port    The clock port provided by the board
- * @param reset   Optional reset provider that is synced to this clock domain
+ * @param port  The clock port provided by the board
+ * @param reset Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(val port: FPGAClockPort, reset: Option[FPGAResetPort] = None)
+final class FPGAClockDomain(val port: FPGAClockPort, reset: Option[FPGAResetPortType] = None)
                            (implicit bd: SOCTBdBuilder) extends ClockDomain(port.freqMHz, reset) {
 }
 
@@ -131,6 +149,17 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
    * The PMOD ports available on this FPGA board
    */
   val portsPMOD: Seq[Int] = Seq.empty
+
+  /**
+   * The default reset port for this FPGA board, based on the reset polarity parameter
+   */
+  lazy val defaultReset: FPGAResetPortType = {
+    if (p(FPGAResetPolarity)) {
+      FPGAResetHPort("reset")
+    } else {
+      FPGAResetNPort("reset_n")
+    }
+  }
 
   override def toString: String = friendlyName
 

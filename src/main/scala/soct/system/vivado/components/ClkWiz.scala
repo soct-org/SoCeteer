@@ -3,7 +3,7 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.components.ClkWiz._
-import soct.system.vivado.fpga.FPGAResetPort
+import soct.system.vivado.fpga.FPGAResetPortType
 
 import scala.collection.mutable
 
@@ -16,11 +16,11 @@ import scala.collection.mutable
  * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
 case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
-  extends InstantiableBdComp with IsXilinxIP  {
+  extends InstantiableBdComp with IsXilinxIP with AutoConnect {
 
   override def clockInPorts: Seq[String] = Seq(s"$instanceName/$CLKIn")
 
-  override def resetInPorts: Seq[String] = Seq(s"$instanceName/$RSTIn")
+  override def resetHInPorts: Seq[String] = Seq(s"$instanceName/$RSTIn")
 
 
   override def defaultProperties: Map[String, String] = {
@@ -39,8 +39,8 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
     m += "CONFIG.USE_BOARD_FLOW" -> "true"
 
     dom.foreach(_.reset.foreach{
-      case r: FPGAResetPort =>
-        m += "CONFIG.RESET_BOARD_INTERFACE" -> r.portName
+      case r: FPGAResetPortType =>
+        m += "CONFIG.RESET_BOARD_INTERFACE" -> r.ifName
       case _ => // Ignore other reset types for now
     })
 

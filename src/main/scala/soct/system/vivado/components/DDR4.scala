@@ -4,7 +4,7 @@ import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MemPort, ExtMem}
 import org.apache.commons.lang3.NotImplementedException
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
-import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPort}
+import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortType}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.HasSOCTConfig
 import soct.system.vivado.components.DDR4._
@@ -80,12 +80,12 @@ case class DDR4(
 
     dom.foreach {
       case fpgaDom: FPGAClockDomain =>
-        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.portName
-        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.portName
+        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ifName
+        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.ifName
 
         fpgaDom.reset.foreach {
-          case r: FPGAResetPort =>
-            props += "CONFIG.RESET_BOARD_INTERFACE" -> r.portName
+          case r: FPGAResetPortType =>
+            props += "CONFIG.RESET_BOARD_INTERFACE" -> r.ifName
           case _ => // Ignore other reset types for now
         }
 
@@ -109,8 +109,8 @@ case class DDR4(
 
     // connect to the interface ports
     val intfConns = Seq(
-      s"connect_bd_intf_net [get_bd_intf_ports ${ddr4Intf.portName}] [get_bd_intf_pins ${this.instanceName}/$C0_DDR4]",
-      s"connect_bd_intf_net [get_bd_intf_ports ${dom.get.port.portName}] [get_bd_intf_pins ${this.instanceName}/$C0_SYS_CLK]"
+      s"connect_bd_intf_net [get_bd_intf_ports ${ddr4Intf.ifName}] [get_bd_intf_pins ${this.instanceName}/$C0_DDR4]",
+      s"connect_bd_intf_net [get_bd_intf_ports ${dom.get.port.ifName}] [get_bd_intf_pins ${this.instanceName}/$C0_SYS_CLK]"
     )
 
     outClks ++ intfConns

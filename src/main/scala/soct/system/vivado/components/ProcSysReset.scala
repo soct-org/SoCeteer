@@ -6,39 +6,39 @@ import soct.system.vivado.components.ProcSysReset._
 
 /**
  * Proc Sys Reset IP core from Xilinx
- * Notes: The core should be connected to the slowest operating clock of the system.
- * @param dom The clock domain to which this reset controller belongs
+ * @param dom Only used for the slowestSyncClk connection
  */
-case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with IsXilinxIP {
+case class ProcSysReset(
+
+                       )
+                       (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None)
+  extends InstantiableBdComp with IsXilinxIP with ReceivesClock {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
   override def clockInPorts: Seq[String] = Seq(s"$instanceName/$slowestSyncClk")
 
-  override def resetInPorts: Seq[String] = Seq(s"$instanceName/$extReset")
-
   /**
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralAResetN extends Reset {}
+  object PeripheralAResetN extends AResetN {}
 
   /**
    * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralReset extends Reset {}
+  object PeripheralReset extends AResetH {}
 
   /**
    * Bus Structures reset - for example, arbiters for bridges. Active-High
    */
-  object BusStructReset extends Reset {}
+  object BusStructReset extends AResetH {}
 
   /**
    * Interconnect_aresetn reset, for example, interconnects with active-Low reset inputs.
    */
-  object InterconnectAResetN extends Reset {}
+  object InterconnectAResetN extends AResetN {}
 
 
   override def connectTclCommands: Seq[String] = {

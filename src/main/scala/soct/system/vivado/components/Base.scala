@@ -3,7 +3,7 @@ package soct.system.vivado.components
 import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
-import soct.HasXilinxFPGA
+import soct.XilinxFPGAKey
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
@@ -20,7 +20,7 @@ abstract class BdComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFr
    */
   @throws[XilinxDesignException]
   def checkAvailable(): Unit = {
-    val fpgaOpt = p(HasXilinxFPGA)
+    val fpgaOpt = p(XilinxFPGAKey)
     if (fpgaOpt.isEmpty) {
       throw XilinxDesignException(s"Adding $friendlyName requires the design to run on a Xilinx FPGA")
     }
@@ -171,7 +171,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   /**
    * Optional index to differentiate multiple instances of the same component
    */
-  def index: Option[Int] = None
+  def index: Int = 0
 
   /**
    * The instance name for this component. By default, use the friendly name converted to snake_case with an optional index suffix.
@@ -180,10 +180,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
    */
   def instanceName: String = {
     val name = friendlyName.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase
-    index match {
-      case Some(i) => s"${name}_$i"
-      case None => s"${name}_0"
-    }
+    s"${name}_$index"
   }
 
   /**
@@ -200,19 +197,6 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
     }
   }
 
-
-  /**
-   * The clock input ports for this component, to be connected to the clock domain if available
-   */
-  def clockInPorts: Seq[String] = Seq.empty
-
-
-  /**
-   * The reset input ports for this component, to be connected to the reset provider of the clock domain if available
-   */
-  def resetInPorts: Seq[String] = Seq.empty
-
-
   // Helper functions for common connection patterns:
   def connectNet[T <: Data](port: T, outPort: String): String = {
     val ref = SOCTVivado.toXilinxPortRef(port)
@@ -220,7 +204,6 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
   // Register with the clock domain if provided
-  // Print warning if dom is None
   if (dom.isEmpty) {
     soct.log.warn(s"InstantiableBdComp ${this} is not associated with any clock domain.")
   } else if (dom.get.reset.isEmpty) {
@@ -228,19 +211,73 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
 
-  dom.foreach(_.addPorts(this, () => clockInPorts))
-  dom.foreach(_.reset.foreach(_.addPorts(this, () => resetInPorts)))
+  this match {
+    case r: ReceivesReset =>
+      if (dom.isEmpty) {
+        soct.log.warn(s"Component $this implements ReceivesReset but has no clock domain provided.")
+      }
+      if (dom.get.reset.isEmpty) {
+        soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
+      }
+      dom.foreach(_.reset.foreach {
+        case rst: AResetH => rst.addPorts(this, () => r.resetHInPorts)
+        case rstN: AResetN => rstN.addPorts(this, () => r.resetNInPorts)
+      })
+    case _ => // Do nothing
+  }
+
+  this match {
+    case r: ReceivesClock =>
+      if (dom.isEmpty) {
+        soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
+      }
+      dom.foreach(_.addPorts(this, () => r.clockInPorts))
+    case _ => // Do nothing
+  }
+
 }
 
+/**
+ * Trait for components that do not want automatic reset port registration
+ */
+trait ReceivesReset {
+  /**
+   * The active low reset ports for this component, to be connected to the reset provider of the clock domain if available
+   */
+  def resetNInPorts: Seq[String] = Seq.empty
 
+
+  /**
+   * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
+   */
+  def resetHInPorts: Seq[String] = Seq.empty
+}
+
+/**
+ * Trait for components that receive clock inputs
+ */
+trait ReceivesClock {
+
+  /**
+   * The clock input ports for this component, to be connected to the clock domain if available
+   */
+  def clockInPorts: Seq[String] = Seq.empty
+}
+
+/**
+ * Trait for components that want automatic connection to clock and reset inputs
+ */
+trait AutoConnect extends ReceivesClock with ReceivesReset
+
+/**
+ * Trait for components that provide connections to other components
+ */
 trait HasConnections {
   /**
    * Emit the TCL commands to connect this component in the design
    */
   def connectTclCommands: Seq[String]
 }
-
-
 
 /**
  * Trait for components that can accept connections from other components
@@ -264,6 +301,18 @@ trait AcceptsConnections {
   def addPorts[T <: BdComp](comp: T, ports: () => Seq[String]): T = {
     receiverPorts += (comp -> ports)
     comp
+  }
+
+  /**
+   * Default implementation to connect all registered receivers to the specified output port of this component.
+   *
+   * @param portOut The output port name of this component to connect from
+   * @return A sequence of TCL commands to perform the connections
+   */
+  def defaultConnect(portOut: String): Seq[String] = {
+    receiverPorts.flatMap(_._2()).map { port =>
+      s"connect_bd_net [get_bd_ports $portOut] [get_bd_pins $port]"
+    }.toSeq
   }
 }
 

@@ -6,7 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
 import soct.system.vivado.fpga.{FPGA, ZCU104}
-import soct.{HasBdBuilder, VivadoSOCTPaths}
+import soct.{BdBuilderKey, VivadoSOCTPaths}
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
@@ -164,7 +164,7 @@ object SOCTVivado {
       throw XilinxDesignException("No RocketSystem instance found for Vivado generation - did you elaborate the design?")
     }
     implicit val p: Parameters = rs.p
-    val bdOpt = p(HasBdBuilder)
+    val bdOpt = p(BdBuilderKey)
     if (bdOpt.isEmpty) {
       soct.log.warn("BDBuilder not found in parameters, not generating TCL scripts")
       return false
