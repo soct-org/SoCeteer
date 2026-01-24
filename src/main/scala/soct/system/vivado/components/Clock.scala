@@ -10,12 +10,12 @@ trait ResetType
 /**
  * Reset type representing an active-high reset
  */
-trait AResetH extends ResetType with AcceptsConnections
+trait Reset extends ResetType with AcceptsConnections
 
 /**
  * Reset type representing an active-low reset
  */
-trait AResetN extends ResetType with AcceptsConnections
+trait ResetN extends ResetType with AcceptsConnections
 
 
 /**

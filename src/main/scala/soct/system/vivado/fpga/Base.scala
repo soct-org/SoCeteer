@@ -3,7 +3,7 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{AResetH, AResetN, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, XilinxBdIntfPort}
+import soct.system.vivado.components.{Reset, ResetN, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, XilinxBdIntfPort}
 
 import scala.annotation.unused
 
@@ -79,7 +79,7 @@ abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) exte
   override def dir: String = "I"
 }
 
-case class FPGAResetHPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with AResetH {
+case class FPGAResetPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with Reset {
   override def connectTclCommands: Seq[String] = defaultConnect(ifName)
 
   override def defaultProperties: Map[String, String] = Map(
@@ -87,7 +87,7 @@ case class FPGAResetHPort(override val ifName: String)(implicit bd: SOCTBdBuilde
   )
 }
 
-case class FPGAResetNPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with AResetN {
+case class FPGAResetNPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with ResetN {
   override def connectTclCommands: Seq[String] = defaultConnect(ifName)
 
   override def defaultProperties: Map[String, String] = Map(
@@ -155,7 +155,7 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
    */
   lazy val defaultReset: FPGAResetPortType = {
     if (p(FPGAResetPolarity)) {
-      FPGAResetHPort("reset")
+      FPGAResetPort("reset")
     } else {
       FPGAResetNPort("reset_n")
     }

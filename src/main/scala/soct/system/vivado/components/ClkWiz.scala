@@ -20,7 +20,7 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
 
   override def clockInPorts: Seq[String] = Seq(s"$instanceName/$CLKIn")
 
-  override def resetHInPorts: Seq[String] = Seq(s"$instanceName/$RSTIn")
+  override def resetInPorts: Seq[String] = Seq(s"$instanceName/$RSTIn")
 
 
   override def defaultProperties: Map[String, String] = {

@@ -41,7 +41,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         busClockOrResetPorts :+ debugClockOrResetPort
       }
 
-      override def resetHInPorts: Seq[String] = {
+      override def resetInPorts: Seq[String] = {
         ioClockOrReset(isReset = true) // Active-high resets
       }
 

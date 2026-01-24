@@ -220,8 +220,8 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
         soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
       }
       dom.foreach(_.reset.foreach {
-        case rst: AResetH => rst.addPorts(this, () => r.resetHInPorts)
-        case rstN: AResetN => rstN.addPorts(this, () => r.resetNInPorts)
+        case rst: Reset => rst.addPorts(this, () => r.resetInPorts)
+        case rstN: ResetN => rstN.addPorts(this, () => r.resetNInPorts)
       })
     case _ => // Do nothing
   }
@@ -250,7 +250,7 @@ trait ReceivesReset {
   /**
    * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
    */
-  def resetHInPorts: Seq[String] = Seq.empty
+  def resetInPorts: Seq[String] = Seq.empty
 }
 
 /**

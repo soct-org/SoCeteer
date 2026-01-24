@@ -22,23 +22,23 @@ case class ProcSysReset(
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralAResetN extends AResetN {}
+  object PeripheralAResetN extends ResetN {}
 
   /**
    * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralReset extends AResetH {}
+  object PeripheralReset extends Reset {}
 
   /**
    * Bus Structures reset - for example, arbiters for bridges. Active-High
    */
-  object BusStructReset extends AResetH {}
+  object BusStructReset extends Reset {}
 
   /**
    * Interconnect_aresetn reset, for example, interconnects with active-Low reset inputs.
    */
-  object InterconnectAResetN extends AResetN {}
+  object InterconnectResetN extends ResetN {}
 
 
   override def connectTclCommands: Seq[String] = {
@@ -46,7 +46,7 @@ case class ProcSysReset(
       (PeripheralAResetN, peripheralAReset),
       (PeripheralReset, peripheralReset),
       (BusStructReset, busStructReset),
-      (InterconnectAResetN, interconnectAResetN)
+      (InterconnectResetN, interconnectAResetN)
     )
 
     resetPairs.flatMap { case (resetObj, portName) =>
