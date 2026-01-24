@@ -4,6 +4,11 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.components.ProcSysReset._
 
+/**
+ * Proc Sys Reset IP core from Xilinx
+ * Notes: The core should be connected to the slowest operating clock of the system.
+ * @param dom The clock domain to which this reset controller belongs
+ */
 case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
   extends InstantiableBdComp with IsXilinxIP {
 
@@ -19,25 +24,45 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
    */
   object PeripheralAResetN extends Reset {}
 
+  /**
+   * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
+   * Deassertion is synchronized to the slowestSyncClk.
+   */
+  object PeripheralReset extends Reset {}
 
-  // TODO add more reset outputs
+  /**
+   * Bus Structures reset - for example, arbiters for bridges. Active-High
+   */
+  object BusStructReset extends Reset {}
+
+  /**
+   * Interconnect_aresetn reset, for example, interconnects with active-Low reset inputs.
+   */
+  object InterconnectAResetN extends Reset {}
 
 
   override def connectTclCommands: Seq[String] = {
-    val parn = PeripheralAResetN.receiverPorts.flatMap(_._2()).map { port =>
-      s"connect_bd_net [get_bd_ports $instanceName/$peripheralAReset] [get_bd_pins $port]"
-    }.toSeq
+    val resetPairs = Seq(
+      (PeripheralAResetN, peripheralAReset),
+      (PeripheralReset, peripheralReset),
+      (BusStructReset, busStructReset),
+      (InterconnectAResetN, interconnectAResetN)
+    )
 
-    parn
+    resetPairs.flatMap { case (resetObj, portName) =>
+      resetObj.receiverPorts.flatMap(_._2()).map { port =>
+        s"connect_bd_net [get_bd_ports $instanceName/$portName] [get_bd_pins $port]"
+      }
+    }
   }
-
-
-
 }
 
 
 object ProcSysReset {
   val peripheralAReset = "peripheral_aresetn"
+  val peripheralReset = "peripheral_reset"
+  val busStructReset = "bus_struct_reset"
+  val interconnectAResetN = "interconnect_aresetn"
   val slowestSyncClk = "slowest_sync_clk"
   val extReset = "ext_reset_in"
 }

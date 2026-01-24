@@ -16,33 +16,46 @@ import soct.system.vivado.fpga.FPGARegistry
 class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
   // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
-  private def genTopInst(coreDomain: ClockDomain)(implicit p: Parameters, bd: SOCTBdBuilder):
-  InstantiableBdComp with IsModule = {
+  private def genTopInst()(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain]): InstantiableBdComp with IsModule = {
     // This is the top-level instance representing this system in the block design
-    WithDomain(coreDomain) { implicit dom =>
-      new InstantiableBdComp with IsModule {
-        private val c = p(HasSOCTConfig)
+    new InstantiableBdComp with IsModule {
+      private val c = p(HasSOCTConfig)
 
-        override def clockInPorts: Seq[String] = {
-          val busClockPorts = io_clocks
-            .map(_.getWrappedValue)
-            .map(_.data) // Option[Iterable[ClockBundle]]
-            .toSeq // Seq[Iterable[ClockBundle]] (0 or 1 element)
-            .flatten // Seq[ClockBundle]
-            .map(bundle => toXilinxPortRef(bundle.clock))
-          val debugClockPorts = toXilinxPortRef(debug.getWrappedValue.get.clock)
+      // Returns either port refs for clocks or resets depending on the parameter
+      def ioClockOrReset(isReset: Boolean): Seq[String] = {
+        val busClockOrResetPorts = io_clocks
+          .map(_.getWrappedValue)
+          .map(_.data) // Option[Iterable[ClockBundle]]
+          .toSeq // Seq[Iterable[ClockBundle]] (0 or 1 element)
+          .flatten // Seq[ClockBundle]
+          .map { bundle =>
+            if (isReset) toXilinxPortRef(bundle.reset) else toXilinxPortRef(bundle.clock)
+          }
 
-          busClockPorts :+ debugClockPorts
+        val debugClockOrResetPort = if (isReset) {
+          toXilinxPortRef(debug.getWrappedValue.get.reset)
+        } else {
+          toXilinxPortRef(debug.getWrappedValue.get.clock)
         }
 
-        override def reference: String = c.topModuleName
-
-        override def friendlyName: String = SOCTVivadoSystem.this.instanceName
-
-        override def instanceName: String = friendlyName
-
-        override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
+        busClockOrResetPorts :+ debugClockOrResetPort
       }
+
+      override def resetInPorts: Seq[String] = {
+        ioClockOrReset(isReset = true)
+      }
+
+      override def clockInPorts: Seq[String] = {
+        ioClockOrReset(isReset = false)
+      }
+
+      override def reference: String = c.topModuleName
+
+      override def friendlyName: String = SOCTVivadoSystem.this.instanceName
+
+      override def instanceName: String = friendlyName
+
+      override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
     }
   }
 
@@ -52,16 +65,16 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Instantiate the FPGA board from class stored in parameters
     val fpga = FPGARegistry.resolveBoardInstance(p(HasXilinxFPGA).get)
     val fpgaDomain = fpga.fastestClock()
-    val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
-    val topInstance = genTopInst(coreDomain)
 
-    bd.init(p, topInstance, fpga) // Register this top instance with the BDBuilder.
-
-    // Periphery domain
     val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"), reset = fpgaDomain.reset)
     val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
     peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
 
+    // Default to 100 MHz - TODO use parameters
+    val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset=Some(peripheryReset.PeripheralReset))
+    val topInstance = WithDomain(coreDomain) { implicit dom => genTopInst() }
+
+    bd.init(p, topInstance, fpga)
 
     InModuleBody {
       // Connect DDR4 if present - it outputs to the clock wizard
@@ -83,7 +96,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       axiInfts.foreach { axiInft =>
         AXIXIntfPort(axiInft)
       }
-
 
       if (p(HasSDCardPMOD).isDefined) {
         WithDomain(peripheryDomain) { implicit dom =>
@@ -129,7 +141,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         require(b2j.outputTo(jtagXIntf))
       }
     }
-  } else {
+  }
+  else {
     log.info("No BDBuilder found in parameters - skipping block design generation and only elaborating Chisel design. " +
       "If you intended to use Vivado, please ensure HasBdBuilder is set in the parameters.")
   }
