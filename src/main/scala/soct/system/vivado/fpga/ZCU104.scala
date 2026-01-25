@@ -17,7 +17,7 @@ class ZCU104(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGA {
   private lazy val clk300 = FPGAClockPort("clk_300mhz", 300.0)
 
   override def portsDDR4(): Seq[DDR4Port] =
-    Seq(DDR4Port(ifName = "ddr4_sdram"))
+    Seq(DDR4Port(instanceName = "ddr4_sdram"))
 
   override def fastestClock(): FPGAClockDomain = {
     new FPGAClockDomain(clk300, Some(defaultReset))

@@ -4,9 +4,9 @@ import chisel3._
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
-import soct.system.vivado.SOCTVivado.toXilinxPortRef
+import soct.system.vivado.SOCTVivado.portToBdPin
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXIXIntfPort, AutoConnect, BSCAN, BSCAN2JTAG, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, WithDomain}
+import soct.system.vivado.components.{AXIXIntfPort, AutoConnect, BSCAN, BSCAN2JTAG, BdPin, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop, WithDomain}
 import soct.system.vivado.fpga.FPGARegistry
 
 
@@ -14,51 +14,6 @@ import soct.system.vivado.fpga.FPGARegistry
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
 class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
-
-  // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
-  private def genTopInst()(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain]): InstantiableBdComp with IsModule = {
-    // This is the top-level instance representing this system in the block design
-    new InstantiableBdComp with IsModule with AutoConnect {
-      private val c = p(HasSOCTConfig)
-
-      // Returns either port refs for clocks or resets depending on the parameter
-      def ioClockOrReset(isReset: Boolean): Seq[String] = {
-        val busClockOrResetPorts = io_clocks
-          .map(_.getWrappedValue)
-          .map(_.data) // Option[Iterable[ClockBundle]]
-          .toSeq // Seq[Iterable[ClockBundle]] (0 or 1 element)
-          .flatten // Seq[ClockBundle]
-          .map { bundle =>
-            if (isReset) toXilinxPortRef(bundle.reset) else toXilinxPortRef(bundle.clock)
-          }
-
-        val debugClockOrResetPort = if (isReset) {
-          toXilinxPortRef(debug.getWrappedValue.get.reset)
-        } else {
-          toXilinxPortRef(debug.getWrappedValue.get.clock)
-        }
-
-        busClockOrResetPorts :+ debugClockOrResetPort
-      }
-
-      override def resetInPorts: Seq[String] = {
-        ioClockOrReset(isReset = true) // Active-high resets
-      }
-
-      override def clockInPorts: Seq[String] = {
-        ioClockOrReset(isReset = false)
-      }
-
-      override def reference: String = c.topModuleName
-
-      override def friendlyName: String = SOCTVivadoSystem.this.instanceName
-
-      override def instanceName: String = friendlyName
-
-      override def connectTclCommands: Seq[String] = Seq.empty // Top module is only receiver of connections
-    }
-  }
-
 
   if (p(BdBuilderKey).isDefined) {
     implicit val bd: SOCTBdBuilder = p(BdBuilderKey).get
@@ -71,8 +26,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
 
     // Default to 100 MHz - TODO use parameters
-    val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset=Some(peripheryReset.PeripheralReset))
-    val topInstance = WithDomain(coreDomain) { implicit dom => genTopInst() }
+    val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
+    val topInstance = WithDomain(coreDomain) { implicit dom => new SOCTVivadoSystemTop(this) }
 
     bd.init(p, topInstance, fpga)
 
@@ -98,15 +53,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       }
 
       if (p(HasSDCardPMOD).isDefined) {
-        WithDomain(peripheryDomain) { implicit dom =>
-          SDCardPMOD(
-            pmodIdx = p(HasSDCardPMOD).get,
-            cdPort = SDIOCDPort(),
-            clkPort = SDIOClkPort(),
-            cmdPort = SDIOCmdPort(),
-            dataPort = SDIODataPort()
-          )
-        }
+        val ports = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
+        val sdPmod = WithDomain(peripheryDomain) { implicit dom => SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get) }
+        ports.foreach{x => x.outputTo(sdPmod.getPin(x))}
       }
 
       val debugIf = debug.getWrappedValue.get
@@ -137,7 +86,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val bscan = BSCAN()
         val b2j = BSCAN2JTAG()
 
-        require(bscan.outputTo(b2j))
+        require(bscan.outputTo(b2j.getPin(bscan)))
         require(b2j.outputTo(jtagXIntf))
       }
     }

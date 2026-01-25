@@ -5,6 +5,7 @@ import chisel3.reflect.DataMirror
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
+import soct.system.vivado.components.BdPin
 import soct.system.vivado.fpga.{FPGA, ZCU104}
 import soct.{BdBuilderKey, VivadoSOCTPaths}
 
@@ -18,7 +19,7 @@ import scala.util.matching.Regex
  * Exception thrown during evaluation of a Xilinx design
  */
 class XilinxDesignException(private val message: String = "",
-                                 private val cause: Throwable = None.orNull) extends Exception(message, cause)
+                            private val cause: Throwable = None.orNull) extends Exception(message, cause)
 
 object XilinxDesignException {
   def apply(message: String): XilinxDesignException = new XilinxDesignException(message)
@@ -40,11 +41,10 @@ object SOCTVivado {
     name.toLowerCase.replace(".", "_")
   }
 
-  /** Convert a Chisel Data port to a Xilinx port reference string */
-  def toXilinxPortRef[T <: Data](x: T)(implicit bd: SOCTBdBuilder): String = {
+  /** Convert a Chisel Data port to a BdPin */
+  def portToBdPin(x: Data)(implicit bd: SOCTBdBuilder): BdPin = {
     require(DataMirror.isIO(x), s"Port ${x.instanceName} is not an IO port")
-    val topInst = bd.topInstance().instanceName
-    s"$topInst/${snake(x.instanceName)}"
+    BdPin(snake(x.instanceName), bd.topInstance())
   }
 
   /**

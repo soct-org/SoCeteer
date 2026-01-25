@@ -2,7 +2,7 @@ package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, XilinxFPGAKey, VivadoSOCTPaths}
-import soct.system.vivado.components.{BdComp, HasConnections, InstantiableBdComp, IsModule, IsXilinxIP, VirtualPort, XIntfPort, XilinxBdIntfPort}
+import soct.system.vivado.components.{BdComp, InstantiableBdComp, IsModule, IsXilinxIP, VirtualPort, XIntfPort, IntfPort}
 import soct.system.vivado.fpga.FPGA
 import java.nio.file.Path
 import scala.collection.mutable
@@ -16,6 +16,11 @@ import scala.collection.mutable
 final case class TclVar(description: String, default: String)
 
 class SOCTBdBuilder {
+  /**
+   * Indentation prefix for TCL scripts, i.e. each level is two spaces
+   */
+  val IND_PREFIX: String = "  "
+
   private val components = mutable.Set.empty[BdComp]
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
@@ -150,8 +155,8 @@ class SOCTBdBuilder {
         instantiateCommands ++= inst.instTclCommands
         connectCommands ++= inst.connectTclCommands
       case port: VirtualPort =>
-        portCommands ++= port.createTclCommands
-      case xport: XilinxBdIntfPort =>
+        portCommands ++= port.wcreateTclCommands
+      case xport: IntfPort =>
         portCommands ++= xport.tclCommands
       case con: HasConnections =>
         connectCommands ++= con.connectTclCommands

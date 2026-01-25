@@ -1,6 +1,5 @@
 package soct.system.vivado.components
 
-import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
 import soct.XilinxFPGAKey
@@ -25,20 +24,6 @@ abstract class BdComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFr
       throw XilinxDesignException(s"Adding $friendlyName requires the design to run on a Xilinx FPGA")
     }
   }
-
-  /**
-   * Default properties for this component influenced by parameters, can be overridden by subclasses
-   *
-   * @return A map of default properties
-   */
-  def defaultProperties: Map[String, String] = Map.empty
-
-  /**
-   * Constraints for this component, to be added to the design
-   *
-   * @return A sequence of constraint strings
-   */
-  def constraints: Seq[String] = Seq.empty
 
   /**
    * Dump collateral files for this component to the specified output directory.
@@ -83,12 +68,8 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdCo
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
-
-  /**
-   * The name of this interface port
-   */
-  def ifName: String
+abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends InstantiableBdComp()(bd, p, None) with SourceForPins {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -113,26 +94,29 @@ abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) extends Bd
   /**
    * Emit the TCL command to create the port for this component
    */
-  def createTclCommands: Seq[String] = {
+  override def instTclCommands: Seq[String] = {
     // Either none or both of from/to must be defined
     val range = (from, to) match {
       case (Some(f), Some(t)) => s"-from $f -to $t "
       case (None, None) => ""
-      case _ => throw new IllegalStateException(s"BdPort $ifName must have either both or neither of from/to defined")
+      case _ => throw new IllegalStateException(s"BdPort $instanceName must have either both or neither of from/to defined")
     }
-    Seq(s"set ${ifName} [create_bd_port -type $ifType -dir $dir $range$ifName]")
+    Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]")
+  }
+
+  override def connectTclCommands: Seq[String] = {
+    val prefix = s"connect_bd_net [get_bd_ports $instanceName]"
+    sinkPins.map { sink =>
+      s"$prefix [get_bd_pins $sink]"
+    }.toSeq
   }
 }
 
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with IsXilinxIP {
-  /**
-   * The name of this interface, used to connect components to it
-   */
-  def ifName: String
-
+abstract class IntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends InstantiableBdComp()(bd, p, None) with IsXilinxIP with SourceForPins {
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
    */
@@ -141,32 +125,15 @@ abstract class XilinxBdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) exten
   /**
    * Emit the TCL command to create the port for this component
    */
-  def tclCommands: Seq[String] = {
-    Seq(s"set $ifName [create_bd_intf_port -mode $mode -vlnv $partName $ifName]")
+  override def instTclCommands: Seq[String] = {
+    Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]")
   }
 }
 
 /**
  * Trait for components that can be instantiated in the design
  */
-abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp
-  with HasConnections {
-
-  /**
-   * The list of receivers connected to this component
-   */
-  protected[components] val receivers: mutable.ArrayBuffer[Any] = mutable.ArrayBuffer.empty[Any]
-
-  /**
-   * Request output from this component for the given receiver component.
-   * @param receiver The receiving component
-   * @tparam T The type of the receiving component
-   * @return True if output is request is accepted, false otherwise
-   */
-  def outputTo[T](receiver : T): Boolean = {
-    receivers += receiver
-    true
-  }
+abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp {
 
   /**
    * Optional index to differentiate multiple instances of the same component
@@ -184,6 +151,13 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
   /**
+   * Default properties for this component influenced by parameters, can be overridden by subclasses
+   *
+   * @return A map of default properties
+   */
+  def defaultProperties: Map[String, String] = Map.empty
+
+  /**
    * Emit the TCL command to instantiate this component in the design
    */
   def instTclCommands: Seq[String] = {
@@ -197,20 +171,6 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
     }
   }
 
-  // Helper functions for common connection patterns:
-  def connectNet[T <: Data](port: T, outPort: String): String = {
-    val ref = SOCTVivado.toXilinxPortRef(port)
-    s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $ref]"
-  }
-
-  // Register with the clock domain if provided
-  if (dom.isEmpty) {
-    soct.log.warn(s"InstantiableBdComp ${this} is not associated with any clock domain.")
-  } else if (dom.get.reset.isEmpty) {
-    soct.log.warn(s"InstantiableBdComp ${this} is associated with a clock domain that has no reset.")
-  }
-
-
   this match {
     case r: ReceivesReset =>
       if (dom.isEmpty) {
@@ -220,8 +180,8 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
         soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
       }
       dom.foreach(_.reset.foreach {
-        case rst: Reset => rst.addPorts(this, () => r.resetInPorts)
-        case rstN: ResetN => rstN.addPorts(this, () => r.resetNInPorts)
+        case rst: Reset => rst.addPin(this, () => r.resetInPorts)
+        case rstN: ResetN => rstN.addPin(this, () => r.resetNInPorts)
       })
     case _ => // Do nothing
   }
@@ -231,48 +191,28 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
       if (dom.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
       }
-      dom.foreach(_.addPorts(this, () => r.clockInPorts))
+      dom.foreach(_.addPin(this, () => r.clockInPorts))
     case _ => // Do nothing
   }
-
 }
 
-/**
- * Trait for components that do not want automatic reset port registration
- */
-trait ReceivesReset {
-  /**
-   * The active low reset ports for this component, to be connected to the reset provider of the clock domain if available
-   */
-  def resetNInPorts: Seq[String] = Seq.empty
 
-
-  /**
-   * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
-   */
-  def resetInPorts: Seq[String] = Seq.empty
+trait BdPinType extends HasFriendlyName {
+  val port: String
+  val inst: InstantiableBdComp
+  override def friendlyName: String = s"${inst.instanceName}/$port"
 }
 
-/**
- * Trait for components that receive clock inputs
- */
-trait ReceivesClock {
-
-  /**
-   * The clock input ports for this component, to be connected to the clock domain if available
-   */
-  def clockInPorts: Seq[String] = Seq.empty
+case class BdPin(override val port: String, override val inst: InstantiableBdComp) extends BdPinType {
+  override def toString: String = friendlyName
 }
 
-/**
- * Trait for components that want automatic connection to clock and reset inputs
- */
-trait AutoConnect extends ReceivesClock with ReceivesReset
+case class BdIntfPin(override val port: String, override val inst: InstantiableBdComp) extends BdPinType {
+  override def toString: String = friendlyName
+}
 
-/**
- * Trait for components that provide connections to other components
- */
-trait HasConnections {
+
+trait HasTCLConnects {
   /**
    * Emit the TCL commands to connect this component in the design
    */
@@ -280,41 +220,64 @@ trait HasConnections {
 }
 
 /**
- * Trait for components that can accept connections from other components
+ * Trait for components that can provide a source for BdPinTypes.
+ * Usually, these components also generate the TCL commands to connect to the registered sink pins.
  */
-trait AcceptsConnections {
+trait SourceForPins extends HasTCLConnects {
+  val sinkPins: mutable.Set[BdPinType] = mutable.Set.empty
 
   /**
-   * On which ports the receivers want to connect to this - keyed by component.
-   * The ports must be fully qualified names in the block design, usually of form instance/port
+   * Register a sink BdPinType that this component provides data to.
+   * @param sink The sink BdPinType
+   * @return True if the registration was successful
    */
-  protected[components] val receiverPorts = mutable.Map.empty[BdComp, () => Seq[String]]
-
-  /**
-   * Register a component as a receiver of this component's output on the specified ports.
-   *
-   * @param comp  The component to register
-   * @param ports Function returning the list of ports on the receiver to connect to
-   * @tparam T The type of the component
-   * @return The registered component
-   */
-  def addPorts[T <: BdComp](comp: T, ports: () => Seq[String]): T = {
-    receiverPorts += (comp -> ports)
-    comp
+  def outputTo(sink: BdPinType): Boolean = {
+    sinkPins += sink
+    true
   }
 
-  /**
-   * Default implementation to connect all registered receivers to the specified output port of this component.
-   *
-   * @param portOut The output port name of this component to connect from
-   * @return A sequence of TCL commands to perform the connections
-   */
-  def defaultConnect(portOut: String): Seq[String] = {
-    receiverPorts.flatMap(_._2()).map { port =>
-      s"connect_bd_net [get_bd_ports $portOut] [get_bd_pins $port]"
-    }.toSeq
+  def outputTo(sink: chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
+    sinkPins += SOCTVivado.portToBdPin(sink)
+    true
   }
 }
+
+/**
+ * Trait for components that have sink pins
+ */
+trait HasSinkPins {
+  /**
+   * Get the BdPinType corresponding to the given source, if any.
+   * @param source The source to look up
+   * @tparam T The type of the source
+   * @return Some(BdPinType) if found, None otherwise
+   */
+  protected def getPinImpl[T](source: T): Option[BdPinType]
+
+  /**
+   * Get the BdPinType corresponding to the given source.
+   *
+   * @param source The source to look up
+   * @tparam T The type of the source
+   * @return The corresponding BdPinType
+   * @throws XilinxDesignException if no BdPinType is found for the source
+   */
+  @throws[XilinxDesignException]
+  final def getPin[T](source: T): BdPinType = {
+    val pinOpt = getPinImpl(source)
+    if (pinOpt.isEmpty) {
+      throw XilinxDesignException(s"No BdPinType found for source $source in receiver $this")
+    }
+    pinOpt.get
+  }
+}
+
+
+/**
+ * Trait for components that want automatic connection to clock and reset inputs
+ */
+trait AutoConnect extends ReceivesClock with ReceivesReset
+
 
 /**
  * Trait for custom module components
@@ -325,6 +288,7 @@ trait IsModule {
    */
   def reference: String
 }
+
 
 /**
  * Trait for Xilinx IP components
@@ -340,6 +304,7 @@ trait IsXilinxIP {
    */
   def ipType: String = "ip"
 }
+
 
 trait HasFriendlyName {
   /**

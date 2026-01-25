@@ -11,10 +11,9 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
  * @param value The constant value
  * @param nBits The number of bits
  */
-case class InlineConstant(value: UInt,
-                          nBits: Int
-                         )(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends InstantiableBdComp with IsXilinxIP {
+case class InlineConstant(value: UInt, nBits: Int)
+                         (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
+  extends InstantiableBdComp with IsXilinxIP with SourceForPins {
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
   override def friendlyName: String = s"constant_${nBits}bit_${value.litValue}"
@@ -26,18 +25,13 @@ case class InlineConstant(value: UInt,
     "CONFIG.CONST_WIDTH" -> s"${nBits}"
   )
 
-
-  private def validReceivers: Seq[Data] = receivers.collect {
-    case data: Data => data
-  }.toSeq
-
   /**
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = {
-    validReceivers.map {
-      data: Data => connectNet(data, outPort)
-    }
+    sinkPins.map{
+      case sink@BdPin(_, _) => s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $sink]"
+    }.toSeq
   }
 }
 

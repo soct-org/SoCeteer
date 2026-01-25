@@ -1,6 +1,6 @@
 package soct.system.vivado.components
 
-import chisel3.{Bool, Data}
+import chisel3.Bool
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
@@ -9,9 +9,8 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
-case class JTAGXIntfPort(jtagio: JTAGIO, TDT: Bool)
-                        (implicit bd: SOCTBdBuilder, p: Parameters)
-  extends XIntfPort with IsXilinxIP {
+case class JTAGXIntfPort(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends XIntfPort with IsXilinxIP with HasSinkPins {
 
   override def partName: String = "xilinx.com:interface:jtag:1.0"
 
@@ -33,14 +32,21 @@ case class JTAGXIntfPort(jtagio: JTAGIO, TDT: Bool)
     }
     portMappings.toMap
   }
+
+  override protected def getPinImpl[T](source: T): Option[BdIntfPin] = {
+    source match {
+      case _: BSCAN2JTAG => Some(BdIntfPin(ifName, bd.topInstance()))
+      case _ => None
+    }
+  }
 }
 
 
 /**
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
-case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends InstantiableBdComp with IsModule {
+case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends InstantiableBdComp()(bd, p, None) with IsModule with HasSinkPins with SourceForPins {
 
   /**
    * The reference name of this module - as defined in the collateral files
@@ -50,9 +56,7 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[C
   override def dumpCollaterals(outDir: Path, createDir: Boolean): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, createDir = true).get
     val path = "/bscan/"
-    val files = Seq(
-      "bscan2jtag.vhdl"
-    )
+    val files = Seq("bscan2jtag.vhdl")
     files.foreach(file => {
       val contentOpt = soct.getResource(path + file)
       if (contentOpt.isEmpty) {
@@ -64,17 +68,21 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[C
     Some(dest)
   }
 
-  private def validReceivers: Seq[JTAGXIntfPort] = receivers.collect {
-    case jtag: JTAGXIntfPort => jtag
-  }.toSeq
-
   /**
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = {
-    val topInst = bd.topInstance().instanceName
-    validReceivers.map { jtag =>
-      s"connect_bd_intf_net [get_bd_intf_pins $instanceName/$jtagIntf] [get_bd_intf_pins $topInst/${jtag.ifName}]"
+    sinkPins.map {
+      case sink@BdIntfPin(_, _) =>
+        s"connect_bd_intf_net [get_bd_intf_pins $instanceName/$jtagIntf] [get_bd_intf_pins $sink]"
+      case sink: Any => throw XilinxDesignException(s"Unsupported sink pin type in BSCAN2JTAG: $sink")
+    }.toSeq
+  }
+
+  override protected def getPinImpl[T](source: T): Option[BdIntfPin] = {
+    source match {
+      case _: BSCAN => Some(BdIntfPin(BSCAN2JTAG.bscanIntf, this))
+      case _ => None
     }
   }
 }
@@ -82,5 +90,5 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[C
 object BSCAN2JTAG {
   // Check collateral where the XInterface name is defined
   val bscanIntf = "S_BSCAN"
-  private val jtagIntf = "JTAG"
+  val jtagIntf = "JTAG"
 }

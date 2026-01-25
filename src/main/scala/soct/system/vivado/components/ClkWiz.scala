@@ -40,7 +40,7 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
 
     dom.foreach(_.reset.foreach{
       case r: FPGAResetPortType =>
-        m += "CONFIG.RESET_BOARD_INTERFACE" -> r.ifName
+        m += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
       case _ => // Ignore other reset types for now
     })
 

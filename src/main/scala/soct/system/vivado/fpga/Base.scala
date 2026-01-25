@@ -3,7 +3,7 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{Reset, ResetN, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, XilinxBdIntfPort}
+import soct.system.vivado.components.{Reset, ResetN, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, IntfPort}
 
 import scala.annotation.unused
 
@@ -63,7 +63,7 @@ object FPGARegistry {
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort {
+case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends IntfPort {
 
   override def mode: String = "Master"
 
@@ -73,22 +73,22 @@ case class DDR4Port(override val ifName: String)(implicit bd: SOCTBdBuilder, p: 
 /**
  * Case class representing a reset port on the FPGA board
  */
-abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort with ResetType with HasConnections {
+abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort with ResetType {
   override def ifType: String = "rst"
 
   override def dir: String = "I"
 }
 
-case class FPGAResetPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with Reset {
-  override def connectTclCommands: Seq[String] = defaultConnect(ifName)
+case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with Reset {
+  override def connectTclCommands: Seq[String] = defaultConnect(instanceName)
 
   override def defaultProperties: Map[String, String] = Map(
     "POLARITY" -> "ACTIVE_HIGH"
   )
 }
 
-case class FPGAResetNPort(override val ifName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with ResetN {
-  override def connectTclCommands: Seq[String] = defaultConnect(ifName)
+case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with ResetN {
+  override def connectTclCommands: Seq[String] = defaultConnect(instanceName)
 
   override def defaultProperties: Map[String, String] = Map(
     "POLARITY" -> "ACTIVE_LOW"
@@ -98,10 +98,10 @@ case class FPGAResetNPort(override val ifName: String)(implicit bd: SOCTBdBuilde
 /**
  * Case class representing a clock port on the FPGA board
  *
- * @param ifName  The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
+ * @param instanceName  The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
  * @param freqMHz The frequency of the clock in MHz
  */
-case class FPGAClockPort(override val ifName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends XilinxBdIntfPort  {
+case class FPGAClockPort(override val instanceName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends IntfPort  {
 
   override def mode: String = "Slave"
 

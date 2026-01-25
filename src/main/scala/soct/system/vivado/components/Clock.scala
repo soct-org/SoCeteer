@@ -10,12 +10,40 @@ trait ResetType
 /**
  * Reset type representing an active-high reset
  */
-trait Reset extends ResetType with AcceptsConnections
+trait Reset extends ResetType
 
 /**
  * Reset type representing an active-low reset
  */
-trait ResetN extends ResetType with AcceptsConnections
+trait ResetN extends ResetType
+
+
+/**
+ * Trait for components that want automatic reset port registration
+ */
+trait ReceivesReset {
+  /**
+   * The active low reset ports for this component, to be connected to the reset provider of the clock domain if available
+   */
+  def resetNInPorts: Seq[BdPinType] = Seq.empty
+
+  /**
+   * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
+   */
+  def resetInPorts: Seq[BdPinType] = Seq.empty
+}
+
+
+/**
+ * Trait for components that receive clock inputs
+ */
+trait ReceivesClock {
+
+  /**
+   * The clock input ports for this component, to be connected to the clock domain if available
+   */
+  def clockInPorts: Seq[BdPinType] = Seq.empty
+}
 
 
 /**
@@ -28,8 +56,9 @@ trait ResetN extends ResetType with AcceptsConnections
 case class ClockDomain(freqMHz: Double,
                        var reset: Option[ResetType] = None,
                        tclVarName: Option[String] = None)
-                      (implicit bd: SOCTBdBuilder) extends AcceptsConnections {
+                      (implicit bd: SOCTBdBuilder) {
   if (tclVarName.isDefined) {bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)}
+
 }
 
 /**

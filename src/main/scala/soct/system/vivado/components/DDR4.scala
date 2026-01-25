@@ -80,12 +80,12 @@ case class DDR4(
 
     dom.foreach {
       case fpgaDom: FPGAClockDomain =>
-        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ifName
-        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.ifName
+        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.instanceName
+        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.instanceName
 
         fpgaDom.reset.foreach {
           case r: FPGAResetPortType =>
-            props += "CONFIG.RESET_BOARD_INTERFACE" -> r.ifName
+            props += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
           case _ => // Ignore other reset types for now
         }
 
@@ -109,8 +109,8 @@ case class DDR4(
 
     // connect to the interface ports
     val intfConns = Seq(
-      s"connect_bd_intf_net [get_bd_intf_ports ${ddr4Intf.ifName}] [get_bd_intf_pins ${this.instanceName}/$C0_DDR4]",
-      s"connect_bd_intf_net [get_bd_intf_ports ${dom.get.port.ifName}] [get_bd_intf_pins ${this.instanceName}/$C0_SYS_CLK]"
+      s"connect_bd_intf_net [get_bd_intf_ports ${ddr4Intf.instanceName}] [get_bd_intf_pins ${this.instanceName}/$C0_DDR4]",
+      s"connect_bd_intf_net [get_bd_intf_ports ${dom.get.port.instanceName}] [get_bd_intf_pins ${this.instanceName}/$C0_SYS_CLK]"
     )
 
     outClks ++ intfConns

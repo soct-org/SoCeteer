@@ -8,15 +8,12 @@ import soct.system.vivado.components.ProcSysReset._
  * Proc Sys Reset IP core from Xilinx
  * @param dom Only used for the slowestSyncClk connection
  */
-case class ProcSysReset(
-
-                       )
-                       (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None)
-  extends InstantiableBdComp with IsXilinxIP with ReceivesClock {
+case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None)
+  extends InstantiableBdComp with IsXilinxIP with ReceivesClock with SourceForPins {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
-  override def clockInPorts: Seq[String] = Seq(s"$instanceName/$slowestSyncClk")
+  override def clockInPorts: Seq[BdPinType] = Seq(BdPin(slowestSyncClk, this))
 
   /**
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
