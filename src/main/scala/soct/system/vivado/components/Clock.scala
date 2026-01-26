@@ -10,12 +10,12 @@ trait ResetType
 /**
  * Reset type representing an active-high reset
  */
-trait Reset extends ResetType
+trait Reset extends ResetType with CollectsPins
 
 /**
  * Reset type representing an active-low reset
  */
-trait ResetN extends ResetType
+trait ResetN extends ResetType with CollectsPins
 
 
 /**

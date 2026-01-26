@@ -1,11 +1,12 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.components.BSCAN.outPort
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 
 
-case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InstantiableBdComp()(bd, p, None) with IsXilinxIP with SourceForPins {
+case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp()(bd, p, None)
+  with IsXilinxIP with SourceForPins {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
 
@@ -18,13 +19,12 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters)
     )
   }
 
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
   override def connectTclCommands: Seq[String] = {
-    validReceivers.zipWithIndex.map { case (jtag, idx) =>
-      s"connect_bd_intf_net [get_bd_intf_pins $instanceName/${outPort(idx)}] [get_bd_intf_pins ${jtag.instanceName}/${BSCAN2JTAG.bscanIntf}]"
-    }
+    sinkPins.zipWithIndex.map {
+      case (sinkPin: BdIntfPin, i) =>
+        s"connect_bd_intf_net [get_bd_intf_pins ${outPort(i + 1)}] [get_bd_intf_pins $sinkPin]" // TODO do something smarter
+      case _ => throw XilinxDesignException("BSCAN only supports BdIntfPin sink pins")
+    }.toSeq
   }
 }
 

@@ -1,7 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.components.ClkWiz._
 import soct.system.vivado.fpga.FPGAResetPortType
 
@@ -15,13 +15,12 @@ import scala.collection.mutable
  * @param cds The output clock domains
  * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
-case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
-  extends InstantiableBdComp with IsXilinxIP with AutoConnect {
+case class ClkWiz(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
+  extends InstantiableBdComp with IsXilinxIP with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   override def clockInPorts: Seq[BdPinType] = Seq(BdPin(CLKIn, this))
 
   override def resetInPorts: Seq[BdPinType] = Seq(BdPin(RSTIn, this))
-
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
@@ -47,19 +46,23 @@ case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Paramete
     m.toMap
   }
 
-  override def connectTclCommands: Seq[String] = {
-    for {
-      (opt, idx) <- cds.zipWithIndex
-      port <- opt.receiverPorts.flatMap(_._2())
-      clkoutIdx = idx + 1
-    } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/clk_out$clkoutIdx] [get_bd_pins $port]"
-  }
+  override def connectTclCommands: Seq[String] = clkTclCommands
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
+
+  override protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinType, pinIdx: Int): BdPin = {
+    val clkoutIdx = domIdx + 1
+    // TODO validate clkoutIdx based on selected board, some have more than others
+    BdPin(clkOut(clkoutIdx), this)
+  }
+
+  override protected def getPinImpl[T](source: T): Option[BdPinType] = {
+    None // For now, no specific pin mapping.
+  }
 }
 
 object ClkWiz {
-  private val CLKIn = "clk_in1" // Standard name for the input clock port on the clk_wiz IP
-
-  private val RSTIn = "reset"   // Standard name for the reset input port on the clk_wiz IP
+  private def clkOut(idx: Int): String = s"clk_out$idx"
+  private val CLKIn = "clk_in1"
+  private val RSTIn = "reset"
 }

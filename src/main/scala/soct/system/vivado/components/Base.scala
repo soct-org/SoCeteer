@@ -5,7 +5,7 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
 import soct.XilinxFPGAKey
 
 import java.nio.file.{Files, Path}
-import scala.collection.mutable
+import scala.collection.{View, mutable}
 
 /**
  * Base class for Board Design Components.
@@ -180,26 +180,27 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   }
 
   this match {
-    case r: ReceivesReset =>
+    case comp: ReceivesReset =>
       if (dom.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesReset but has no clock domain provided.")
       }
       if (dom.get.reset.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
       }
+      // Connect the reset ports of this component to the reset provider in the clock domain
       dom.foreach(_.reset.foreach {
-        case rst: Reset => rst.addPin(this, () => r.resetInPorts)
-        case rstN: ResetN => rstN.addPin(this, () => r.resetNInPorts)
+        case rst: Reset => comp.resetInPorts.foreach(rst.outputTo)
+        case rstN: ResetN => comp.resetNInPorts.foreach(rstN.outputTo)
       })
     case _ => // Do nothing
   }
 
   this match {
-    case r: ReceivesClock =>
+    case comp: ReceivesClock =>
       if (dom.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
       }
-      dom.foreach(_.addPin(this, () => r.clockInPorts))
+      dom.foreach{d => comp.clockInPorts.foreach(d.outputTo)}
     case _ => // Do nothing
   }
 }
@@ -221,7 +222,10 @@ case class BdIntfPin(override val port: String, override val inst: InstantiableB
 
 
 trait CollectsPins {
-  val sinkPins: mutable.Set[BdPinType] = mutable.Set.empty
+  protected val _sinkPins: mutable.Set[BdPinType] = mutable.Set.empty
+
+  // public view of the collected sink pins
+  def sinkPins: View[BdPinType] = _sinkPins.view
 
   /**
    * Register a sink BdPinType that this component provides data to.
@@ -229,12 +233,12 @@ trait CollectsPins {
    * @return True if the registration was successful
    */
   def outputTo(sink: BdPinType): Boolean = {
-    sinkPins += sink
+    _sinkPins += sink
     true
   }
 
   def outputTo(sink: chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
-    sinkPins += SOCTVivado.portToBdPin(sink)
+    _sinkPins += SOCTVivado.portToBdPin(sink)
     true
   }
 }

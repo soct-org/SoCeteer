@@ -3,7 +3,7 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{Reset, ResetN, ClockDomain, HasConnections, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, IntfPort}
+import soct.system.vivado.components.{Reset, ResetN, ClockDomain, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, IntfPort}
 
 import scala.annotation.unused
 
