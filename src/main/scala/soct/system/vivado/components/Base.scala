@@ -14,38 +14,76 @@ import scala.collection.{View, mutable}
  * they are resolved at call time.
  */
 abstract class BdComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
-  /**
-   * Check that this component is available in the current configuration.
-   */
-  @throws[XilinxDesignException]
-  def checkAvailable(): Unit = {
-    val fpgaOpt = p(XilinxFPGAKey)
-    if (fpgaOpt.isEmpty) {
-      throw XilinxDesignException(s"Adding $friendlyName requires the design to run on a Xilinx FPGA")
-    }
-  }
-
-  /**
-   * Dump collateral files for this component to the specified output directory.
-   * Inheriting classes should call super.dumpCollaterals with createDir = true to ensure the directory exists.
-   *
-   * @param outDir    The output directory path
-   * @param createDir Whether to create the directory if it does not exist
-   * @return Some(Path) to the created directory if createDir is true, None otherwise
-   */
-  def dumpCollaterals(outDir: Path, createDir: Boolean = false): Option[Path] = {
-    if (createDir) {
-      val collateralsDir = outDir.resolve(friendlyName)
-      if (!collateralsDir.toFile.exists()) {
-        Files.createDirectories(collateralsDir)
-      }
-      return Some(collateralsDir)
-    }
-    None
-  }
-
   // Register this component with the BDBuilder upon creation
   bd.add(this)
+}
+
+
+/**
+ * Trait for components that can be instantiated in the design
+ */
+abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp {
+
+  /**
+   * Optional index to differentiate multiple instances of the same component
+   */
+  def index: Int = 0
+
+  /**
+   * The instance name for this component. By default, use the friendly name converted to snake_case with an optional index suffix.
+   *
+   * @return The instance name
+   */
+  def instanceName: String = {
+    val name = friendlyName.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase
+    s"${name}_$index"
+  }
+
+  /**
+   * Default properties for this component influenced by parameters, can be overridden by subclasses
+   *
+   * @return A map of default properties
+   */
+  def defaultProperties: Map[String, String] = Map.empty
+
+  /**
+   * Emit the TCL command to instantiate this component in the design
+   */
+  def instTclCommands: Seq[String] = {
+    this match {
+      case ip: IsXilinxIP =>
+        Seq(s"set $instanceName [create_bd_cell -type ${ip.ipType} -vlnv ${ip.partName} $instanceName]")
+      case module: IsModule =>
+        Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
+      case _ =>
+        throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
+    }
+  }
+
+  this match {
+    case comp: ReceivesReset =>
+      if (dom.isEmpty) {
+        soct.log.warn(s"Component $this implements ReceivesReset but has no clock domain provided.")
+      }
+      if (dom.get.reset.isEmpty) {
+        soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
+      }
+      // Connect the reset ports of this component to the reset provider in the clock domain
+      dom.foreach(_.reset.foreach {
+        case rst: Reset => comp.resetInPorts.foreach(rst.outputTo)
+        case rstN: ResetN => comp.resetNInPorts.foreach(rstN.outputTo)
+      })
+    case _ => // Do nothing
+  }
+
+  this match {
+    case comp: ReceivesClock =>
+      if (dom.isEmpty) {
+        soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
+      }
+      dom.foreach { d => comp.clockInPorts.foreach(d.outputTo) }
+    case _ => // Do nothing
+  }
 }
 
 
@@ -64,6 +102,7 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdCo
    */
   def portMapping: Map[String, Seq[String]]
 }
+
 
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
@@ -139,76 +178,12 @@ abstract class IntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
 }
 
 /**
- * Trait for components that can be instantiated in the design
+ * Trait representing a pin in the block design, either a regular pin or an interface pin
  */
-abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdComp {
-
-  /**
-   * Optional index to differentiate multiple instances of the same component
-   */
-  def index: Int = 0
-
-  /**
-   * The instance name for this component. By default, use the friendly name converted to snake_case with an optional index suffix.
-   *
-   * @return The instance name
-   */
-  def instanceName: String = {
-    val name = friendlyName.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase
-    s"${name}_$index"
-  }
-
-  /**
-   * Default properties for this component influenced by parameters, can be overridden by subclasses
-   *
-   * @return A map of default properties
-   */
-  def defaultProperties: Map[String, String] = Map.empty
-
-  /**
-   * Emit the TCL command to instantiate this component in the design
-   */
-  def instTclCommands: Seq[String] = {
-    this match {
-      case ip: IsXilinxIP =>
-        Seq(s"set $instanceName [create_bd_cell -type ${ip.ipType} -vlnv ${ip.partName} $instanceName]")
-      case module: IsModule =>
-        Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
-      case _ =>
-        throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
-    }
-  }
-
-  this match {
-    case comp: ReceivesReset =>
-      if (dom.isEmpty) {
-        soct.log.warn(s"Component $this implements ReceivesReset but has no clock domain provided.")
-      }
-      if (dom.get.reset.isEmpty) {
-        soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
-      }
-      // Connect the reset ports of this component to the reset provider in the clock domain
-      dom.foreach(_.reset.foreach {
-        case rst: Reset => comp.resetInPorts.foreach(rst.outputTo)
-        case rstN: ResetN => comp.resetNInPorts.foreach(rstN.outputTo)
-      })
-    case _ => // Do nothing
-  }
-
-  this match {
-    case comp: ReceivesClock =>
-      if (dom.isEmpty) {
-        soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
-      }
-      dom.foreach{d => comp.clockInPorts.foreach(d.outputTo)}
-    case _ => // Do nothing
-  }
-}
-
-
 trait BdPinType extends HasFriendlyName {
   val port: String
   val inst: InstantiableBdComp
+
   override def friendlyName: String = s"${inst.instanceName}/$port"
 }
 
@@ -221,6 +196,9 @@ case class BdIntfPin(override val port: String, override val inst: InstantiableB
 }
 
 
+/**
+ * Trait for components that can collect BdPinTypes
+ */
 trait CollectsPins {
   protected val _sinkPins: mutable.Set[BdPinType] = mutable.Set.empty
 
@@ -229,6 +207,7 @@ trait CollectsPins {
 
   /**
    * Register a sink BdPinType that this component provides data to.
+   *
    * @param sink The sink BdPinType
    * @return True if the registration was successful
    */
@@ -243,6 +222,7 @@ trait CollectsPins {
   }
 }
 
+
 trait HasTCLConnects {
   /**
    * Emit the TCL commands to connect this component in the design
@@ -250,10 +230,12 @@ trait HasTCLConnects {
   def connectTclCommands: Seq[String]
 }
 
+
 /**
  * Trait for components that can collect BdPinTypes and also provide a source, i.e. connect to them.
  */
 trait SourceForPins extends CollectsPins with HasTCLConnects
+
 
 /**
  * Trait for components that have sink pins
@@ -264,6 +246,7 @@ trait HasSinkPins {
 
   /**
    * Get the BdPinType corresponding to the given source, if any.
+   *
    * @param source The source to look up
    * @tparam T The type of the source
    * @return Some(BdPinType) if found, None otherwise
@@ -300,7 +283,7 @@ trait AutoConnect extends ReceivesClock with ReceivesReset
 /**
  * Trait for custom module components
  */
-trait IsModule {
+trait IsModule extends HasCollaterals {
   /**
    * The reference name of this module - as defined in the collateral files
    */
@@ -324,6 +307,33 @@ trait IsXilinxIP {
 }
 
 
+/**
+ * Trait for components that have collateral files
+ */
+trait HasCollaterals {
+  /**
+   * Dump collateral files for this component to the specified output directory.
+   * Inheriting classes should call super.dumpCollaterals with their own subdirectory name.
+   *
+   * @param outDir  The output directory path
+   * @param dirName Optional subdirectory name for this component's collaterals - if None, no directory is created
+   * @return Some(Path) to the collaterals directory if created, None otherwise
+   */
+  def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
+    if (dirName.isDefined) {
+      val collateralsDir = outDir.resolve(dirName.get)
+      if (!collateralsDir.toFile.exists()) {
+        Files.createDirectories(collateralsDir)
+      }
+      return Some(collateralsDir)
+    }
+    None
+  }
+}
+
+/**
+ * Trait for components that have a friendly name
+ */
 trait HasFriendlyName {
   /**
    * A friendly name for this component, derived from the class name or overridden

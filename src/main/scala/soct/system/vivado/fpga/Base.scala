@@ -18,8 +18,6 @@ object FPGARegistry {
     "ZCU104" -> classOf[ZCU104]
   )
 
-  def isKnownBoard(name: String): Boolean = registry.contains(name)
-
   def getKnownBoards: Seq[String] = registry.keys.toSeq
 
   /** name -> Board (throws if not found) */
@@ -80,16 +78,12 @@ abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) exte
 }
 
 case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with Reset {
-  override def connectTclCommands: Seq[String] = defaultConnect(instanceName)
-
   override def defaultProperties: Map[String, String] = Map(
     "POLARITY" -> "ACTIVE_HIGH"
   )
 }
 
 case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with ResetN {
-  override def connectTclCommands: Seq[String] = defaultConnect(instanceName)
-
   override def defaultProperties: Map[String, String] = Map(
     "POLARITY" -> "ACTIVE_LOW"
   )

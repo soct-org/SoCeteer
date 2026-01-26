@@ -1,9 +1,10 @@
 package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
-import soct.{HasSOCTConfig, HasSOCTPaths, XilinxFPGAKey, VivadoSOCTPaths}
-import soct.system.vivado.components.{BdComp, InstantiableBdComp, IsModule, IsXilinxIP, VirtualPort, XIntfPort, IntfPort}
+import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths, XilinxFPGAKey}
+import soct.system.vivado.components.{BdComp, HasCollaterals, HasTCLConnects, InstantiableBdComp, IntfPort, IsModule, IsXilinxIP, VirtualPort, XIntfPort}
 import soct.system.vivado.fpga.FPGA
+
 import java.nio.file.Path
 import scala.collection.mutable
 
@@ -121,7 +122,6 @@ class SOCTBdBuilder {
 
   def add[T <: BdComp](c: T): Unit = {
     if (!components.contains(c)) {
-      c.checkAvailable()
       components += c
     }
   }
@@ -142,8 +142,10 @@ class SOCTBdBuilder {
   }
 
   def emitCollaterals(outDir: Path): Unit = {
-    components.foreach { c =>
-      c.dumpCollaterals(outDir)
+    components.foreach {
+      case c: HasCollaterals =>
+        c.dumpCollaterals(outDir)
+      case _ =>
     }
   }
 
@@ -151,18 +153,13 @@ class SOCTBdBuilder {
     val instantiateCommands, connectCommands, portCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty[String]
 
     components.foreach {
-      case inst: InstantiableBdComp =>
-        instantiateCommands ++= inst.instTclCommands
-        connectCommands ++= inst.connectTclCommands
-      case port: VirtualPort =>
-        portCommands ++= port.wcreateTclCommands
-      case xport: IntfPort =>
-        portCommands ++= xport.tclCommands
-      case con: HasConnections =>
-        connectCommands ++= con.connectTclCommands
-      case c =>
-        soct.log.warn(s"Unknown type: ${c.friendlyName}")
+      case inst: InstantiableBdComp => instantiateCommands ++= inst.instTclCommands
     }
+
+    components.foreach {
+      case c: HasTCLConnects => instantiateCommands ++= c.connectTclCommands
+    }
+
 
     // Get all components that have default properties that are not an empty map
     val componentsWithProperties = components.collect {

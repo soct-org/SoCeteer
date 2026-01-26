@@ -3,38 +3,6 @@ package soct.system.vivado.components
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 
 /**
- * Marker trait for reset providers
- */
-trait ResetType
-
-/**
- * Reset type representing an active-high reset
- */
-trait Reset extends ResetType with CollectsPins
-
-/**
- * Reset type representing an active-low reset
- */
-trait ResetN extends ResetType with CollectsPins
-
-
-/**
- * Trait for components that want automatic reset port registration
- */
-trait ReceivesReset {
-  /**
-   * The active low reset ports for this component, to be connected to the reset provider of the clock domain if available
-   */
-  def resetNInPorts: Seq[BdPinType] = Seq.empty
-
-  /**
-   * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
-   */
-  def resetInPorts: Seq[BdPinType] = Seq.empty
-}
-
-
-/**
  * Trait for components that receive clock inputs
  */
 trait ReceivesClock {
@@ -45,6 +13,9 @@ trait ReceivesClock {
   def clockInPorts: Seq[BdPinType] = Seq.empty
 }
 
+/**
+ * Trait for components that provide automatic clock connections
+ */
 trait ProvidesAutoClock {
   this: InstantiableBdComp =>
 

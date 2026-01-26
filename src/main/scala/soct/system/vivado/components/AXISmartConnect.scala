@@ -58,10 +58,5 @@ case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Opt
 
   override def partName: String = "xilinx.com:ip:smartconnect:1.0"
 
-
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  override def connectTclCommands: Seq[String] =  Seq.empty
 }
 

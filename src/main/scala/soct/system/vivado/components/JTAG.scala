@@ -53,8 +53,8 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
    */
   override def reference: String = "bscan2jtag"
 
-  override def dumpCollaterals(outDir: Path, createDir: Boolean): Option[Path] = {
-    val dest = super.dumpCollaterals(outDir, createDir = true).get
+  override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
+    val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
     val path = "/bscan/"
     val files = Seq("bscan2jtag.vhdl")
     files.foreach(file => {

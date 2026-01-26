@@ -193,7 +193,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[String]('b', "board")
     .action((x, c) => c.copy(board = FPGARegistry.n2bOpt(x)))
     .validate(x =>
-      if (FPGARegistry.isKnownBoard(x)) success
+      if (FPGARegistry.n2bOpt(x).isDefined) success
       else failure(s"Invalid FPGA board $x. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
     )
     .text(s"The FPGA board to target for synthesis. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")

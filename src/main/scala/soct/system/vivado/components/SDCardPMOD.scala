@@ -60,24 +60,8 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
 
   override def resetNInPorts: Seq[BdPinType] = Seq(BdPin(resetN, this))
 
-  override def checkAvailable(): Unit = {
-    super.checkAvailable()
-    val fpga = bd.fpgaInstance()
-    val top = p(HasSOCTConfig).topModule
-
-    if (!fpga.portsPMOD.contains(pmodIdx)) {
-      throw XilinxDesignException(s"PMOD index $pmodIdx is not available on the selected FPGA")
-    }
-
-    // The SD controller requires both a master MMIO port and a slave AXI4 port to function:
-    val hasMMIOPort = top.fold(_ => false, cls => classOf[CanHaveMasterAXI4MMIOPort].isAssignableFrom(cls))
-    if (!hasMMIOPort) throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MMIOPort")
-    val hasSlaveMMIOPort = top.fold(_ => false, cls => classOf[CanHaveSlaveAXI4Port].isAssignableFrom(cls))
-    if (!hasSlaveMMIOPort) throw XilinxDesignException("Top must mix in CanHaveSlaveAXI4Port")
-  }
-
-  override def dumpCollaterals(outDir: Path, createDir: Boolean): Option[Path] = {
-    val dest = super.dumpCollaterals(outDir, createDir = true).get
+  override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
+    val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
     val path = "/sdc/"
     val files = Seq(
       "axi_sdc_controller.v",

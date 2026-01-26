@@ -6,7 +6,6 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTVivado.{DEFAULT_MEMORY_ADDR_32, DEFAULT_MEMORY_ADDR_64}
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortType}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.HasSOCTConfig
 import soct.system.vivado.components.DDR4._
 
 import scala.collection.mutable
@@ -20,29 +19,6 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
   extends InstantiableBdComp with IsXilinxIP with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
-
-  override def checkAvailable(): Unit = {
-    super.checkAvailable()
-    val top = p(HasSOCTConfig).topModule
-
-    val extMemOpt = p(ExtMem)
-    if (extMemOpt.isEmpty) {
-      throw XilinxDesignException("Adding DDR4 requires ExtMem to be defined in the Parameters")
-    }
-
-    val extMem = extMemOpt.get
-    val memOffset = extMem.master.base
-    if (!(memOffset == DEFAULT_MEMORY_ADDR_64 || memOffset == DEFAULT_MEMORY_ADDR_32)) {
-      throw XilinxDesignException(
-        s"Adding DDR4 requires ExtMem base address to be either 0x${DEFAULT_MEMORY_ADDR_64}%x or 0x${DEFAULT_MEMORY_ADDR_32}%x, got 0x${memOffset}%x"
-      )
-    }
-
-    // DDR4 requires a master AXI4 memory port
-    val hasMemPort = top.fold(_ => false, cls => classOf[CanHaveMasterAXI4MemPort].isAssignableFrom(cls))
-    if (!hasMemPort)
-      throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MemPort")
-  }
 
   override def clockInPorts: Seq[BdPinType] = Seq(BdPin(C0_SYS_CLK, this))
 
