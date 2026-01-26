@@ -128,6 +128,14 @@ abstract class IntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
   override def instTclCommands: Seq[String] = {
     Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]")
   }
+
+  override def connectTclCommands: Seq[String] = {
+    val prefix = s"connect_bd_intf_net [get_bd_intf_ports $instanceName]"
+    sinkPins.map { sink =>
+      require(sink.isInstanceOf[BdIntfPin], s"IntfPort $this can only connect to BdIntfPin sinks, got $sink")
+      s"$prefix [get_bd_intf_pins $sink]"
+    }.toSeq
+  }
 }
 
 /**
@@ -212,18 +220,7 @@ case class BdIntfPin(override val port: String, override val inst: InstantiableB
 }
 
 
-trait HasTCLConnects {
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  def connectTclCommands: Seq[String]
-}
-
-/**
- * Trait for components that can provide a source for BdPinTypes.
- * Usually, these components also generate the TCL commands to connect to the registered sink pins.
- */
-trait SourceForPins extends HasTCLConnects {
+trait CollectsPins {
   val sinkPins: mutable.Set[BdPinType] = mutable.Set.empty
 
   /**
@@ -242,10 +239,25 @@ trait SourceForPins extends HasTCLConnects {
   }
 }
 
+trait HasTCLConnects {
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  def connectTclCommands: Seq[String]
+}
+
+/**
+ * Trait for components that can collect BdPinTypes and also provide a source, i.e. connect to them.
+ */
+trait SourceForPins extends CollectsPins with HasTCLConnects
+
 /**
  * Trait for components that have sink pins
  */
 trait HasSinkPins {
+
+  protected val sourcePins = mutable.Set[BdPinType]()
+
   /**
    * Get the BdPinType corresponding to the given source, if any.
    * @param source The source to look up
@@ -268,7 +280,9 @@ trait HasSinkPins {
     if (pinOpt.isEmpty) {
       throw XilinxDesignException(s"No BdPinType found for source $source in receiver $this")
     }
-    pinOpt.get
+    val sourcePin = pinOpt.get
+    sourcePins += sourcePin
+    sourcePin
   }
 }
 

@@ -18,9 +18,9 @@ import scala.collection.mutable
 case class ClkWiz(cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
   extends InstantiableBdComp with IsXilinxIP with AutoConnect {
 
-  override def clockInPorts: Seq[String] = Seq(s"$instanceName/$CLKIn")
+  override def clockInPorts: Seq[BdPinType] = Seq(BdPin(CLKIn, this))
 
-  override def resetInPorts: Seq[String] = Seq(s"$instanceName/$RSTIn")
+  override def resetInPorts: Seq[BdPinType] = Seq(BdPin(RSTIn, this))
 
 
   override def defaultProperties: Map[String, String] = {

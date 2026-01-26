@@ -39,23 +39,21 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         )
         // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
         val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDomain.reset)
-        WithDomain(fpgaDomain) { implicit fpgaDom =>
-          DDR4(ddr4Intf = ddr4Port, addnClkOut1 = Some(ddr4OutDom))
-        }
+        val ddr4 = WithDomain(fpgaDomain) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
+        require(ddr4Port.outputTo(ddr4.getPin(ddr4Port)))
+
         WithDomain(ddr4OutDom) { implicit dom =>
           ClkWiz(Seq(coreDomain, peripheryDomain))
         }
       }
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
-      axiInfts.foreach { axiInft =>
-        AXIXIntfPort(axiInft)
-      }
+      axiInfts.foreach { axiInft => AXIXIntfPort(axiInft) }
 
       if (p(HasSDCardPMOD).isDefined) {
         val ports = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         val sdPmod = WithDomain(peripheryDomain) { implicit dom => SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get) }
-        ports.foreach{x => x.outputTo(sdPmod.getPin(x))}
+        ports.foreach { port => port.outputTo(sdPmod.getPin(port)) }
       }
 
       val debugIf = debug.getWrappedValue.get
@@ -87,7 +85,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val b2j = BSCAN2JTAG()
 
         require(bscan.outputTo(b2j.getPin(bscan)))
-        require(b2j.outputTo(jtagXIntf))
+        require(b2j.outputTo(jtagXIntf.getPin(b2j)))
       }
     }
   }

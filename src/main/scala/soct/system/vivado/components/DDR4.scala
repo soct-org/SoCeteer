@@ -13,21 +13,11 @@ import scala.collection.mutable
 
 /**
  *
- * @param ddr4Intf The DDR4 interface port
- * @param addnClkOut1 The optional additional clock output 1 domain
- * @param addnClkOut2 The optional additional clock output 2 domain
- * @param addnClkOut3 The optional additional clock output 3 domain
- * @param addnClkOut4 The optional additional clock output 4 domain
+ * @param cds The clock domains to which this DDR4 component will output clocks. Up to 4 additional clock outputs can be specified.
  * @param dom The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
-case class DDR4(
-                 ddr4Intf: DDR4Port,
-                 addnClkOut1: Option[ClockDomain] = None,
-                 addnClkOut2: Option[ClockDomain] = None,
-                 addnClkOut3: Option[ClockDomain] = None,
-                 addnClkOut4: Option[ClockDomain] = None
-               )(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends InstantiableBdComp with IsXilinxIP {
+case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
+  extends InstantiableBdComp with IsXilinxIP with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
@@ -54,72 +44,64 @@ case class DDR4(
       throw XilinxDesignException("Top must mix in CanHaveMasterAXI4MemPort")
   }
 
-  private def outFreqs(): Map[String, String] = {
-    var freqs = Map.empty[String, String]
-    if (addnClkOut1.isDefined) {
-      freqs += s"CONFIG.ADDN_UI_CLKOUT1_FREQ_HZ" -> addnClkOut1.get.freqMHz.toInt.toString
-    }
-    if (addnClkOut2.isDefined) {
-      freqs += s"CONFIG.ADDN_UI_CLKOUT2_FREQ_HZ" -> addnClkOut2.get.freqMHz.toInt.toString
-    }
-    if (addnClkOut3.isDefined) {
-      freqs += s"CONFIG.ADDN_UI_CLKOUT3_FREQ_HZ" -> addnClkOut3.get.freqMHz.toInt.toString
-    }
-    if (addnClkOut4.isDefined) {
-      freqs += s"CONFIG.ADDN_UI_CLKOUT4_FREQ_HZ" -> addnClkOut4.get.freqMHz.toInt.toString
-    }
-    freqs
-  }
+  override def clockInPorts: Seq[BdPinType] = Seq(BdPin(C0_SYS_CLK, this))
 
   override def defaultProperties: Map[String, String] = {
-    if (receivers.exists(r => !r.isInstanceOf[ClkWiz])) {
-      throw new NotImplementedException(s"DDR4 can only output to ClkWiz components for now")
-    }
-
     val props = mutable.Map.empty[String, String]
 
     dom.foreach {
       case fpgaDom: FPGAClockDomain =>
-        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.instanceName
+        val ddr4Intfs = sourcePins.map(_.inst).collect { case ddr4Port: DDR4Port => ddr4Port }
+        require(ddr4Intfs.size == 1, s"DDR4 component $this must have exactly one DDR4Port source pin, found ${ddr4Intfs.size}")
+        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intfs.head.instanceName
         props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.instanceName
-
         fpgaDom.reset.foreach {
           case r: FPGAResetPortType =>
             props += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
           case _ => // Ignore other reset types for now
         }
-
       case _ =>
         throw XilinxDesignException(s"DDR4 must be instantiated in an FPGAClockDomain")
     }
 
-    props.toMap ++ outFreqs()
+    val freqs = cds.zipWithIndex.foldLeft(mutable.Map.empty[String, String]) {
+      case (acc, (cd, idx)) =>
+        acc += clkOutFreq(idx + 1) -> cd.freqMHz.toInt.toString
+        acc
+    }
+
+    props.toMap ++ freqs
   }
 
   /**
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = {
-    val outClks = for {
-      (opt, idx) <- Seq(addnClkOut1, addnClkOut2, addnClkOut3, addnClkOut4).zipWithIndex
-      cd <- opt.toList
-      port <- cd.receiverPorts.flatMap(_._2())
-      clkoutIdx = idx + 1
-    } yield s"connect_bd_net [get_bd_pins ${this.instanceName}/${clkOut(clkoutIdx)}] [get_bd_pins $port]"
+    clkTclCommands
+  }
 
-    // connect to the interface ports
-    val intfConns = Seq(
-      s"connect_bd_intf_net [get_bd_intf_ports ${ddr4Intf.instanceName}] [get_bd_intf_pins ${this.instanceName}/$C0_DDR4]",
-      s"connect_bd_intf_net [get_bd_intf_ports ${dom.get.port.instanceName}] [get_bd_intf_pins ${this.instanceName}/$C0_SYS_CLK]"
-    )
+  override protected def getPinImpl[T](source: T): Option[BdPinType] = {
+    source match {
+      case _: DDR4Port => Some(BdIntfPin(C0_DDR4, this))
+      case _ => None
+    }
+  }
 
-    outClks ++ intfConns
+  override def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinType, pinIdx: Int): BdPin = {
+    val clkoutIdx = domIdx + 1
+    if (clkoutIdx > 4) {
+      throw XilinxDesignException(s"DDR4 only supports up to 4 clock outputs, requested output index $clkoutIdx")
+    }
+    BdPin(clkOut(clkoutIdx), this)
   }
 }
 
 
 object DDR4 {
   private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
+
+  private def clkOutFreq(idx: Int): String = s"CONFIG.UI_CLKOUT${idx}_FREQ_HZ"
+
   private val C0_SYS_CLK = "C0_SYS_CLK"
   private val C0_DDR4 = "C0_DDR4"
 }
