@@ -202,7 +202,7 @@ object BdIntfPin {
 
 
 /**
- * Trait for components that can collect BdPinTypes
+ * Trait for components that can collect BdPinBases
  */
 trait CollectsPins {
   protected val _sinkPins: mutable.Set[BdPinBase] = mutable.Set.empty
@@ -211,9 +211,9 @@ trait CollectsPins {
   def sinkPins: View[BdPinBase] = _sinkPins.view
 
   /**
-   * Register a sink BdPinType that this component provides data to.
+   * Register a sink BdPinBase that this component provides data to.
    *
-   * @param sink The sink BdPinType
+   * @param sink The sink BdPinBase
    * @return True if the registration was successful
    */
   def outputTo(sink: BdPinBase): Boolean = {
@@ -237,7 +237,7 @@ trait HasTCLConnects {
 
 
 /**
- * Trait for components that can collect BdPinTypes and also provide a source, i.e. connect to them.
+ * Trait for components that can collect BdPinBases and also provide a source, i.e. connect to them.
  */
 trait SourceForPins extends CollectsPins with HasTCLConnects
 
@@ -247,34 +247,31 @@ trait SourceForPins extends CollectsPins with HasTCLConnects
  */
 trait HasSinkPins {
 
-  protected val sourcePins = mutable.Set[BdPinBase]()
+  protected val sourcePins = mutable.Set[SourceForPins]()
 
   /**
-   * Get the BdPinType corresponding to the given source, if any.
+   * Get the BdPinBase corresponding to the given source, if any.
    *
    * @param source The source to look up
-   * @tparam T The type of the source
-   * @return Some(BdPinType) if found, None otherwise
+   * @return Some(BdPinBase) if found, None otherwise
    */
-  protected def getPinImpl[T](source: T): Option[BdPinBase]
+  protected def getPinImpl(source: SourceForPins): Option[BdPinBase]
 
   /**
-   * Get the BdPinType corresponding to the given source.
+   * Get the BdPinBase corresponding to the given source.
    *
    * @param source The source to look up
-   * @tparam T The type of the source
-   * @return The corresponding BdPinType
-   * @throws XilinxDesignException if no BdPinType is found for the source
+   * @return The corresponding BdPinBase
+   * @throws XilinxDesignException if no BdPinBase is found for the source
    */
   @throws[XilinxDesignException]
-  final def getPin[T](source: T): BdPinBase = {
-    val pinOpt = getPinImpl(source)
-    if (pinOpt.isEmpty) {
-      throw XilinxDesignException(s"No BdPinType found for source $source in receiver $this")
+  final def getPin(source: SourceForPins): BdPinBase = {
+    val sinkOpt = getPinImpl(source)
+    if (sinkOpt.isEmpty) {
+      throw XilinxDesignException(s"No sink pin found for source $source in component $this")
     }
-    val sourcePin = pinOpt.get
-    sourcePins += sourcePin
-    sourcePin
+    sourcePins += source
+    sinkOpt.get
   }
 }
 

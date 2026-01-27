@@ -27,7 +27,7 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
 
     dom.foreach {
       case fpgaDom: FPGAClockDomain =>
-        val ddr4Intfs = sourcePins.map(_.inst).collect { case ddr4Port: DDR4Port => ddr4Port }
+        val ddr4Intfs = sourcePins.collect { case ddr4Port: DDR4Port => ddr4Port }
         require(ddr4Intfs.size == 1, s"DDR4 component $this must have exactly one DDR4Port source pin, found ${ddr4Intfs.size}")
         props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intfs.head.instanceName
         props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.instanceName
@@ -56,7 +56,7 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
     clkTclCommands
   }
 
-  override protected def getPinImpl[T](source: T): Option[BdPinBase] = {
+  override protected def getPinImpl(source: SourceForPins): Option[BdPinBase] = {
     source match {
       case _: DDR4Port => Some(BdIntfPin(C0_DDR4, this))
       case _ => None

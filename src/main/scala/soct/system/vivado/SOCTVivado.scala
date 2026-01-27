@@ -43,7 +43,6 @@ object SOCTVivado {
 
   /** Convert a Chisel Data port to a BdPin */
   def portToBdPin(x: Data)(implicit bd: SOCTBdBuilder): BdPin = {
-    require(DataMirror.isIO(x), s"Port $x is not an IO port")
     BdPin(snake(x.instanceName), bd.topInstance())
   }
 

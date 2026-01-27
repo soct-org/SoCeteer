@@ -82,7 +82,7 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
     Some(dest)
   }
 
-  override def getPinImpl[T](source: T): Option[BdPinBase] = {
+  protected override def getPinImpl(source: SourceForPins): Option[BdPinBase] = {
     source match {
       case _: SDIOCDPort => Some(BdPin(sdioCD, this))
       case _: SDIOCmdPort => Some(BdPin(sdioCMD, this))

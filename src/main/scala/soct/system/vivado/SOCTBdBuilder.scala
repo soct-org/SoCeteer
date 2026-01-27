@@ -150,7 +150,7 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    val instantiateCommands, connectCommands, portCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty[String]
+    val instantiateCommands, connectCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty[String]
 
     components.foreach {
       case inst: InstantiableBdComp => instantiateCommands ++= inst.instTclCommands
@@ -158,7 +158,7 @@ class SOCTBdBuilder {
     }
 
     components.foreach {
-      case c: HasTCLConnects => instantiateCommands ++= c.connectTclCommands
+      case c: HasTCLConnects => connectCommands ++= c.connectTclCommands
       case _ =>
     }
 
@@ -313,10 +313,7 @@ class SOCTBdBuilder {
        |
        |info_msg 2009 "All required Modules are available."
        |
-       |# Declare ports
-       |${portCommands.mkString("\n")}
-       |
-       |# Instantiate components
+       |# Instantiate ports and components
        |${instantiateCommands.mkString("\n")}
        |
        |# Set default properties

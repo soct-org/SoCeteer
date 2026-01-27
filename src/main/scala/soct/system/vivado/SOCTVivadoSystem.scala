@@ -17,21 +17,21 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
   if (p(BdBuilderKey).isDefined) {
     implicit val bd: SOCTBdBuilder = p(BdBuilderKey).get
-    // Instantiate the FPGA board from class stored in parameters
-    val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
-    val fpgaDomain = fpga.fastestClock()
-
-    val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
-    val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
-    peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
-
-    // Default to 100 MHz - TODO use parameters
-    val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
-    val topInstance = WithDomain(coreDomain) { implicit dom => new SOCTVivadoSystemTop(this) }
-
-    bd.init(p, topInstance, fpga)
-
     InModuleBody {
+      // Instantiate the FPGA board from class stored in parameters
+      val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
+      val fpgaDomain = fpga.fastestClock()
+
+      val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
+      val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
+      peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
+
+      // Default to 100 MHz - TODO use parameters
+      val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
+      val topInstance = WithDomain(coreDomain) { implicit dom => new SOCTVivadoSystemTop(this) }
+
+      bd.init(p, topInstance, fpga)
+
       // Connect DDR4 if present - it outputs to the clock wizard
       if (p(HasDDR4ExtMem)) {
         val ddr4Port = fpga.portsDDR4().headOption.getOrElse(

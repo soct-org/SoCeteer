@@ -33,7 +33,7 @@ case class JTAGXIntfPort(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, 
     portMappings.toMap
   }
 
-  override protected def getPinImpl[T](source: T): Option[BdIntfPin] = {
+  override protected def getPinImpl(source: SourceForPins): Option[BdIntfPin] = {
     source match {
       case _: BSCAN2JTAG => Some(BdIntfPin(ifName, bd.topInstance()))
       case _ => None
@@ -79,7 +79,7 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
     }.toSeq
   }
 
-  override protected def getPinImpl[T](source: T): Option[BdIntfPin] = {
+  override protected def getPinImpl(source: SourceForPins): Option[BdIntfPin] = {
     source match {
       case _: BSCAN => Some(BdIntfPin(BSCAN2JTAG.bscanIntf, this))
       case _ => None

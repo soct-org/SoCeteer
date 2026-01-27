@@ -56,7 +56,7 @@ case class ClkWiz(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder
     BdPin(clkOut(clkoutIdx), this)
   }
 
-  override protected def getPinImpl[T](source: T): Option[BdPinBase] = {
+  override protected def getPinImpl(source: SourceForPins): Option[BdPinBase] = {
     None // For now, no specific pin mapping.
   }
 }
