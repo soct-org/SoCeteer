@@ -17,11 +17,6 @@ import scala.collection.mutable
 final case class TclVar(description: String, default: String)
 
 class SOCTBdBuilder {
-  /**
-   * Indentation prefix for TCL scripts, i.e. each level is two spaces
-   */
-  val IND_PREFIX: String = "  "
-
   private val components = mutable.Set.empty[BdComp]
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
@@ -70,8 +65,22 @@ class SOCTBdBuilder {
     throw XilinxDesignException("Please call init before accessing topInstance")
   }
 
+  /**
+   * Get the target FPGA
+   */
   var fpgaInstance: () => FPGA = () => {
     throw XilinxDesignException("Please call init before accessing fpgaInstance")
+  }
+
+  /**
+   * Count instances of a given BdComp type, excluding the provided instance.
+   * @param inst The instance to exclude from the count
+   * @tparam T The type of BdComp to count
+   * @return The number of instances of type T, excluding the provided instance
+   */
+  def countInstancesOf[T <: BdComp](inst: T): Int = {
+    val cls = inst.getClass
+    components.count(c => cls.isInstance(c) && c != inst)
   }
 
 
@@ -162,30 +171,19 @@ class SOCTBdBuilder {
       case _ =>
     }
 
+    val propertyCommands = components.collect {
+      case c: InstantiableBdComp if c.defaultProperties.nonEmpty =>
+        def tclLiteral(v: String): String =
+          if (v.startsWith("$") || v.startsWith("[")) v
+          else s"{${v.replace("}", "\\}")}"
 
-    // Get all components that have default properties that are not an empty map
-    val componentsWithProperties = components.collect {
-      case c: InstantiableBdComp if c.defaultProperties.nonEmpty => c
-    }
-
-    // Generate a set_property command for each component with default properties
-    val propertyCommands = componentsWithProperties.map { c =>
-      def tclLiteral(v: String): String = {
-        if (v.startsWith("$") || v.startsWith("[")) { // leave Tcl variable/expr references as-is so they are evaluated at runtime
-          v
-        } else {
-          val esc = v.replace("}", "\\}") // escape any '}' inside the value to avoid breaking braced string
-          s"{$esc}"
-        }
-      }
-
-      s"""
-         |# Set default properties for component ${c.friendlyName}
-         |set_property -dict [list \\
-         |${c.defaultProperties.map { case (k, v) => s"  $k ${tclLiteral(v)}" }.mkString(" \\\n") + " \\"}
-         |] $$${c.instanceName}
-         |""".stripMargin
-    }
+        s"""
+           |# Set default properties for component ${c.friendlyName}
+           |set_property -dict [list \\
+           |${c.defaultProperties.map { case (k, v) => s"  $k ${tclLiteral(v)}" }.mkString(" \\\n") + " \\"}
+           |] $$${c.instanceName}
+           |""".stripMargin
+    }.toSeq
 
     // Keys for TCL variables used in the script
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)
@@ -314,13 +312,13 @@ class SOCTBdBuilder {
        |info_msg 2009 "All required Modules are available."
        |
        |# Instantiate ports and components
-       |${instantiateCommands.mkString("\n")}
+       |${instantiateCommands.sorted.mkString("\n")}
        |
        |# Set default properties
-       |${propertyCommands.mkString("\n")}
+       |${propertyCommands.sorted.mkString("\n")}
        |
        |# Connect components
-       |${connectCommands.mkString("\n")}
+       |${connectCommands.sorted.mkString("\n")}
        |
        |""".stripMargin
   }

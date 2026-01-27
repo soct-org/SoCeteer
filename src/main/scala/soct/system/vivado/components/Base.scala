@@ -27,7 +27,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   /**
    * Optional index to differentiate multiple instances of the same component
    */
-  def index: Int = 0
+  def index: Int = bd.countInstancesOf(this)
 
   /**
    * The instance name for this component. By default, use the friendly name converted to snake_case with an optional index suffix.
