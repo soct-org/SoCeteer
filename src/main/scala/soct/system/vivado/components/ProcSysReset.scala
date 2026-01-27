@@ -9,7 +9,7 @@ import soct.system.vivado.components.ProcSysReset._
  * @param dom Only used for the slowestSyncClk connection
  */
 case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with IsXilinxIP with ReceivesClock with SourceForPins with ProvidesAutoReset {
+  extends InstantiableBdComp with Xip with ReceivesClock with SourceForPins with ProvidesAutoReset {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 

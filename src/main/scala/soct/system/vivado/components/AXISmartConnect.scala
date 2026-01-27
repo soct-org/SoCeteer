@@ -9,9 +9,11 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 import scala.collection.mutable
 
 
-case class AXIXIntfPort(axiPort: AXI4Bundle)
-                       (implicit bd: SOCTBdBuilder, p: Parameters)
-extends XIntfPort with IsXilinxIP {
+case class AXIXIntfPortMapping(axiPort: AXI4Bundle)
+                              (implicit bd: SOCTBdBuilder, p: Parameters)
+extends XIntfPortMapping {
+
+  override val tpe: String = "interface"
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
 
@@ -53,8 +55,7 @@ extends XIntfPort with IsXilinxIP {
 
 
 case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with IsXilinxIP {
-
+  extends InstantiableBdComp with Xip {
 
   override def partName: String = "xilinx.com:ip:smartconnect:1.0"
 

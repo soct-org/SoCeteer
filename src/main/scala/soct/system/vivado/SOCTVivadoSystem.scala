@@ -6,7 +6,7 @@ import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTVivado.portToBdPin
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXIXIntfPort, AutoConnect, BSCAN, BSCAN2JTAG, BdPin, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPort, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop, WithDomain}
+import soct.system.vivado.components.{AXIXIntfPortMapping, AutoConnect, BSCAN, BSCAN2JTAG, BdPin, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPortMapping, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop, WithDomain}
 import soct.system.vivado.fpga.FPGARegistry
 
 
@@ -48,7 +48,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       }
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
-      axiInfts.foreach { axiInft => AXIXIntfPort(axiInft) }
+      axiInfts.foreach { axiInft => AXIXIntfPortMapping(axiInft) }
 
       if (p(HasSDCardPMOD).isDefined) {
         val ports = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
@@ -63,7 +63,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val jtagIO = debugIf.systemjtag.get
         val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")
         jtag_tdt := ~jtagIO.jtag.TDO.driven
-        val jtagXIntf = JTAGXIntfPort(jtagIO.jtag, jtag_tdt)
+        val jtagXIntf = JTAGXIntfPortMapping(jtagIO.jtag, jtag_tdt)
 
         // Tie off unused fields using inline constants - rename for clarity in block design
         val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {

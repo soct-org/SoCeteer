@@ -6,7 +6,7 @@ import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 
 
 case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp()(bd, p, None)
-  with IsXilinxIP with SourceForPins {
+  with Xip with SourceForPins {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
 
@@ -22,7 +22,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends Instantiab
   override def connectTclCommands: Seq[String] = {
     sinkPins.zipWithIndex.map {
       case (sinkPin: BdIntfPin, i) =>
-        val sourcePin = BdIntfPin(outPort(i + 1), this)
+        val sourcePin = BdIntfPin(outPort(i), this)
         s"connect_bd_intf_net [get_bd_intf_pins $sourcePin] [get_bd_intf_pins $sinkPin]" // TODO do something smarter
       case _ => throw XilinxDesignException("BSCAN only supports BdIntfPin sink pins")
     }.toSeq

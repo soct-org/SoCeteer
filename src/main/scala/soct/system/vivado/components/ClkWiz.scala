@@ -16,7 +16,7 @@ import scala.collection.mutable
  * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
 case class ClkWiz(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
-  extends InstantiableBdComp with IsXilinxIP with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
+  extends InstantiableBdComp with Xip with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   override def clockInPorts: Seq[BdPinBase] = Seq(BdPin(CLKIn, this))
 

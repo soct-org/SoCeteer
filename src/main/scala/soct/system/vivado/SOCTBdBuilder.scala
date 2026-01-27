@@ -2,7 +2,7 @@ package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths, XilinxFPGAKey}
-import soct.system.vivado.components.{BdComp, HasCollaterals, HasTCLConnects, InstantiableBdComp, IntfPort, IsModule, IsXilinxIP, VirtualPort, XIntfPort}
+import soct.system.vivado.components.{BdComp, HasCollaterals, HasTCLConnects, InstantiableBdComp, IsModule, XInlineHDL, XIntfPort, XIntfPortMapping, Xip}
 import soct.system.vivado.fpga.FPGA
 
 import java.nio.file.Path
@@ -74,6 +74,7 @@ class SOCTBdBuilder {
 
   /**
    * Count instances of a given BdComp type, excluding the provided instance.
+   *
    * @param inst The instance to exclude from the count
    * @tparam T The type of BdComp to count
    * @return The number of instances of type T, excluding the provided instance
@@ -138,7 +139,7 @@ class SOCTBdBuilder {
   def portModifications(): Map[String, Seq[String]] = {
     val allPortMods = mutable.Map.empty[String, Seq[String]]
     components.foreach {
-      case xIntf: XIntfPort =>
+      case xIntf: XIntfPortMapping =>
         val portMods = xIntf.portMapping
         portMods.foreach { case (portName, annotations) =>
           // Append to existing annotations if present
@@ -160,7 +161,7 @@ class SOCTBdBuilder {
 
   def generateBoardTcl(): String = {
     val instantiateCommands, connectCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty[String]
-
+    val xintfs, xips, xinlines, modules = mutable.ListBuffer.empty[BdComp]
     components.foreach {
       case inst: InstantiableBdComp => instantiateCommands ++= inst.instTclCommands
       case _ =>
@@ -175,7 +176,7 @@ class SOCTBdBuilder {
       case c: InstantiableBdComp if c.defaultProperties.nonEmpty =>
         def tclLiteral(v: String): String =
           if (v.startsWith("$") || v.startsWith("[")) v
-          else s"{${v.replace("}", "\\}")}"
+          else s"{${v.replace("}", "\\}")}}"
 
         s"""
            |# Set default properties for component ${c.friendlyName}
@@ -192,14 +193,15 @@ class SOCTBdBuilder {
     // Add the BD-specific variables which are defined statically in SOCTBdBuilder
     val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ this.bdVars
 
-    // Collect all Xilinx IP components which are instantiable
-    val xilinxIps = components.collect {
-      case ip: InstantiableBdComp if ip.isInstanceOf[IsXilinxIP] => ip.asInstanceOf[IsXilinxIP]
+    components.foreach{
+      case x: Xip => xips += x
+      case x: XIntfPort => xintfs += x
+      case x: XInlineHDL => xinlines += x
+      case m: IsModule => modules += m
+      case _ => // do nothing
     }
 
-    val modules = components.collect {
-      case m: InstantiableBdComp if m.isInstanceOf[IsModule] => m.asInstanceOf[IsModule]
-    }
+    // TODO use xintfs, xips, xinlines, modules in a validation step
 
     s"""${genTCLHeader(bdVars)}
        |
@@ -276,40 +278,6 @@ class SOCTBdBuilder {
        |info_msg 2005 "Created / opened block design ${k.bdName} successfully."
        |
        |
-       |######## Check for required Xilinx IPs ########
-       |
-       |set list_ips_missing {}
-       |set list_check_ips [list \\
-       |${xilinxIps.map(_.partName).map(ip => s"  \"$ip\"").mkString(" \\\n")}
-       |]
-       |foreach ip_name $$list_check_ips {
-       |  if {[llength [get_ipdefs -all $$ip_name]] == 0} {
-       |    lappend list_ips_missing $$ip_name
-       |  }
-       |}
-       |if {[llength $$list_ips_missing] != 0} {
-       |  error_exit 2006 "The following required Xilinx IPs are missing: \\n  [join $$list_ips_missing "\\n  "]\\nPlease install them via the Vivado IP Catalog before sourcing this script."
-       |}
-       |
-       |info_msg 2007 "All required Xilinx IPs are available."
-       |
-       |
-       |######## Check for required Modules ########
-       |
-       |set list_modules_missing {}
-       |set list_check_modules [list \\
-       |${modules.map(_.reference).map(m => s"  \"$m\"").mkString(" \\\n")}
-       |]
-       |foreach mod_name $$list_check_modules {
-       |  if {[llength [can_resolve_reference $$mod_name]] == 0} {
-       |    lappend list_modules_missing $$mod_name
-       |  }
-       |}
-       |if {[llength $$list_modules_missing] != 0} {
-       |  error_exit 2008 "The following required Modules are missing: \\n  [join $$list_modules_missing "\\n  "]\\nPlease ensure their collateral files are available in the sources directory before sourcing this script."
-       |}
-       |
-       |info_msg 2009 "All required Modules are available."
        |
        |# Instantiate ports and components
        |${instantiateCommands.sorted.mkString("\n")}

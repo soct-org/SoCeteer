@@ -12,6 +12,8 @@ class ZCU104(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGA {
 
   override val partName: String = "xilinx.com:zcu104:part0:1.1"
 
+  override val tpe: String = "zcu104"
+
   override val portsPMOD: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1 are available, 2 is I2C
 
   private lazy val clk300 = FPGAClockPort("clk_300mhz", 300.0)

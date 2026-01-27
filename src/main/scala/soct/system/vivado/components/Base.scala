@@ -51,8 +51,8 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
    */
   def instTclCommands: Seq[String] = {
     this match {
-      case ip: IsXilinxIP =>
-        Seq(s"set $instanceName [create_bd_cell -type ${ip.ipType} -vlnv ${ip.partName} $instanceName]")
+      case x: IsXilinx =>
+        Seq(s"set $instanceName [create_bd_cell -type ${x.tpe} -vlnv ${x.partName} $instanceName]")
       case module: IsModule =>
         Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
       case _ =>
@@ -91,7 +91,7 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
  * Base class for Board Design X Interfaces.
  * Used to add extra annotations to ports in the design.
  */
-abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp {
+abstract class XIntfPortMapping(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with XIntf {
   /**
    * The name of the signal group for this port, relevant for example for X_INTERFACE_INFO annotations
    */
@@ -103,6 +103,53 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdCo
   def portMapping: Map[String, Seq[String]]
 }
 
+
+/**
+ * Trait for Xilinx Inline HDL components
+ */
+trait XInlineHDL extends IsXilinx {
+  override val tpe: String = "inline_hdl"
+}
+
+/**
+ * Trait for Xilinx IP components
+ */
+trait Xip extends IsXilinx {
+  override val tpe: String = "ip"
+}
+
+/**
+ * Trait for Xilinx Interface components
+ */
+trait XIntf extends IsXilinx {
+  override val tpe: String = "interface"
+}
+
+/**
+ * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
+ */
+abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends InstantiableBdComp()(bd, p, None) with XIntf with SourceForPins {
+  /**
+   * The mode of this interface, e.g., "Master" or "Slave"
+   */
+  def mode: String
+
+  /**
+   * Emit the TCL command to create the port for this component
+   */
+  override def instTclCommands: Seq[String] = {
+    Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]")
+  }
+
+  override def connectTclCommands: Seq[String] = {
+    val prefix = s"connect_bd_intf_net [get_bd_intf_ports $instanceName]"
+    sinkPins.map { sink =>
+      require(sink.isInstanceOf[BdIntfPin], s"IntfPort $this can only connect to BdIntfPin sinks, got $sink")
+      s"$prefix [get_bd_intf_pins $sink]"
+    }.toSeq
+  }
+}
 
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
@@ -151,32 +198,10 @@ abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 }
 
+
 /**
- * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
+ * Base class for Board Design Pins, representing a port on a component instance.
  */
-abstract class IntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InstantiableBdComp()(bd, p, None) with IsXilinxIP with SourceForPins {
-  /**
-   * The mode of this interface, e.g., "Master" or "Slave"
-   */
-  def mode: String
-
-  /**
-   * Emit the TCL command to create the port for this component
-   */
-  override def instTclCommands: Seq[String] = {
-    Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]")
-  }
-
-  override def connectTclCommands: Seq[String] = {
-    val prefix = s"connect_bd_intf_net [get_bd_intf_ports $instanceName]"
-    sinkPins.map { sink =>
-      require(sink.isInstanceOf[BdIntfPin], s"IntfPort $this can only connect to BdIntfPin sinks, got $sink")
-      s"$prefix [get_bd_intf_pins $sink]"
-    }.toSeq
-  }
-}
-
 abstract class BdPinBase(portFn: () => String, instFn: () => InstantiableBdComp) extends HasFriendlyName {
   lazy val port: String = portFn()
   lazy val inst: InstantiableBdComp = instFn()
@@ -294,18 +319,18 @@ trait IsModule extends HasCollaterals {
 
 
 /**
- * Trait for Xilinx IP components
+ * Trait for components that have a Xilinx part name
  */
-trait IsXilinxIP {
+trait IsXilinx {
   /**
    * The part name of this Xilinx IP
    */
   def partName: String
 
   /**
-   * The interface type of this Xilinx IP, usually "ip", "inline_hdl", etc.
+   * The type of this Xilinx IP, e.g., "ip", "interface", "inline_hdl", etc.
    */
-  def ipType: String = "ip"
+  val tpe: String
 }
 
 

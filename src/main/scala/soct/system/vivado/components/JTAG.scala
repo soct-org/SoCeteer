@@ -9,8 +9,8 @@ import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
 
-case class JTAGXIntfPort(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends XIntfPort with IsXilinxIP with HasSinkPins {
+case class JTAGXIntfPortMapping(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends XIntfPortMapping with HasSinkPins {
 
   override def partName: String = "xilinx.com:interface:jtag:1.0"
 

@@ -3,7 +3,7 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{Reset, ResetN, ClockDomain, HasFriendlyName, IsXilinxIP, ResetType, VirtualPort, IntfPort}
+import soct.system.vivado.components.{ClockDomain, HasFriendlyName, IsXilinx, Reset, ResetN, ResetType, VirtualPort, XIntfPort}
 
 import scala.annotation.unused
 
@@ -61,7 +61,7 @@ object FPGARegistry {
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends IntfPort {
+case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends XIntfPort {
 
   override def mode: String = "Master"
 
@@ -95,7 +95,7 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
  * @param instanceName  The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
  * @param freqMHz The frequency of the clock in MHz
  */
-case class FPGAClockPort(override val instanceName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends IntfPort  {
+case class FPGAClockPort(override val instanceName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends XIntfPort  {
 
   override def mode: String = "Slave"
 
@@ -122,7 +122,7 @@ final class FPGAClockDomain(val port: FPGAClockPort, reset: Option[FPGAResetPort
  * For instance, see the ZCU104 implementation.
  * Subclasses must provide a SOCTBdBuilder and Parameters context for instantiation.
  */
-abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) extends IsXilinxIP with HasFriendlyName {
+abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) extends IsXilinx with HasFriendlyName {
 
   /**
    * The Xilinx part number for this FPGA board - e.g., "xczu7ev-ffvc1156-2-e"
