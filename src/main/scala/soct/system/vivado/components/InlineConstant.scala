@@ -30,7 +30,7 @@ case class InlineConstant(value: UInt, nBits: Int)
    */
   override def connectTclCommands: Seq[String] = {
     sinkPins.map{
-      case sink@BdPin(_, _) => s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $sink]"
+      case sink: BdPin => s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $sink]"
     }.toSeq
   }
 }

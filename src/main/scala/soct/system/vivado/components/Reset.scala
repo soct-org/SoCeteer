@@ -25,12 +25,12 @@ trait ReceivesReset {
   /**
    * The active low reset ports for this component, to be connected to the reset provider of the clock domain if available
    */
-  def resetNInPorts: Seq[BdPinType] = Seq.empty
+  def resetNInPorts: Seq[BdPinBase] = Seq.empty
 
   /**
    * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
    */
-  def resetInPorts: Seq[BdPinType] = Seq.empty
+  def resetInPorts: Seq[BdPinBase] = Seq.empty
 }
 
 
@@ -57,7 +57,7 @@ trait ProvidesAutoReset {
    * @return The source BdPin to connect to the sink pin
    */
   @throws[XilinxDesignException]
-  protected def resetOutPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinType, pinIdx: Int): BdPin
+  protected def resetOutPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin
 
 
   /**

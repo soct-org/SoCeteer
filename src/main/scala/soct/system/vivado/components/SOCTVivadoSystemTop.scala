@@ -14,30 +14,13 @@ class SOCTVivadoSystemTop(s: SOCTVivadoSystem)(implicit p: Parameters, bd: SOCTB
   private val c = p(HasSOCTConfig)
 
   // Returns either port refs for clocks or resets depending on the parameter
-  private def ioClockOrReset(isReset: Boolean): Seq[BdPin] = {
-    val busClockOrResetPorts = s.io_clocks
-      .map(_.getWrappedValue)
-      .map(_.data) // Option[Iterable[ClockBundle]]
-      .toSeq // Seq[Iterable[ClockBundle]] (0 or 1 element)
-      .flatten // Seq[ClockBundle]
-      .map { bundle =>
-        if (isReset) portToBdPin(bundle.reset) else portToBdPin(bundle.clock)
-      }
+  private def ioClockOrReset(isReset: Boolean): Seq[BdPin] = Seq.empty
 
-    val debugClockOrResetPort = if (isReset) {
-      portToBdPin(s.debug.getWrappedValue.get.reset)
-    } else {
-      portToBdPin(s.debug.getWrappedValue.get.clock)
-    }
-
-    busClockOrResetPorts :+ debugClockOrResetPort
-  }
-
-  override def resetInPorts: Seq[BdPinType] = {
+  override def resetInPorts: Seq[BdPinBase] = {
     ioClockOrReset(isReset = true) // Active-high resets
   }
 
-  override def clockInPorts: Seq[BdPinType] = {
+  override def clockInPorts: Seq[BdPinBase] = {
     ioClockOrReset(isReset = false)
   }
 

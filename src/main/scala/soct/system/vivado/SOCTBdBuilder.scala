@@ -154,10 +154,12 @@ class SOCTBdBuilder {
 
     components.foreach {
       case inst: InstantiableBdComp => instantiateCommands ++= inst.instTclCommands
+      case _ =>
     }
 
     components.foreach {
       case c: HasTCLConnects => instantiateCommands ++= c.connectTclCommands
+      case _ =>
     }
 
 

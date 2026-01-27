@@ -13,7 +13,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
-  override def clockInPorts: Seq[BdPinType] = Seq(BdPin(slowestSyncClk, this))
+  override def clockInPorts: Seq[BdPinBase] = Seq(BdPin(slowestSyncClk, this))
 
   /**
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
@@ -60,7 +60,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
    * @throws XilinxDesignException if a reset output port cannot be found for a given reset type and sink pin
    * @return The source BdPin to connect to the sink pin
    */
-  override protected def resetOutPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinType, pinIdx: Int): BdPin = {
+  override protected def resetOutPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
     reset match {
       case PeripheralAResetN => BdPin(peripheralAReset, this)
       case PeripheralReset => BdPin(peripheralReset, this)

@@ -56,9 +56,9 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
-  override def clockInPorts: Seq[BdPinType] = Seq(BdPin(clock, this))
+  override def clockInPorts: Seq[BdPinBase] = Seq(BdPin(clock, this))
 
-  override def resetNInPorts: Seq[BdPinType] = Seq(BdPin(resetN, this))
+  override def resetNInPorts: Seq[BdPinBase] = Seq(BdPin(resetN, this))
 
   override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
@@ -82,7 +82,7 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
     Some(dest)
   }
 
-  override def getPinImpl[T](source: T): Option[BdPinType] = {
+  override def getPinImpl[T](source: T): Option[BdPinBase] = {
     source match {
       case _: SDIOCDPort => Some(BdPin(sdioCD, this))
       case _: SDIOCmdPort => Some(BdPin(sdioCMD, this))

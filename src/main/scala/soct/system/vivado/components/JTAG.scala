@@ -73,7 +73,7 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
    */
   override def connectTclCommands: Seq[String] = {
     sinkPins.map {
-      case sink@BdIntfPin(_, _) =>
+      case sink: BdIntfPin =>
         s"connect_bd_intf_net [get_bd_intf_pins $instanceName/$jtagIntf] [get_bd_intf_pins $sink]"
       case sink: Any => throw XilinxDesignException(s"Unsupported sink pin type in BSCAN2JTAG: $sink")
     }.toSeq

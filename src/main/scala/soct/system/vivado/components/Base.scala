@@ -177,22 +177,27 @@ abstract class IntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 }
 
-/**
- * Trait representing a pin in the block design, either a regular pin or an interface pin
- */
-trait BdPinType extends HasFriendlyName {
-  val port: String
-  val inst: InstantiableBdComp
+abstract class BdPinBase(portFn: () => String, instFn: () => InstantiableBdComp) extends HasFriendlyName {
+  lazy val port: String = portFn()
+  lazy val inst: InstantiableBdComp = instFn()
 
-  override def friendlyName: String = s"${inst.instanceName}/$port"
+  final override def friendlyName: String = s"${inst.instanceName}/$port"
+
+  final override def toString: String = friendlyName
 }
 
-case class BdPin(override val port: String, override val inst: InstantiableBdComp) extends BdPinType {
-  override def toString: String = friendlyName
+final class BdPin private(portFn: () => String, instFn: () => InstantiableBdComp) extends BdPinBase(portFn, instFn)
+
+object BdPin {
+  def apply(port: => String, inst: => InstantiableBdComp): BdPin =
+    new BdPin(() => port, () => inst)
 }
 
-case class BdIntfPin(override val port: String, override val inst: InstantiableBdComp) extends BdPinType {
-  override def toString: String = friendlyName
+final class BdIntfPin private(portFn: () => String, instFn: () => InstantiableBdComp) extends BdPinBase(portFn, instFn)
+
+object BdIntfPin {
+  def apply(port: => String, inst: => InstantiableBdComp): BdIntfPin =
+    new BdIntfPin(() => port, () => inst)
 }
 
 
@@ -200,10 +205,10 @@ case class BdIntfPin(override val port: String, override val inst: InstantiableB
  * Trait for components that can collect BdPinTypes
  */
 trait CollectsPins {
-  protected val _sinkPins: mutable.Set[BdPinType] = mutable.Set.empty
+  protected val _sinkPins: mutable.Set[BdPinBase] = mutable.Set.empty
 
   // public view of the collected sink pins
-  def sinkPins: View[BdPinType] = _sinkPins.view
+  def sinkPins: View[BdPinBase] = _sinkPins.view
 
   /**
    * Register a sink BdPinType that this component provides data to.
@@ -211,7 +216,7 @@ trait CollectsPins {
    * @param sink The sink BdPinType
    * @return True if the registration was successful
    */
-  def outputTo(sink: BdPinType): Boolean = {
+  def outputTo(sink: BdPinBase): Boolean = {
     _sinkPins += sink
     true
   }
@@ -242,7 +247,7 @@ trait SourceForPins extends CollectsPins with HasTCLConnects
  */
 trait HasSinkPins {
 
-  protected val sourcePins = mutable.Set[BdPinType]()
+  protected val sourcePins = mutable.Set[BdPinBase]()
 
   /**
    * Get the BdPinType corresponding to the given source, if any.
@@ -251,7 +256,7 @@ trait HasSinkPins {
    * @tparam T The type of the source
    * @return Some(BdPinType) if found, None otherwise
    */
-  protected def getPinImpl[T](source: T): Option[BdPinType]
+  protected def getPinImpl[T](source: T): Option[BdPinBase]
 
   /**
    * Get the BdPinType corresponding to the given source.
@@ -262,7 +267,7 @@ trait HasSinkPins {
    * @throws XilinxDesignException if no BdPinType is found for the source
    */
   @throws[XilinxDesignException]
-  final def getPin[T](source: T): BdPinType = {
+  final def getPin[T](source: T): BdPinBase = {
     val pinOpt = getPinImpl(source)
     if (pinOpt.isEmpty) {
       throw XilinxDesignException(s"No BdPinType found for source $source in receiver $this")

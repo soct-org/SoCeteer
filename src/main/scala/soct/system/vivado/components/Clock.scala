@@ -10,7 +10,7 @@ trait ReceivesClock {
   /**
    * The clock input ports for this component, to be connected to the clock domain if available
    */
-  def clockInPorts: Seq[BdPinType] = Seq.empty
+  def clockInPorts: Seq[BdPinBase] = Seq.empty
 }
 
 /**
@@ -35,7 +35,7 @@ trait ProvidesAutoClock {
    * @return The source BdPin to connect to the sink pin
    */
   @throws[XilinxDesignException]
-  protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinType, pinIdx: Int): BdPin
+  protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin
 
   /**
    * TCL commands to connect the clock output ports to the sink pins

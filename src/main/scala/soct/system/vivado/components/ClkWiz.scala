@@ -18,9 +18,9 @@ import scala.collection.mutable
 case class ClkWiz(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
   extends InstantiableBdComp with IsXilinxIP with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
-  override def clockInPorts: Seq[BdPinType] = Seq(BdPin(CLKIn, this))
+  override def clockInPorts: Seq[BdPinBase] = Seq(BdPin(CLKIn, this))
 
-  override def resetInPorts: Seq[BdPinType] = Seq(BdPin(RSTIn, this))
+  override def resetInPorts: Seq[BdPinBase] = Seq(BdPin(RSTIn, this))
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
@@ -50,13 +50,13 @@ case class ClkWiz(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 
-  override protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinType, pinIdx: Int): BdPin = {
+  override protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
     val clkoutIdx = domIdx + 1
     // TODO validate clkoutIdx based on selected board, some have more than others
     BdPin(clkOut(clkoutIdx), this)
   }
 
-  override protected def getPinImpl[T](source: T): Option[BdPinType] = {
+  override protected def getPinImpl[T](source: T): Option[BdPinBase] = {
     None // For now, no specific pin mapping.
   }
 }
