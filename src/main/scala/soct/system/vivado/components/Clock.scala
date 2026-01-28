@@ -32,10 +32,10 @@ trait ProvidesAutoClock {
    * @param sinkPin The sink pin to connect to
    * @param pinIdx  The index of the sink pin in the sinkPins sequence
    * @throws XilinxDesignException if a clock output port cannot be found for a given clock domain and sink pin
-   * @return The source BdPin to connect to the sink pin
+   * @return The source BdPinBase to connect to the sink pin
    */
   @throws[XilinxDesignException]
-  protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin
+  protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPinBase
 
   /**
    * TCL commands to connect the clock output ports to the sink pins
@@ -49,7 +49,9 @@ trait ProvidesAutoClock {
       (cd, domIdx) <- cds.zipWithIndex
       (sinkPin, pinIdx) <- cd.sinkPins.zipWithIndex
       sourcePin = clockOutPortImpl(cd, domIdx, sinkPin, pinIdx)
-    } yield s"connect_bd_net [get_bd_pins $sourcePin] [get_bd_pins $sinkPin]"
+    } yield {
+      BdPinBase.connect(sourcePin, sinkPin)
+    }
   }
 }
 

@@ -128,8 +128,8 @@ trait XIntf extends IsXilinx {
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InstantiableBdComp()(bd, p, None) with XIntf with SourceForPins {
+abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
+  extends InstantiableBdComp() with XIntf with SourceForPins {
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
    */
@@ -144,9 +144,9 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def connectTclCommands: Seq[String] = {
     val prefix = s"connect_bd_intf_net [get_bd_intf_ports $instanceName]"
-    sinkPins.map { sink =>
-      require(sink.isInstanceOf[BdIntfPin], s"IntfPort $this can only connect to BdIntfPin sinks, got $sink")
-      s"$prefix [get_bd_intf_pins $sink]"
+    sinkPins.map {
+      case sink: BdIntfPin => s"$prefix [get_bd_intf_pins $sink]"
+      case sink => throw new XilinxDesignException(s"Cannot connect BdPin $sink to XIntfPort $this, must be BdIntfPin")
     }.toSeq
   }
 }
@@ -206,9 +206,48 @@ abstract class BdPinBase(portFn: () => String, instFn: () => InstantiableBdComp)
   lazy val port: String = portFn()
   lazy val inst: InstantiableBdComp = instFn()
 
-  final override def friendlyName: String = s"${inst.instanceName}/$port"
+  override def friendlyName: String = s"${inst.instanceName}/$port"
 
-  final override def toString: String = friendlyName
+  override def toString: String = friendlyName
+}
+
+object BdPinBase {
+  def connect(sourcePin: BdPinBase, sinkPin: BdPinBase): String = {
+    (sourcePin, sinkPin) match {
+      // -------- Interface connections --------
+      case (_: BdIntfPin,  _: BdIntfPin)  =>
+        s"connect_bd_intf_net [get_bd_intf_pins $sourcePin] [get_bd_intf_pins $sinkPin]"
+
+      case (_: BdIntfPort, _: BdIntfPort) =>
+        s"connect_bd_intf_net [get_bd_intf_ports $sourcePin] [get_bd_intf_ports $sinkPin]"
+
+      case (_: BdIntfPin,  _: BdIntfPort) =>
+        s"connect_bd_intf_net [get_bd_intf_pins $sourcePin] [get_bd_intf_ports $sinkPin]"
+
+      case (_: BdIntfPort, _: BdIntfPin)  =>
+        s"connect_bd_intf_net [get_bd_intf_ports $sourcePin] [get_bd_intf_pins $sinkPin]"
+
+      // -------- ERROR: interface vs net --------
+      case (_: BdIntfPin | _: BdIntfPort, _) |
+           (_, _: BdIntfPin | _: BdIntfPort) =>
+        throw new XilinxDesignException(
+          s"BD autoconnect pin type mismatch: source=$sourcePin sink=$sinkPin (interface vs net)"
+        )
+
+      // -------- Scalar net connections --------
+      case (_: BdPin,  _: BdPin)  =>
+        s"connect_bd_net [get_bd_pins $sourcePin] [get_bd_pins $sinkPin]"
+
+      case (_: BdPort, _: BdPort) =>
+        s"connect_bd_net [get_bd_ports $sourcePin] [get_bd_ports $sinkPin]"
+
+      case (_: BdPin,  _: BdPort) =>
+        s"connect_bd_net [get_bd_pins $sourcePin] [get_bd_ports $sinkPin]"
+
+      case (_: BdPort, _: BdPin)  =>
+        s"connect_bd_net [get_bd_ports $sourcePin] [get_bd_pins $sinkPin]"
+    }
+  }
 }
 
 final class BdPin private(portFn: () => String, instFn: () => InstantiableBdComp) extends BdPinBase(portFn, instFn)
@@ -218,11 +257,28 @@ object BdPin {
     new BdPin(() => port, () => inst)
 }
 
+final class BdPort private(portFn: () => String, instFn: () => InstantiableBdComp) extends BdPinBase(portFn, instFn) {
+  override def friendlyName: String = port
+}
+
+object BdPort {
+  def apply(port: => String, inst: => InstantiableBdComp): BdPort = new BdPort(() => port, () => inst)
+}
+
 final class BdIntfPin private(portFn: () => String, instFn: () => InstantiableBdComp) extends BdPinBase(portFn, instFn)
 
 object BdIntfPin {
   def apply(port: => String, inst: => InstantiableBdComp): BdIntfPin =
     new BdIntfPin(() => port, () => inst)
+}
+
+final class BdIntfPort private(portFn: () => String, instFn: () => InstantiableBdComp) extends BdPinBase(portFn, instFn) {
+  override def friendlyName: String = port
+}
+
+object BdIntfPort {
+  def apply(port: => String, inst: => InstantiableBdComp): BdIntfPort =
+    new BdIntfPort(() => port, () => inst)
 }
 
 

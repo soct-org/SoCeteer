@@ -20,7 +20,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     InModuleBody {
       // Instantiate the FPGA board from class stored in parameters
       val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
-      val fpgaDomain = fpga.fastestClock()
+      val fpgaDom = fpga.fastestClock()
 
       val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
       val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
@@ -38,8 +38,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
           throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
         )
         // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
-        val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDomain.reset)
-        val ddr4 = WithDomain(fpgaDomain) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
+        val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
+        val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
         require(ddr4Port.outputTo(ddr4.getPin(ddr4Port)))
 
         WithDomain(ddr4OutDom) { implicit dom =>

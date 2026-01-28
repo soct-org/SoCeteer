@@ -2,8 +2,8 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
-import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.{ClockDomain, HasFriendlyName, IsXilinx, Reset, ResetN, ResetType, VirtualPort, XIntfPort}
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.components.{BdIntfPin, BdIntfPort, BdPinBase, ClockDomain, HasFriendlyName, IsXilinx, ProvidesAutoClock, Reset, ResetN, ResetType, VirtualPort, XIntfPort}
 
 import scala.annotation.unused
 
@@ -61,7 +61,7 @@ object FPGARegistry {
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends XIntfPort {
+case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) extends XIntfPort {
 
   override def mode: String = "Master"
 
@@ -90,30 +90,65 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
 }
 
 /**
- * Case class representing a clock port on the FPGA board
+ * Case class representing a clock port provided by the FPGA board. This port can be used to drive clock domains within the design.
  *
- * @param instanceName  The name of the clock port provided by the board, usable in e.g. CLOCK_BOARD_INTERFACE
- * @param freqMHz The frequency of the clock in MHz
+ * @param instanceName The instance name of the clock port
  */
-case class FPGAClockPort(override val instanceName: String, freqMHz: Double)(implicit bd: SOCTBdBuilder, p: Parameters) extends XIntfPort  {
+case class FPGAClockPort(override val instanceName: String)
+                        (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
+  extends XIntfPort with ProvidesAutoClock {
+
+  require(dom.isDefined, s"FPGAClockPort $instanceName requires an associated FPGAClockDomain")
 
   override def mode: String = "Slave"
 
   override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
 
   override def defaultProperties: Map[String, String] = Map(
-    "CONFIG.FREQ_HZ" -> (freqMHz * 1e6).toInt.toString
+    "CONFIG.FREQ_HZ" -> (dom.get.freqMHz * 1e6).toInt.toString
   )
+
+  override protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdIntfPort = {
+    BdIntfPort(instanceName, this)
+  }
+
+  override val cds: Seq[ClockDomain] = Seq(dom.get)
+
+  // Override TCL commands - this port only provides clock ports
+  override def connectTclCommands: Seq[String] = clkTclCommands
 }
 
 /**
- * Class representing a port that provides a clock domain on the FPGA board
+ * Case class representing a clock domain provided by the FPGA board.
  *
- * @param port  The clock port provided by the board
- * @param reset Optional reset provider that is synced to this clock domain
+ * @param freqMHz The frequency of the clock domain in MHz
+ * @param reset   Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(val port: FPGAClockPort, reset: Option[FPGAResetPortType] = None)
-                           (implicit bd: SOCTBdBuilder) extends ClockDomain(port.freqMHz, reset) {
+final class FPGAClockDomain(override val freqMHz: Double, reset: ResetType)
+                           (implicit bd: SOCTBdBuilder) extends ClockDomain(freqMHz, Some(reset)) {
+
+  private var portOpt: Option[FPGAClockPort] = None
+
+  /**
+   * Get the associated FPGAClockPort for this clock domain.
+   * @throws XilinxDesignException if no port is associated
+   * @return The FPGAClockPort associated with this clock domain
+   */
+  @throws[XilinxDesignException]
+  def port: FPGAClockPort = {
+    portOpt.getOrElse(throw new XilinxDesignException(s"FPGAClockDomain $this has no associated FPGAClockPort"))
+  }
+
+  /**
+   * Associate an FPGAClockPort with this clock domain.
+   *
+   * @param port The FPGAClockPort to associate
+   * @return This FPGAClockDomain with the associated port
+   */
+  def withPort(port: FPGAClockPort): FPGAClockDomain = {
+    portOpt = Some(port)
+    this
+  }
 }
 
 /**
@@ -130,7 +165,8 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
   val xilinxPart: String
 
   /**
-   * The fastest clock domains provided by this FPGA board
+   * The clock domain representing the fastest clock available on this FPGA board.
+   * Provides
    */
   def fastestClock(): FPGAClockDomain
 

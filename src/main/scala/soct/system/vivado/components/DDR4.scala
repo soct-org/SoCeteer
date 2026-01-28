@@ -8,6 +8,7 @@ import soct.system.vivado.components.DDR4._
 import scala.collection.mutable
 
 /**
+ * DDR4 memory controller component for Xilinx FPGAs.
  *
  * @param cds The clock domains to which this DDR4 component will output clocks. Up to 4 additional clock outputs can be specified.
  * @param dom The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
@@ -15,26 +16,23 @@ import scala.collection.mutable
 case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
   extends InstantiableBdComp with Xip with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
+  require(dom.isDefined, s"DDR4 component must be instantiated in an FPGAClockDomain")
+
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
-  override def clockInPorts: Seq[BdPinBase] = Seq(BdPin(C0_SYS_CLK, this))
+  override def clockInPorts: Seq[BdPinBase] = Seq(BdIntfPin(C0_SYS_CLK, this))
 
   override def defaultProperties: Map[String, String] = {
     val props = mutable.Map.empty[String, String]
 
-    dom.foreach {
-      case fpgaDom: FPGAClockDomain =>
-        val ddr4Intfs = sourcePins.collect { case ddr4Port: DDR4Port => ddr4Port }
-        require(ddr4Intfs.size == 1, s"DDR4 component $this must have exactly one DDR4Port source pin, found ${ddr4Intfs.size}")
-        props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intfs.head.instanceName
-        props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> fpgaDom.port.instanceName
-        fpgaDom.reset.foreach {
-          case r: FPGAResetPortType =>
-            props += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
-          case _ => // Ignore other reset types for now
-        }
-      case _ =>
-        throw XilinxDesignException(s"DDR4 must be instantiated in an FPGAClockDomain")
+    val ddr4Intfs = sourcePins.collect { case ddr4Port: DDR4Port => ddr4Port }
+    require(ddr4Intfs.size == 1, s"DDR4 component $this must have exactly one DDR4Port source pin, found ${ddr4Intfs.size}")
+    props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intfs.head.instanceName
+    props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.port.instanceName
+    dom.get.reset.foreach {
+      case r: FPGAResetPortType =>
+        props += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
+      case _ => // Ignore other reset types for now
     }
 
     val freqs = cds.zipWithIndex.foldLeft(mutable.Map.empty[String, String]) {
@@ -42,7 +40,6 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
         acc += clkOutFreq(idx + 1) -> cd.freqMHz.toInt.toString
         acc
     }
-
     props.toMap ++ freqs
   }
 
