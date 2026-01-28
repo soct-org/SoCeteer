@@ -74,7 +74,7 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
    */
   protected override def connectToSinksImpl: TCLCommands = {
     val source = BdIntfPin(jtagIntf, this)
-    BdPinBase.connect(source, sinkPins)
+    BdPinPort.connect(source, sinkPins)
   }
 
   override protected def getPinImpl(source: SourceForSinks): Option[BdIntfPin] = {

@@ -61,7 +61,7 @@ object FPGARegistry {
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) extends XIntfPort {
+case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) extends BdIntfPort {
 
   override def mode: String = "Master"
 
@@ -71,7 +71,7 @@ case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilde
 /**
  * Case class representing a reset port on the FPGA board
  */
-abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) extends VirtualPort with ResetType {
+abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with ResetType {
   override def ifType: String = "rst"
 
   override def dir: String = "I"
@@ -96,7 +96,7 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
  */
 case class FPGAClockPort(override val instanceName: String)
                         (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends XIntfPort with ProvidesAutoClock {
+  extends BdIntfPort with ProvidesAutoClock {
 
   require(dom.isDefined, s"FPGAClockPort $instanceName requires an associated FPGAClockDomain")
 
@@ -108,8 +108,8 @@ case class FPGAClockPort(override val instanceName: String)
     "CONFIG.FREQ_HZ" -> (dom.get.freqMHz * 1e6).toInt.toString
   )
 
-  override protected def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdIntfPort = {
-    BdIntfPort(instanceName, this)
+  override protected def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdIntfPort = {
+    this
   }
 
   override val domains: Seq[ClockDomain] = Seq(dom.get)

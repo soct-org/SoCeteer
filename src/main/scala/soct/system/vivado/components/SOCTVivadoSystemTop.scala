@@ -34,11 +34,11 @@ class SOCTVivadoSystemTop(s: SOCTVivadoSystem)(implicit p: Parameters, bd: SOCTB
     bus ++ Seq(debug)
   }
 
-  override def resetInPorts: Seq[BdPinBase] = {
+  override def resetInPorts: Seq[BdPinPort] = {
     ioClockOrReset(isReset = true) // Active-high resets
   }
 
-  override def clockInPorts: Seq[BdPinBase] = {
+  override def clockInPorts: Seq[BdPinPort] = {
     ioClockOrReset(isReset = false)
   }
 

@@ -17,14 +17,14 @@ trait ProvidesAutoDomain[D <: CollectsSinks] {
    * Resolve the output pin for a given domain and sink
    */
   @throws[XilinxDesignException]
-  protected def outPortImpl(domain: D, domainIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPinBase
+  protected def outPortImpl(domain: D, domainIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPinPort
 
   // Add connection commands for each domain/sink pair
   otherConnects.addOne(() => for {
     (domain, domIdx) <- domains.zipWithIndex
     (sink, pinIdx) <- domain.sinkPins.zipWithIndex
     source = outPortImpl(domain, domIdx, sink, pinIdx)
-  } yield BdPinBase.connect(source, sink))
+  } yield BdPinPort.connect(source, sink))
 }
 
 trait SourceForSinks extends CollectsSinks {
@@ -51,10 +51,10 @@ trait SourceForSinks extends CollectsSinks {
  * Trait for components that can collect BdPinBases
  */
 trait CollectsSinks {
-  protected val _sinkPins: mutable.Set[BdPinBase] = mutable.Set.empty
+  protected val _sinkPins: mutable.Set[BdPinPort] = mutable.Set.empty
 
   // public view of the collected sink pins
-  def sinkPins: View[BdPinBase] = _sinkPins.view
+  def sinkPins: View[BdPinPort] = _sinkPins.view
 
   /**
    * Register a sink BdPinBase that this component provides data to.
@@ -62,7 +62,7 @@ trait CollectsSinks {
    * @param sink The sink BdPinBase
    * @return True if the registration was successful
    */
-  def outputTo(sink: BdPinBase): Boolean = {
+  def outputTo(sink: BdPinPort): Boolean = {
     _sinkPins += sink
     true
   }
@@ -86,7 +86,7 @@ trait HasSinkPins {
    * @param source The source to look up
    * @return Some(BdPinBase) if found, None otherwise
    */
-  protected def getPinImpl(source: SourceForSinks): Option[BdPinBase]
+  protected def getPinImpl(source: SourceForSinks): Option[BdPinPort]
 
   /**
    * Get the BdPinBase corresponding to the given source.
@@ -96,7 +96,7 @@ trait HasSinkPins {
    * @throws XilinxDesignException if no BdPinBase is found for the source
    */
   @throws[XilinxDesignException]
-  final def getPin(source: SourceForSinks): BdPinBase = {
+  final def getPin(source: SourceForSinks): BdPinPort = {
     val sinkOpt = getPinImpl(source)
     if (sinkOpt.isEmpty) {
       throw XilinxDesignException(s"No sink pin found for source $source in component $this")

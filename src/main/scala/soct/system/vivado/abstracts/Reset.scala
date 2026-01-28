@@ -23,12 +23,12 @@ trait ReceivesReset {
   /**
    * The active low reset ports for this component, to be connected to the reset provider of the clock domain if available
    */
-  def resetNInPorts: Seq[BdPinBase] = Seq.empty
+  def resetNInPorts: Seq[BdPinPort] = Seq.empty
 
   /**
    * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
    */
-  def resetInPorts: Seq[BdPinBase] = Seq.empty
+  def resetInPorts: Seq[BdPinPort] = Seq.empty
 }
 
 /**

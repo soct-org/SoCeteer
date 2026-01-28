@@ -22,9 +22,9 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 
-  override def clockInPorts: Seq[BdPinBase] = Seq(BdPin(CLKIn, this))
+  override def clockInPorts: Seq[BdPinPort] = Seq(BdPin(CLKIn, this))
 
-  override def resetInPorts: Seq[BdPinBase] = Seq(BdPin(RSTIn, this))
+  override def resetInPorts: Seq[BdPinPort] = Seq(BdPin(RSTIn, this))
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
@@ -46,13 +46,13 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
     m.toMap
   }
 
-  override protected def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
+  override protected def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPin = {
     val clkoutIdx = domIdx + 1
     // TODO validate clkoutIdx based on selected board, some have more than others
     BdPin(clkOut(clkoutIdx), this)
   }
 
-  override protected def getPinImpl(source: SourceForSinks): Option[BdPinBase] = {
+  override protected def getPinImpl(source: SourceForSinks): Option[BdPinPort] = {
     None // For now, no specific pin mapping.
   }
 

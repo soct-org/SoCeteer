@@ -196,7 +196,7 @@ class SOCTBdBuilder {
 
     components.foreach {
       case x: Xip => xips += x
-      case x: XIntfPort => xintfs += x
+      case x: BdIntfPort => xintfs += x
       case x: XInlineHDL => xinlines += x
       case m: IsModule => modules += m
       case _ => // do nothing

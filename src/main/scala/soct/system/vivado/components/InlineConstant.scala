@@ -31,7 +31,7 @@ case class InlineConstant(value: UInt, nBits: Int)
    */
   protected override def connectToSinksImpl(): TCLCommands = {
     val source = BdPin(outPort, this)
-    BdPinBase.connect(source, sinkPins)
+    BdPinPort.connect(source, sinkPins)
   }
 }
 

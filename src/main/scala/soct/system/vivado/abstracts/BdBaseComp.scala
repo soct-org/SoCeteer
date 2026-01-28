@@ -1,7 +1,7 @@
 package soct.system.vivado.abstracts
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
 
 
 /**
@@ -80,5 +80,73 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       }
       dom.foreach { d => comp.clockInPorts.foreach(d.outputTo) }
     case _ => // Do nothing
+  }
+}
+
+/**
+ * Base class for Board Design Pins, representing a port on a component instance.
+ */
+trait BdPinPort {
+  /**
+   * The port name for this pin on its parent component. If this is a port, this is the instance name.
+   */
+  def port(): String
+
+  /**
+   * The parent component instance for this pin. If this is a port, the parent is itself.
+   */
+  def parentInst(): BdComp
+
+  /**
+   * The reference string for this pin in TCL commands
+   */
+  def ref: String
+
+  override def toString: String = ref
+}
+
+
+object BdPinPort {
+
+  def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
+    sinks.map(sink => connect(source, sink)).toSeq
+  }
+
+  def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
+    val command = (source, sink) match {
+      // -------- Interface connections --------
+      case (_: BdIntfPin, _: BdIntfPin) =>
+        s"connect_bd_intf_net [get_bd_intf_pins $source] [get_bd_intf_pins $sink]"
+
+      case (_: BdIntfPort, _: BdIntfPort) =>
+        s"connect_bd_intf_net [get_bd_intf_ports $source] [get_bd_intf_ports $sink]"
+
+      case (_: BdIntfPin, _: BdIntfPort) =>
+        s"connect_bd_intf_net [get_bd_intf_pins $source] [get_bd_intf_ports $sink]"
+
+      case (_: BdIntfPort, _: BdIntfPin) =>
+        s"connect_bd_intf_net [get_bd_intf_ports $source] [get_bd_intf_pins $sink]"
+
+      // -------- ERROR: interface vs net --------
+      case (_: BdIntfPin | _: BdIntfPort, _) |
+           (_, _: BdIntfPin | _: BdIntfPort) =>
+        throw new XilinxDesignException(
+          s"BD autoconnect pin type mismatch: source=$source sink=$sink (interface vs net)"
+        )
+
+      // -------- Scalar net connections --------
+      case (_: BdPin, _: BdPin) =>
+        s"connect_bd_net [get_bd_pins $source] [get_bd_pins $sink]"
+
+      case (_: BdPort, _: BdPort) =>
+        s"connect_bd_net [get_bd_ports $source] [get_bd_ports $sink]"
+
+      case (_: BdPin, _: BdPort) =>
+        s"connect_bd_net [get_bd_pins $source] [get_bd_ports $sink]"
+
+      case (_: BdPort, _: BdPin) =>
+        s"connect_bd_net [get_bd_ports $source] [get_bd_pins $sink]"
+    }
+    command.tcl
   }
 }

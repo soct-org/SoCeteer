@@ -21,7 +21,7 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
-  override def clockInPorts: Seq[BdPinBase] = Seq(BdIntfPin(C0_SYS_CLK, this))
+  override def clockInPorts: Seq[BdPinPort] = Seq(BdIntfPin(C0_SYS_CLK, this))
 
   override def defaultProperties: Map[String, String] = {
     val props = mutable.Map.empty[String, String]
@@ -45,14 +45,14 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
   }
 
 
-  override protected def getPinImpl(source: SourceForSinks): Option[BdPinBase] = {
+  override protected def getPinImpl(source: SourceForSinks): Option[BdPinPort] = {
     source match {
       case _: DDR4Port => Some(BdIntfPin(C0_DDR4, this))
       case _ => None
     }
   }
 
-  override def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
+  override def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPin = {
     val clkoutIdx = domIdx + 1
     if (clkoutIdx > 4) {
       throw XilinxDesignException(s"DDR4 only supports up to 4 clock outputs, requested output index $clkoutIdx")
