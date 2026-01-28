@@ -1,4 +1,4 @@
-package soct.system.vivado.utils
+package soct.system.vivado.abstracts
 
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, TCLCommands, XilinxDesignException}
 

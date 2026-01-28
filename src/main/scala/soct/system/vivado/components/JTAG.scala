@@ -5,7 +5,7 @@ import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, TCLCommands, XilinxDesignException}
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable

@@ -5,7 +5,7 @@ import chisel3.{Bundle, Data}
 import freechips.rocketchip.amba.axi4.AXI4Bundle
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 import scala.collection.mutable
 

@@ -3,7 +3,7 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 import scala.annotation.unused
 

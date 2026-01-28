@@ -2,7 +2,7 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 
 class ZCU104(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGA {

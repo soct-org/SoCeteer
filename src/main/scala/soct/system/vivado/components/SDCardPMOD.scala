@@ -3,7 +3,7 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 import java.nio.file.{Files, Path}
 

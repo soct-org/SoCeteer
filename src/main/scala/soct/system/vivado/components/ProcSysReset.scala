@@ -3,7 +3,7 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.ProcSysReset._
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 /**
  * Proc Sys Reset IP core from Xilinx

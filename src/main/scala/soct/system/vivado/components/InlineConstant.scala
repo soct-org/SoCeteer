@@ -4,7 +4,7 @@ import chisel3.UInt
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.InlineConstant._
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 
 /**

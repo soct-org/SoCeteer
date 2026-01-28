@@ -4,7 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortType}
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 import soct.system.vivado.components.DDR4._
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 import scala.collection.mutable
 

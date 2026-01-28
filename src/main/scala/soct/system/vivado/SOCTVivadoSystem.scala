@@ -7,7 +7,7 @@ import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
 import soct.system.vivado.components.{AXIXIntfPortMapping, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, JTAGXIntfPortMapping, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.FPGARegistry
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 
 /**

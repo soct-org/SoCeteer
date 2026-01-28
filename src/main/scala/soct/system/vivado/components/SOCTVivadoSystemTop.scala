@@ -4,7 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.HasSOCTConfig
 import soct.system.vivado.SOCTVivado.portToBdPin
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivadoSystem}
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses

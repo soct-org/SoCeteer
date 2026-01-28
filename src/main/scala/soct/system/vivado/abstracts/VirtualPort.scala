@@ -1,4 +1,4 @@
-package soct.system.vivado.utils
+package soct.system.vivado.abstracts
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}

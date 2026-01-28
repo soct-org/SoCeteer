@@ -3,7 +3,7 @@ package soct.system.vivado
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
 import soct.system.vivado.fpga.FPGA
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 import java.nio.file.Path
 import scala.collection.mutable

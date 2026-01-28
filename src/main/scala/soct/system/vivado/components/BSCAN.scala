@@ -3,7 +3,7 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN.outPort
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
-import soct.system.vivado.utils._
+import soct.system.vivado.abstracts._
 
 
 case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(bd, p, None)
