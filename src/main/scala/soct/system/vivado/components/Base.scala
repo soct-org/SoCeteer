@@ -1,7 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
 import soct.XilinxFPGAKey
 
 import java.nio.file.{Files, Path}
@@ -18,6 +18,49 @@ abstract class BdComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFr
   bd.add(this)
 }
 
+
+/**
+ * Generic trait for automatic domain-based connections (clock, reset, etc.)
+ */
+trait ProvidesAutoDomain[D <: CollectsSinks] {
+  this: SourceForSinks =>
+
+  /** Ordered domains provided by this component */
+  protected val domains: Seq[D]
+
+  /**
+   * Resolve the output pin for a given domain and sink
+   */
+  @throws[XilinxDesignException]
+  protected def outPortImpl(domain: D, domainIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPinBase
+
+  // Add connection commands for each domain/sink pair
+  otherConnects.addOne(() => for {
+    (domain, domIdx) <- domains.zipWithIndex
+    (sink, pinIdx) <- domain.sinkPins.zipWithIndex
+    source = outPortImpl(domain, domIdx, sink, pinIdx)
+  } yield BdPinBase.connect(source, sink))
+}
+
+trait SourceForSinks extends CollectsSinks {
+
+  /**
+   * Emit the TCL commands to connect this component in the design
+   */
+  protected def connectToSinksImpl: TCLCommands
+
+  /**
+   * Children classes can add extra connection commands here that are later appended to the main connection commands.
+   */
+  protected var otherConnects : mutable.ListBuffer[() => TCLCommands] = mutable.ListBuffer.empty
+
+  /**
+   * Get the TCL commands to connect this component in the design
+   */
+  def getCommands: TCLCommands = {
+    connectToSinksImpl ++ otherConnects.flatMap(fn => fn()).toSeq
+  }
+}
 
 /**
  * Trait for components that can be instantiated in the design
@@ -49,12 +92,12 @@ abstract class InstantiableBdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom
   /**
    * Emit the TCL command to instantiate this component in the design
    */
-  def instTclCommands: Seq[String] = {
+  def instTcl: TCLCommands = {
     this match {
       case x: IsXilinx =>
-        Seq(s"set $instanceName [create_bd_cell -type ${x.tpe} -vlnv ${x.partName} $instanceName]")
+        Seq(s"set $instanceName [create_bd_cell -type ${x.tpe} -vlnv ${x.partName} $instanceName]".tcl)
       case module: IsModule =>
-        Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]")
+        Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]".tcl)
       case _ =>
         throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
     }
@@ -129,7 +172,7 @@ trait XIntf extends IsXilinx {
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
 abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp() with XIntf with SourceForPins {
+  extends InstantiableBdComp() with XIntf with SourceForSinks {
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
    */
@@ -138,11 +181,11 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[
   /**
    * Emit the TCL command to create the port for this component
    */
-  override def instTclCommands: Seq[String] = {
-    Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]")
+  override def instTcl: TCLCommands = {
+    Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]".tcl)
   }
 
-  override def connectTclCommands: Seq[String] = {
+  protected override def connectToSinksImpl: TCLCommands = {
     val source = BdIntfPort(instanceName, this)
     BdPinBase.connect(source, sinkPins)
   }
@@ -152,7 +195,7 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
 abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InstantiableBdComp()(bd, p, None) with SourceForPins {
+  extends InstantiableBdComp()(bd, p, None) with SourceForSinks {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -177,17 +220,17 @@ abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters)
   /**
    * Emit the TCL command to create the port for this component
    */
-  override def instTclCommands: Seq[String] = {
+  override def instTcl: TCLCommands = {
     // Either none or both of from/to must be defined
     val range = (from, to) match {
       case (Some(f), Some(t)) => s"-from $f -to $t "
       case (None, None) => ""
       case _ => throw new IllegalStateException(s"BdPort $instanceName must have either both or neither of from/to defined")
     }
-    Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]")
+    Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]".tcl)
   }
 
-  override def connectTclCommands: Seq[String] = {
+  protected override def connectToSinksImpl: TCLCommands = {
     val source = BdPort(instanceName, this)
     BdPinBase.connect(source, sinkPins)
   }
@@ -208,24 +251,23 @@ abstract class BdPinBase(portFn: () => String, instFn: () => InstantiableBdComp)
 
 object BdPinBase {
 
-  def connect(sourcePin: BdPinBase, sinkPins: Iterable[BdPinBase]): Seq[String] = {
+  def connect(sourcePin: BdPinBase, sinkPins: Iterable[BdPinBase]): TCLCommands = {
     sinkPins.map(sinkPin => connect(sourcePin, sinkPin)).toSeq
   }
 
-
-  def connect(sourcePin: BdPinBase, sinkPin: BdPinBase): String = {
-    (sourcePin, sinkPin) match {
+  def connect(sourcePin: BdPinBase, sinkPin: BdPinBase): TCLCommand = {
+    val command = (sourcePin, sinkPin) match {
       // -------- Interface connections --------
-      case (_: BdIntfPin,  _: BdIntfPin)  =>
+      case (_: BdIntfPin, _: BdIntfPin) =>
         s"connect_bd_intf_net [get_bd_intf_pins $sourcePin] [get_bd_intf_pins $sinkPin]"
 
       case (_: BdIntfPort, _: BdIntfPort) =>
         s"connect_bd_intf_net [get_bd_intf_ports $sourcePin] [get_bd_intf_ports $sinkPin]"
 
-      case (_: BdIntfPin,  _: BdIntfPort) =>
+      case (_: BdIntfPin, _: BdIntfPort) =>
         s"connect_bd_intf_net [get_bd_intf_pins $sourcePin] [get_bd_intf_ports $sinkPin]"
 
-      case (_: BdIntfPort, _: BdIntfPin)  =>
+      case (_: BdIntfPort, _: BdIntfPin) =>
         s"connect_bd_intf_net [get_bd_intf_ports $sourcePin] [get_bd_intf_pins $sinkPin]"
 
       // -------- ERROR: interface vs net --------
@@ -236,18 +278,19 @@ object BdPinBase {
         )
 
       // -------- Scalar net connections --------
-      case (_: BdPin,  _: BdPin)  =>
+      case (_: BdPin, _: BdPin) =>
         s"connect_bd_net [get_bd_pins $sourcePin] [get_bd_pins $sinkPin]"
 
       case (_: BdPort, _: BdPort) =>
         s"connect_bd_net [get_bd_ports $sourcePin] [get_bd_ports $sinkPin]"
 
-      case (_: BdPin,  _: BdPort) =>
+      case (_: BdPin, _: BdPort) =>
         s"connect_bd_net [get_bd_pins $sourcePin] [get_bd_ports $sinkPin]"
 
-      case (_: BdPort, _: BdPin)  =>
+      case (_: BdPort, _: BdPin) =>
         s"connect_bd_net [get_bd_ports $sourcePin] [get_bd_pins $sinkPin]"
     }
+    command.tcl
   }
 }
 
@@ -286,7 +329,7 @@ object BdIntfPort {
 /**
  * Trait for components that can collect BdPinBases
  */
-trait CollectsPins {
+trait CollectsSinks {
   protected val _sinkPins: mutable.Set[BdPinBase] = mutable.Set.empty
 
   // public view of the collected sink pins
@@ -309,27 +352,12 @@ trait CollectsPins {
   }
 }
 
-
-trait HasTCLConnects {
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  def connectTclCommands: Seq[String]
-}
-
-
-/**
- * Trait for components that can collect BdPinBases and also provide a source, i.e. connect to them.
- */
-trait SourceForPins extends CollectsPins with HasTCLConnects
-
-
 /**
  * Trait for components that have sink pins
  */
 trait HasSinkPins {
 
-  protected val sourcePins = mutable.Set[SourceForPins]()
+  protected val sourcePins = mutable.Set[SourceForSinks]()
 
   /**
    * Get the BdPinBase corresponding to the given source, if any.
@@ -337,7 +365,7 @@ trait HasSinkPins {
    * @param source The source to look up
    * @return Some(BdPinBase) if found, None otherwise
    */
-  protected def getPinImpl(source: SourceForPins): Option[BdPinBase]
+  protected def getPinImpl(source: SourceForSinks): Option[BdPinBase]
 
   /**
    * Get the BdPinBase corresponding to the given source.
@@ -347,7 +375,7 @@ trait HasSinkPins {
    * @throws XilinxDesignException if no BdPinBase is found for the source
    */
   @throws[XilinxDesignException]
-  final def getPin(source: SourceForPins): BdPinBase = {
+  final def getPin(source: SourceForSinks): BdPinBase = {
     val sinkOpt = getPinImpl(source)
     if (sinkOpt.isEmpty) {
       throw XilinxDesignException(s"No sink pin found for source $source in component $this")

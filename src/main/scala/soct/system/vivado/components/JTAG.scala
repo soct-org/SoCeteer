@@ -4,7 +4,7 @@ import chisel3.Bool
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
-import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, TCLCommands, XilinxDesignException}
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
@@ -33,7 +33,7 @@ case class JTAGXIntfPortMapping(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBu
     portMappings.toMap
   }
 
-  override protected def getPinImpl(source: SourceForPins): Option[BdIntfPin] = {
+  override protected def getPinImpl(source: SourceForSinks): Option[BdIntfPin] = {
     source match {
       case _: BSCAN2JTAG => Some(BdIntfPin(ifName, bd.topInstance()))
       case _ => None
@@ -46,7 +46,7 @@ case class JTAGXIntfPortMapping(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBu
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
 case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InstantiableBdComp()(bd, p, None) with IsModule with HasSinkPins with SourceForPins {
+  extends InstantiableBdComp()(bd, p, None) with IsModule with HasSinkPins with SourceForSinks {
 
   /**
    * The reference name of this module - as defined in the collateral files
@@ -71,12 +71,12 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
   /**
    * Emit the TCL commands to connect this component in the design
    */
-  override def connectTclCommands: Seq[String] = {
+  protected override def connectToSinksImpl: TCLCommands = {
     val source = BdIntfPin(jtagIntf, this)
     BdPinBase.connect(source, sinkPins)
   }
 
-  override protected def getPinImpl(source: SourceForPins): Option[BdIntfPin] = {
+  override protected def getPinImpl(source: SourceForSinks): Option[BdIntfPin] = {
     source match {
       case _: BSCAN => Some(BdIntfPin(BSCAN2JTAG.bscanIntf, this))
       case _ => None

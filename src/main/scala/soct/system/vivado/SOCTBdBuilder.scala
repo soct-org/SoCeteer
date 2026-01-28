@@ -1,8 +1,8 @@
 package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
-import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths, XilinxFPGAKey}
-import soct.system.vivado.components.{BdComp, HasCollaterals, HasTCLConnects, InstantiableBdComp, IsModule, XInlineHDL, XIntfPort, XIntfPortMapping, Xip}
+import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
+import soct.system.vivado.components.{BdComp, HasCollaterals, InstantiableBdComp, IsModule, SourceForSinks, XInlineHDL, XIntfPort, XIntfPortMapping, Xip}
 import soct.system.vivado.fpga.FPGA
 
 import java.nio.file.Path
@@ -160,15 +160,16 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    val instantiateCommands, connectCommands: mutable.ListBuffer[String] = mutable.ListBuffer.empty[String]
+    var instantiateCommands, connectCommands: mutable.Seq[TCLCommand] = mutable.Seq.empty[TCLCommand]
+
     val xintfs, xips, xinlines, modules = mutable.ListBuffer.empty[BdComp]
     components.foreach {
-      case inst: InstantiableBdComp => instantiateCommands ++= inst.instTclCommands
+      case inst: InstantiableBdComp => instantiateCommands ++= inst.instTcl
       case _ =>
     }
 
     components.foreach {
-      case c: HasTCLConnects => connectCommands ++= c.connectTclCommands
+      case c: SourceForSinks => connectCommands ++= c.getCommands
       case _ =>
     }
 
@@ -193,7 +194,7 @@ class SOCTBdBuilder {
     // Add the BD-specific variables which are defined statically in SOCTBdBuilder
     val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ this.bdVars
 
-    components.foreach{
+    components.foreach {
       case x: Xip => xips += x
       case x: XIntfPort => xintfs += x
       case x: XInlineHDL => xinlines += x

@@ -1,7 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.ProcSysReset._
 
 /**
@@ -9,7 +9,7 @@ import soct.system.vivado.components.ProcSysReset._
  * @param dom Only used for the slowestSyncClk connection
  */
 case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with Xip with ReceivesClock with SourceForPins with ProvidesAutoReset {
+  extends InstantiableBdComp with Xip with ReceivesClock with SourceForSinks with ProvidesAutoReset {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
@@ -41,14 +41,12 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
   /**
    * The reset providers provided by this component - Ensure proper ordering if multiple resets are present!
    */
-  override val resets: Seq[ResetType] = Seq(
+  override val domains: Seq[ResetType] = Seq(
     PeripheralAResetN,
     PeripheralReset,
     BusStructReset,
     InterconnectResetN
   )
-
-  override def connectTclCommands: Seq[String] = resetTclCommands
 
   /**
    * Implementation method to get the reset output port for a given reset type and sink pin
@@ -60,7 +58,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
    * @throws XilinxDesignException if a reset output port cannot be found for a given reset type and sink pin
    * @return The source BdPin to connect to the sink pin
    */
-  override protected def resetOutPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
+  override protected def outPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
     reset match {
       case PeripheralAResetN => BdPin(peripheralAReset, this)
       case PeripheralReset => BdPin(peripheralReset, this)
@@ -68,6 +66,10 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
       case InterconnectResetN => BdPin(interconnectAResetN, this)
       case _ => throw new Exception(s"Unknown reset type for ProcSysReset: ${reset.getClass.getName}")
     }
+  }
+
+  override protected def connectToSinksImpl: TCLCommands = {
+    Seq.empty // For now, no additional connections needed
   }
 }
 

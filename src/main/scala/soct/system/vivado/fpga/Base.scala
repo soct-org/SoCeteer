@@ -2,7 +2,7 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 import soct.system.vivado.components.{BdIntfPin, BdIntfPort, BdPinBase, ClockDomain, HasFriendlyName, IsXilinx, ProvidesAutoClock, Reset, ResetN, ResetType, VirtualPort, XIntfPort}
 
 import scala.annotation.unused
@@ -108,14 +108,11 @@ case class FPGAClockPort(override val instanceName: String)
     "CONFIG.FREQ_HZ" -> (dom.get.freqMHz * 1e6).toInt.toString
   )
 
-  override protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdIntfPort = {
+  override protected def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdIntfPort = {
     BdIntfPort(instanceName, this)
   }
 
-  override val cds: Seq[ClockDomain] = Seq(dom.get)
-
-  // Override TCL commands - this port only provides clock ports
-  override def connectTclCommands: Seq[String] = clkTclCommands
+  override val domains: Seq[ClockDomain] = Seq(dom.get)
 }
 
 /**

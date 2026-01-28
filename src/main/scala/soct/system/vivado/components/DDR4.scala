@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortType}
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 import soct.system.vivado.components.DDR4._
 
 import scala.collection.mutable
@@ -10,11 +10,11 @@ import scala.collection.mutable
 /**
  * DDR4 memory controller component for Xilinx FPGAs.
  *
- * @param cds The clock domains to which this DDR4 component will output clocks. Up to 4 additional clock outputs can be specified.
- * @param dom The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
+ * @param domains The clock domains to which this DDR4 component will output clocks. Up to 4 additional clock outputs can be specified.
+ * @param dom     The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
-case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends InstantiableBdComp with Xip with SourceForPins with HasSinkPins with AutoConnect with ProvidesAutoClock {
+case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
+  extends InstantiableBdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   require(dom.isDefined, s"DDR4 component must be instantiated in an FPGAClockDomain")
 
@@ -35,7 +35,7 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
       case _ => // Ignore other reset types for now
     }
 
-    val freqs = cds.zipWithIndex.foldLeft(mutable.Map.empty[String, String]) {
+    val freqs = domains.zipWithIndex.foldLeft(mutable.Map.empty[String, String]) {
       case (acc, (cd, idx)) =>
         acc += clkOutFreq(idx + 1) -> cd.freqMHz.toInt.toString
         acc
@@ -43,26 +43,24 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
     props.toMap ++ freqs
   }
 
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  override def connectTclCommands: Seq[String] = {
-    clkTclCommands
-  }
 
-  override protected def getPinImpl(source: SourceForPins): Option[BdPinBase] = {
+  override protected def getPinImpl(source: SourceForSinks): Option[BdPinBase] = {
     source match {
       case _: DDR4Port => Some(BdIntfPin(C0_DDR4, this))
       case _ => None
     }
   }
 
-  override def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
+  override def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPin = {
     val clkoutIdx = domIdx + 1
     if (clkoutIdx > 4) {
       throw XilinxDesignException(s"DDR4 only supports up to 4 clock outputs, requested output index $clkoutIdx")
     }
     BdPin(clkOut(clkoutIdx), this)
+  }
+
+  override protected def connectToSinksImpl: TCLCommands = {
+    Seq.empty // For now, only has clock outputs (will change in future)
   }
 }
 

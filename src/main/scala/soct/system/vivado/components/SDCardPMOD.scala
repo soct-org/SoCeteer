@@ -1,10 +1,8 @@
 package soct.system.vivado.components
 
-import freechips.rocketchip.subsystem.{CanHaveMasterAXI4MMIOPort, CanHaveSlaveAXI4Port}
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
-import soct.{HasSOCTConfig, XilinxFPGAKey}
 
 import java.nio.file.{Files, Path}
 
@@ -82,7 +80,7 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
     Some(dest)
   }
 
-  protected override def getPinImpl(source: SourceForPins): Option[BdPinBase] = {
+  protected override def getPinImpl(source: SourceForSinks): Option[BdPinBase] = {
     source match {
       case _: SDIOCDPort => Some(BdPin(sdioCD, this))
       case _: SDIOCmdPort => Some(BdPin(sdioCMD, this))

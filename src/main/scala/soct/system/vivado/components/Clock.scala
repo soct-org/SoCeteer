@@ -1,6 +1,6 @@
 package soct.system.vivado.components
 
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 
 /**
  * Trait for components that receive clock inputs
@@ -16,43 +16,9 @@ trait ReceivesClock {
 /**
  * Trait for components that provide automatic clock connections
  */
-trait ProvidesAutoClock {
-  this: InstantiableBdComp =>
+trait ProvidesAutoClock extends ProvidesAutoDomain[ClockDomain] {
+  this: SourceForSinks =>
 
-  /**
-   * The clock domains provided by this component - Ensure proper ordering if multiple clock domains are present!
-   */
-  val cds: Seq[ClockDomain]
-
-  /**
-   * Implementation method to get the clock output port for a given clock domain and sink pin
-   *
-   * @param cd      The clock domain
-   * @param domIdx  The index of the clock domain in the cds sequence
-   * @param sinkPin The sink pin to connect to
-   * @param pinIdx  The index of the sink pin in the sinkPins sequence
-   * @throws XilinxDesignException if a clock output port cannot be found for a given clock domain and sink pin
-   * @return The source BdPinBase to connect to the sink pin
-   */
-  @throws[XilinxDesignException]
-  protected def clockOutPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinBase, pinIdx: Int): BdPinBase
-
-  /**
-   * TCL commands to connect the clock output ports to the sink pins
-   *
-   * @throws XilinxDesignException if a clock output port cannot be found for a given clock domain and sink pin
-   * @return The sequence of TCL commands
-   */
-  @throws[XilinxDesignException]
-  def clkTclCommands: Seq[String] = {
-    for {
-      (cd, domIdx) <- cds.zipWithIndex
-      (sink, pinIdx) <- cd.sinkPins.zipWithIndex
-      source = clockOutPortImpl(cd, domIdx, sink, pinIdx)
-    } yield {
-      BdPinBase.connect(source, sink)
-    }
-  }
 }
 
 /**
@@ -65,7 +31,7 @@ trait ProvidesAutoClock {
 case class ClockDomain(freqMHz: Double,
                        var reset: Option[ResetType] = None,
                        tclVarName: Option[String] = None)
-                      (implicit bd: SOCTBdBuilder) extends CollectsPins {
+                      (implicit bd: SOCTBdBuilder) extends CollectsSinks {
   if (tclVarName.isDefined) {
     bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
   }

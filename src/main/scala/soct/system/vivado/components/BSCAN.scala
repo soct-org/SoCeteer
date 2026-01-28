@@ -2,11 +2,11 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN.outPort
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 
 
 case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp()(bd, p, None)
-  with Xip with SourceForPins {
+  with Xip with SourceForSinks {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
 
@@ -19,7 +19,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends Instantiab
     )
   }
 
-  override def connectTclCommands: Seq[String] = {
+  protected override def connectToSinksImpl: TCLCommands = {
     sinkPins.zipWithIndex.map {
       case (sinkPin: BdIntfPin, i) =>
         val sourcePin = BdIntfPin(outPort(i), this) // TODO check type

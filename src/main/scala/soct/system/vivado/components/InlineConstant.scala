@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import chisel3.UInt
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.InlineConstant._
 
 /**
@@ -13,7 +13,7 @@ import soct.system.vivado.components.InlineConstant._
  */
 case class InlineConstant(value: UInt, nBits: Int)
                          (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends InstantiableBdComp with XInlineHDL with SourceForPins {
+  extends InstantiableBdComp with XInlineHDL with SourceForSinks {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -27,7 +27,7 @@ case class InlineConstant(value: UInt, nBits: Int)
   /**
    * Emit the TCL commands to connect this component in the design
    */
-  override def connectTclCommands: Seq[String] = {
+  protected override def connectToSinksImpl(): TCLCommands = {
     val source = BdPin(outPort, this)
     BdPinBase.connect(source, sinkPins)
   }
