@@ -61,9 +61,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       if (debugIf.systemjtag.isDefined) {
         // Create TDT signal for Vivado JTAG integration - TDO is driven when TDT is low
         val jtagIO = debugIf.systemjtag.get
+        val jtag = jtagIO.jtag
         val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")
-        jtag_tdt := ~jtagIO.jtag.TDO.driven
-        val jtagXIntf = JTAGXIntfPortMapping(jtagIO.jtag, jtag_tdt)
+        jtag_tdt := ~jtag.TDO.driven
+        val jtagXIntf = JTAGXIntfPortMapping(jtag, jtag_tdt)
 
         // Tie off unused fields using inline constants - rename for clarity in block design
         val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {

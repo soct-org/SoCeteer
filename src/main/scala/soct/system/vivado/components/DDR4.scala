@@ -73,7 +73,7 @@ case class DDR4(override val cds: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, 
 object DDR4 {
   private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
 
-  private def clkOutFreq(idx: Int): String = s"CONFIG.UI_CLKOUT${idx}_FREQ_HZ"
+  private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
 
   private val C0_SYS_CLK = "C0_SYS_CLK"
   private val C0_DDR4 = "C0_DDR4"

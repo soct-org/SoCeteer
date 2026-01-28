@@ -79,13 +79,13 @@ abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) exte
 
 case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with Reset {
   override def defaultProperties: Map[String, String] = Map(
-    "POLARITY" -> "ACTIVE_HIGH"
+    "CONFIG.POLARITY" -> "ACTIVE_HIGH"
   )
 }
 
 case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with ResetN {
   override def defaultProperties: Map[String, String] = Map(
-    "POLARITY" -> "ACTIVE_LOW"
+    "CONFIG.POLARITY" -> "ACTIVE_LOW"
   )
 }
 
@@ -102,7 +102,7 @@ case class FPGAClockPort(override val instanceName: String, freqMHz: Double)(imp
   override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
 
   override def defaultProperties: Map[String, String] = Map(
-    "FREQ_HZ" -> (freqMHz * 1e6).toInt.toString
+    "CONFIG.FREQ_HZ" -> (freqMHz * 1e6).toInt.toString
   )
 }
 
