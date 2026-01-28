@@ -47,10 +47,10 @@ trait ProvidesAutoClock {
   def clkTclCommands: Seq[String] = {
     for {
       (cd, domIdx) <- cds.zipWithIndex
-      (sinkPin, pinIdx) <- cd.sinkPins.zipWithIndex
-      sourcePin = clockOutPortImpl(cd, domIdx, sinkPin, pinIdx)
+      (sink, pinIdx) <- cd.sinkPins.zipWithIndex
+      source = clockOutPortImpl(cd, domIdx, sink, pinIdx)
     } yield {
-      BdPinBase.connect(sourcePin, sinkPin)
+      BdPinBase.connect(source, sink)
     }
   }
 }

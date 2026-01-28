@@ -72,11 +72,8 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = {
-    sinkPins.map {
-      case sink: BdIntfPin =>
-        s"connect_bd_intf_net [get_bd_intf_pins $instanceName/$jtagIntf] [get_bd_intf_pins $sink]"
-      case sink: Any => throw XilinxDesignException(s"Unsupported sink pin type in BSCAN2JTAG: $sink")
-    }.toSeq
+    val source = BdIntfPin(jtagIntf, this)
+    BdPinBase.connect(source, sinkPins)
   }
 
   override protected def getPinImpl(source: SourceForPins): Option[BdIntfPin] = {

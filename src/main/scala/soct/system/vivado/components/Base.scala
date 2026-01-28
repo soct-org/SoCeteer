@@ -143,11 +143,8 @@ abstract class XIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[
   }
 
   override def connectTclCommands: Seq[String] = {
-    val prefix = s"connect_bd_intf_net [get_bd_intf_ports $instanceName]"
-    sinkPins.map {
-      case sink: BdIntfPin => s"$prefix [get_bd_intf_pins $sink]"
-      case sink => throw new XilinxDesignException(s"Cannot connect BdPin $sink to XIntfPort $this, must be BdIntfPin")
-    }.toSeq
+    val source = BdIntfPort(instanceName, this)
+    BdPinBase.connect(source, sinkPins)
   }
 }
 
@@ -191,10 +188,8 @@ abstract class VirtualPort(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 
   override def connectTclCommands: Seq[String] = {
-    val prefix = s"connect_bd_net [get_bd_ports $instanceName]"
-    sinkPins.map { sink =>
-      s"$prefix [get_bd_pins $sink]"
-    }.toSeq
+    val source = BdPort(instanceName, this)
+    BdPinBase.connect(source, sinkPins)
   }
 }
 
@@ -212,6 +207,12 @@ abstract class BdPinBase(portFn: () => String, instFn: () => InstantiableBdComp)
 }
 
 object BdPinBase {
+
+  def connect(sourcePin: BdPinBase, sinkPins: Iterable[BdPinBase]): Seq[String] = {
+    sinkPins.map(sinkPin => connect(sourcePin, sinkPin)).toSeq
+  }
+
+
   def connect(sourcePin: BdPinBase, sinkPin: BdPinBase): String = {
     (sourcePin, sinkPin) match {
       // -------- Interface connections --------

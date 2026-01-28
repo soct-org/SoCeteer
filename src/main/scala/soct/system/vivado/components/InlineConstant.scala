@@ -28,9 +28,8 @@ case class InlineConstant(value: UInt, nBits: Int)
    * Emit the TCL commands to connect this component in the design
    */
   override def connectTclCommands: Seq[String] = {
-    sinkPins.map{
-      case sink: BdPin => s"connect_bd_net [get_bd_pins $instanceName/$outPort] [get_bd_pins $sink]"
-    }.toSeq
+    val source = BdPin(outPort, this)
+    BdPinBase.connect(source, sinkPins)
   }
 }
 

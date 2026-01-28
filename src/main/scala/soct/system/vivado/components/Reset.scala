@@ -69,8 +69,8 @@ trait ProvidesAutoReset {
   def resetTclCommands: Seq[String] = {
     for {
       (reset, resetIdx) <- resets.zipWithIndex
-      (sinkPin, pinIdx) <- reset.sinkPins.zipWithIndex
-      sourcePin = resetOutPortImpl(reset, resetIdx, sinkPin, pinIdx)
-    } yield s"connect_bd_net [get_bd_pins $sourcePin] [get_bd_pins $sinkPin]"
+      (sink, pinIdx) <- reset.sinkPins.zipWithIndex
+      source = resetOutPortImpl(reset, resetIdx, sink, pinIdx)
+    } yield BdPinBase.connect(source, sink)
   }
 }

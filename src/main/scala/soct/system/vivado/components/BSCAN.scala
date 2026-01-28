@@ -22,8 +22,8 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends Instantiab
   override def connectTclCommands: Seq[String] = {
     sinkPins.zipWithIndex.map {
       case (sinkPin: BdIntfPin, i) =>
-        val sourcePin = BdIntfPin(outPort(i), this)
-        s"connect_bd_intf_net [get_bd_intf_pins $sourcePin] [get_bd_intf_pins $sinkPin]" // TODO do something smarter
+        val sourcePin = BdIntfPin(outPort(i), this) // TODO check type
+        BdPinBase.connect(sourcePin, sinkPin)
       case _ => throw XilinxDesignException("BSCAN only supports BdIntfPin sink pins")
     }.toSeq
   }
