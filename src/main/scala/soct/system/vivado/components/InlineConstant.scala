@@ -4,6 +4,8 @@ import chisel3.UInt
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.InlineConstant._
+import soct.system.vivado.utils._
+
 
 /**
  * Constant IP core for Xilinx FPGAs
@@ -13,7 +15,7 @@ import soct.system.vivado.components.InlineConstant._
  */
 case class InlineConstant(value: UInt, nBits: Int)
                          (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends InstantiableBdComp with XInlineHDL with SourceForSinks {
+  extends BdComp with XInlineHDL with SourceForSinks {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 

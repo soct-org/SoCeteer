@@ -1,12 +1,10 @@
 package soct.system.vivado
 
 import chisel3.Data
-import chisel3.reflect.DataMirror
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
-import soct.system.vivado.components.BdPin
-import soct.system.vivado.fpga.{FPGA, ZCU104}
+import soct.system.vivado.utils.BdPin
 import soct.{BdBuilderKey, VivadoSOCTPaths}
 
 import java.nio.file.{Files, Path}

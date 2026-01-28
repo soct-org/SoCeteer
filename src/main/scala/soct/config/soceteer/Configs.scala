@@ -9,7 +9,6 @@ import freechips.rocketchip.tile.{LookupByHartId, MaxHartIdBits, PriorityMuxHart
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.components.ClockDomain
 import soct.system.vivado.fpga.FPGA
 
 import java.util.concurrent.atomic.AtomicBoolean

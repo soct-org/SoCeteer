@@ -5,6 +5,7 @@ import chisel3.{Bundle, Data}
 import freechips.rocketchip.amba.axi4.AXI4Bundle
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
+import soct.system.vivado.utils._
 
 import scala.collection.mutable
 
@@ -55,7 +56,7 @@ extends XIntfPortMapping {
 
 
 case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with Xip {
+  extends BdComp with Xip {
 
   override def partName: String = "xilinx.com:ip:smartconnect:1.0"
 

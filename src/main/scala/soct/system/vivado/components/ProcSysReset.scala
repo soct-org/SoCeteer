@@ -3,13 +3,14 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.ProcSysReset._
+import soct.system.vivado.utils._
 
 /**
  * Proc Sys Reset IP core from Xilinx
  * @param dom Only used for the slowestSyncClk connection
  */
 case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with Xip with ReceivesClock with SourceForSinks with ProvidesAutoReset {
+  extends BdComp with Xip with ReceivesClock with SourceForSinks with ProvidesAutoReset {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 

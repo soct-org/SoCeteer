@@ -1,4 +1,4 @@
-package soct.system.vivado.components
+package soct.system.vivado.utils
 
 /**
  * Marker trait for reset providers

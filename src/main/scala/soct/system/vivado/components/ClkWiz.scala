@@ -1,9 +1,11 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.ClkWiz._
 import soct.system.vivado.fpga.FPGAResetPortType
+import soct.system.vivado.utils._
+
 
 import scala.collection.mutable
 
@@ -16,7 +18,7 @@ import scala.collection.mutable
  * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
 case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
-  extends InstantiableBdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
+  extends BdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 

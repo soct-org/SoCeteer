@@ -2,8 +2,8 @@ package soct.system.vivado
 
 import org.chipsalliance.cde.config.Parameters
 import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
-import soct.system.vivado.components.{BdComp, HasCollaterals, InstantiableBdComp, IsModule, SourceForSinks, XInlineHDL, XIntfPort, XIntfPortMapping, Xip}
 import soct.system.vivado.fpga.FPGA
+import soct.system.vivado.utils._
 
 import java.nio.file.Path
 import scala.collection.mutable
@@ -17,7 +17,7 @@ import scala.collection.mutable
 final case class TclVar(description: String, default: String)
 
 class SOCTBdBuilder {
-  private val components = mutable.Set.empty[BdComp]
+  private val components = mutable.Set.empty[BdBaseComp]
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
     val varDecls = vars.map { case (v, TclVar(description, default)) =>
@@ -61,7 +61,7 @@ class SOCTBdBuilder {
   /**
    * Get the top-level instance representing the design in the block design
    */
-  var topInstance: () => InstantiableBdComp with IsModule = () => {
+  var topInstance: () => BdComp with IsModule = () => {
     throw XilinxDesignException("Please call init before accessing topInstance")
   }
 
@@ -79,7 +79,7 @@ class SOCTBdBuilder {
    * @tparam T The type of BdComp to count
    * @return The number of instances of type T, excluding the provided instance
    */
-  def countInstancesOf[T <: BdComp](inst: T): Int = {
+  def countInstancesOf[T <: BdBaseComp](inst: T): Int = {
     val cls = inst.getClass
     components.count(c => cls.isInstance(c) && c != inst)
   }
@@ -103,7 +103,7 @@ class SOCTBdBuilder {
    * @param topInst Top-level instantiable block design component
    * @param fpga    Target FPGA
    */
-  def init(p: Parameters, topInst: InstantiableBdComp with IsModule, fpga: FPGA): Unit = {
+  def init(p: Parameters, topInst: BdComp with IsModule, fpga: FPGA): Unit = {
     val paths = p(HasSOCTPaths).asInstanceOf[VivadoSOCTPaths]
     val config = p(HasSOCTConfig)
     val aggressive = config.args.overrideVivadoProject
@@ -130,7 +130,7 @@ class SOCTBdBuilder {
     }
   }
 
-  def add[T <: BdComp](c: T): Unit = {
+  def add[T <: BdBaseComp](c: T): Unit = {
     if (!components.contains(c)) {
       components += c
     }
@@ -162,9 +162,9 @@ class SOCTBdBuilder {
   def generateBoardTcl(): String = {
     var instantiateCommands, connectCommands: mutable.Seq[TCLCommand] = mutable.Seq.empty[TCLCommand]
 
-    val xintfs, xips, xinlines, modules = mutable.ListBuffer.empty[BdComp]
+    val xintfs, xips, xinlines, modules = mutable.ListBuffer.empty[BdBaseComp]
     components.foreach {
-      case inst: InstantiableBdComp => instantiateCommands ++= inst.instTcl
+      case inst: BdComp => instantiateCommands ++= inst.instTcl
       case _ =>
     }
 
@@ -174,7 +174,7 @@ class SOCTBdBuilder {
     }
 
     val propertyCommands = components.collect {
-      case c: InstantiableBdComp if c.defaultProperties.nonEmpty =>
+      case c: BdComp if c.defaultProperties.nonEmpty =>
         def tclLiteral(v: String): String =
           if (v.startsWith("$") || v.startsWith("[")) v
           else s"{${v.replace("}", "\\}")}}"

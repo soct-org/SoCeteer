@@ -1,6 +1,6 @@
-package soct.system.vivado.components
+package soct.system.vivado.utils
 
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
+import soct.system.vivado.SOCTBdBuilder
 
 /**
  * Trait for components that receive clock inputs

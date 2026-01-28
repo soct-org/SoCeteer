@@ -5,6 +5,7 @@ import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, TCLCommands, XilinxDesignException}
+import soct.system.vivado.utils._
 
 import java.nio.file.{Files, Path}
 import scala.collection.mutable
@@ -46,7 +47,7 @@ case class JTAGXIntfPortMapping(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBu
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
 case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InstantiableBdComp()(bd, p, None) with IsModule with HasSinkPins with SourceForSinks {
+  extends BdComp()(bd, p, None) with IsModule with HasSinkPins with SourceForSinks {
 
   /**
    * The reference name of this module - as defined in the collateral files

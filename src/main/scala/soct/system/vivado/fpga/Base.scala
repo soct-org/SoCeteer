@@ -2,8 +2,8 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
-import soct.system.vivado.components.{BdIntfPin, BdIntfPort, BdPinBase, ClockDomain, HasFriendlyName, IsXilinx, ProvidesAutoClock, Reset, ResetN, ResetType, VirtualPort, XIntfPort}
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.utils._
 
 import scala.annotation.unused
 

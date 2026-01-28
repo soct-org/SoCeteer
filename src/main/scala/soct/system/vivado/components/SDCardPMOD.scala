@@ -3,6 +3,7 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.utils._
 
 import java.nio.file.{Files, Path}
 
@@ -50,7 +51,7 @@ case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends Vir
  * @param pmodIdx  The PMOD index to use
  */
 case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends InstantiableBdComp with IsModule with AutoConnect with HasSinkPins {
+  extends BdComp with IsModule with AutoConnect with HasSinkPins {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 

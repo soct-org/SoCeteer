@@ -3,9 +3,10 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN.outPort
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
+import soct.system.vivado.utils._
 
 
-case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends InstantiableBdComp()(bd, p, None)
+case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(bd, p, None)
   with Xip with SourceForSinks {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"

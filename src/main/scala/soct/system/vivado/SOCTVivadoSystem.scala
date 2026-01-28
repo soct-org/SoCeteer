@@ -4,10 +4,10 @@ import chisel3._
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
-import soct.system.vivado.SOCTVivado.portToBdPin
-import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, HasSOCTConfig, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXIXIntfPortMapping, AutoConnect, BSCAN, BSCAN2JTAG, BdPin, ClkWiz, ClockDomain, DDR4, InlineConstant, InstantiableBdComp, IsModule, JTAGXIntfPortMapping, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop, WithDomain}
+import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
+import soct.system.vivado.components.{AXIXIntfPortMapping, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, JTAGXIntfPortMapping, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.FPGARegistry
+import soct.system.vivado.utils._
 
 
 /**

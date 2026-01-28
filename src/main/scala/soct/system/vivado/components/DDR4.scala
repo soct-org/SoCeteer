@@ -4,6 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortType}
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 import soct.system.vivado.components.DDR4._
+import soct.system.vivado.utils._
 
 import scala.collection.mutable
 
@@ -14,7 +15,7 @@ import scala.collection.mutable
  * @param dom     The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
 case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends InstantiableBdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
+  extends BdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
 
   require(dom.isDefined, s"DDR4 component must be instantiated in an FPGAClockDomain")
 
