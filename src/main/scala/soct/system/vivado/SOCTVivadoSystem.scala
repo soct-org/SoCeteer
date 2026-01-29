@@ -5,9 +5,11 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXIXIntfPortMapping, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, JTAGXIntfPortMapping, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop}
+import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.FPGARegistry
 import soct.system.vivado.abstracts._
+import soct.system.vivado.intf.{AXIMM, JTAG}
+import soct.system.vivado.signal.{CLOCK, RESET}
 
 
 /**
@@ -28,7 +30,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
       // Default to 100 MHz - TODO use parameters
       val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
-      val topInstance = WithDomain(coreDomain) { implicit dom => new SOCTVivadoSystemTop(this) }
+      val topInstance = WithDomain(coreDomain) {
+        implicit dom =>
+          val resetIntf = RESET("SYS_RESET")
+          val clockIntf = CLOCK("SYS_CLK")
+          new SOCTVivadoSystemTop(this).withRESET(resetIntf).withCLOCK(clockIntf)
+      }
+
 
       bd.init(p, topInstance, fpga)
 
@@ -40,7 +48,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
         val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
         val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
-        require(ddr4Port.outputTo(ddr4.getPin(ddr4Port)))
+        require(ddr4Port.outputToL(ddr4.getPin(ddr4Port)))
 
         WithDomain(ddr4OutDom) { implicit dom =>
           ClkWiz(Seq(coreDomain, peripheryDomain))
@@ -48,12 +56,12 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       }
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
-      axiInfts.foreach { axiInft => AXIXIntfPortMapping(axiInft) }
+      axiInfts.foreach { axiInft => AXIMM(axiInft) }
 
       if (p(HasSDCardPMOD).isDefined) {
         val ports = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         val sdPmod = WithDomain(peripheryDomain) { implicit dom => SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get) }
-        ports.foreach { port => port.outputTo(sdPmod.getPin(port)) }
+        ports.foreach { port => port.outputToL(sdPmod.getPin(port)) }
       }
 
       val debugIf = debug.getWrappedValue.get
@@ -64,7 +72,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val jtag = jtagIO.jtag
         val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")
         jtag_tdt := ~jtag.TDO.driven
-        val jtagXIntf = JTAGXIntfPortMapping(jtag, jtag_tdt)
+        val jtagXIntf = JTAG(jtag, jtag_tdt)
 
         // Tie off unused fields using inline constants - rename for clarity in block design
         val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {
@@ -85,8 +93,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val bscan = BSCAN()
         val b2j = BSCAN2JTAG()
 
-        require(bscan.outputTo(b2j.getPin(bscan)))
-        require(b2j.outputTo(jtagXIntf.getPin(b2j)))
+        require(bscan.outputToL(b2j.getPin(bscan)))
+        require(b2j.outputToL(jtagXIntf.getPin(b2j)))
       }
     }
   }

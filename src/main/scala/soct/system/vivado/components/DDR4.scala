@@ -21,7 +21,12 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
-  override def clockInPorts: Seq[BdPinPort] = Seq(BdIntfPin(C0_SYS_CLK, this))
+  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdIntfPin(C0_SYS_CLK, this))
+
+  override def resetNInPorts: () => Seq[BdPinPort] = () => Seq.empty
+
+  override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
+
 
   override def defaultProperties: Map[String, String] = {
     val props = mutable.Map.empty[String, String]

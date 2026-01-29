@@ -137,7 +137,7 @@ class SOCTBdBuilder {
   }
 
   def portModifications(): Map[String, Seq[String]] = {
-    components.collect { case xIntf: XIntfPortMapping => xIntf.portMapping }
+    components.collect { case xIntf: MapsToPorts => xIntf.portMapping }
       .flatten
       .groupBy(_._1)
       .view.mapValues(_.toSeq.flatMap(_._2))
@@ -151,20 +151,13 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    var instantiateCommands, connectCommands: mutable.Seq[TCLCommand] = mutable.Seq.empty[TCLCommand]
+    val instantiateCommands = components.collect {
+      case inst: BdComp => inst.instTcl
+    }.flatten.toSeq
 
-    val xips, xinlines = mutable.ListBuffer.empty[IsXilinx]
-    val modules = mutable.ListBuffer.empty[IsModule]
-
-    components.foreach {
-      case inst: BdComp => instantiateCommands ++= inst.instTcl
-      case _ =>
-    }
-
-    components.foreach {
-      case c: SourceForSinks => connectCommands ++= c.getCommands
-      case _ =>
-    }
+    val connectCommands = components.collect {
+      case c: SourceForSinks => c.getCommands
+    }.flatten.toSeq
 
     val propertyCommands = components.collect {
       case c: BdComp if c.defaultProperties.nonEmpty =>
@@ -187,6 +180,8 @@ class SOCTBdBuilder {
     // Add the BD-specific variables which are defined statically in SOCTBdBuilder
     val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ this.bdVars
 
+    val xips, xinlines = mutable.ListBuffer.empty[IsXilinx]
+    val modules = mutable.ListBuffer.empty[IsModule]
     components.collect {
       case x: Xip => xips += x
       case x: XInlineHDL => xinlines += x

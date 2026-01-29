@@ -67,8 +67,8 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       }
       // Connect the reset ports of this component to the reset provider in the clock domain
       dom.foreach(_.reset.foreach {
-        case rst: Reset => comp.resetInPorts.foreach(rst.outputTo)
-        case rstN: ResetN => comp.resetNInPorts.foreach(rstN.outputTo)
+        case rst: Reset => rst.outputToLM(comp.resetInPorts)
+        case rstN: ResetN => rstN.outputToLM(comp.resetNInPorts)
       })
     case _ => // Do nothing
   }
@@ -78,7 +78,7 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       if (dom.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
       }
-      dom.foreach { d => comp.clockInPorts.foreach(d.outputTo) }
+      dom.foreach { d => d.outputToLM(comp.clockInPorts) }
     case _ => // Do nothing
   }
 }
@@ -127,13 +127,6 @@ object BdPinPort {
       case (_: BdIntfPort, _: BdIntfPin) =>
         s"connect_bd_intf_net [get_bd_intf_ports $source] [get_bd_intf_pins $sink]"
 
-      // -------- ERROR: interface vs net --------
-      case (_: BdIntfPin | _: BdIntfPort, _) |
-           (_, _: BdIntfPin | _: BdIntfPort) =>
-        throw new XilinxDesignException(
-          s"BD autoconnect pin type mismatch: source=$source sink=$sink (interface vs net)"
-        )
-
       // -------- Scalar net connections --------
       case (_: BdPin, _: BdPin) =>
         s"connect_bd_net [get_bd_pins $source] [get_bd_pins $sink]"
@@ -146,6 +139,18 @@ object BdPinPort {
 
       case (_: BdPort, _: BdPin) =>
         s"connect_bd_net [get_bd_ports $source] [get_bd_pins $sink]"
+
+      // -------- Mixed connections --------
+      case (_: BdIntfPin, _: BdPin) =>
+        soct.log.warn(s"Connecting interface pin $source to scalar pin $sink. Ensure this is intended.")
+        s"connect_bd_net [get_bd_intf_pins $source] [get_bd_pins $sink]"
+
+      case (_: BdPin, _: BdIntfPin) =>
+        soct.log.warn(s"Connecting scalar pin $source to interface pin $sink. Ensure this is intended.")
+        s"connect_bd_net [get_bd_pins $source] [get_bd_intf_pins $sink]"
+
+      case _ =>
+        throw new XilinxDesignException(s"Cannot connect source $source to sink $sink - incompatible types." )
     }
     command.tcl
   }

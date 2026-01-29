@@ -22,9 +22,11 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 
-  override def clockInPorts: Seq[BdPinPort] = Seq(BdPin(CLKIn, this))
+  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin(CLKIn, this))
 
-  override def resetInPorts: Seq[BdPinPort] = Seq(BdPin(RSTIn, this))
+  override def resetInPorts: () => Seq[BdPinPort] = () => Seq(BdPin(RSTIn, this))
+
+  override def resetNInPorts: () => Seq[BdPinPort] = () => Seq.empty
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]

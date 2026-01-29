@@ -10,7 +10,7 @@ trait ReceivesClock {
   /**
    * The clock input ports for this component, to be connected to the clock domain if available
    */
-  def clockInPorts: Seq[BdPinPort] = Seq.empty
+  def clockInPorts: () => Seq[BdPinPort]
 }
 
 /**

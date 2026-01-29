@@ -37,7 +37,7 @@ trait SourceForSinks extends CollectsSinks {
   /**
    * Children classes can add extra connection commands here that are later appended to the main connection commands.
    */
-  protected var otherConnects : mutable.ListBuffer[() => TCLCommands] = mutable.ListBuffer.empty
+  protected var otherConnects: mutable.ListBuffer[() => TCLCommands] = mutable.ListBuffer.empty
 
   /**
    * Get the TCL commands to connect this component in the design
@@ -51,24 +51,83 @@ trait SourceForSinks extends CollectsSinks {
  * Trait for components that can collect BdPinPorts
  */
 trait CollectsSinks {
-  protected val _sinkPins: mutable.Set[BdPinPort] = mutable.Set.empty
-
-  // public view of the collected sink pins
-  def sinkPins: View[BdPinPort] = _sinkPins.view
+  protected val _sinkPins: mutable.Set[() => Seq[BdPinPort]] = mutable.Set.empty
 
   /**
-   * Register a sink BdPinPort that this component provides data to.
+   * Get the sink BdPinPorts that this component provides data to.
+   * This evaluates all registered sink functions which can result in Chisel module calls.
+   * Therefore, it should only be called after full evaluation of the Chisel design.
    *
-   * @param sink The sink BdPinPort
-   * @return True if the registration was successful
+   * @return A view of the sink BdPinPorts
    */
-  def outputTo(sink: BdPinPort): Boolean = {
-    _sinkPins += sink
+  def sinkPins: View[BdPinPort] = _sinkPins.view.flatMap(fn => fn())
+
+  /**
+   * Lazily register Multiple sink BdPinPorts provided by this component.
+   *
+   * @param sinks Function that returns the sequence of sink BdPinPorts
+   * @return Whether the registration was successful
+   */
+  def outputToLM(sinks: () => Seq[BdPinPort]): Boolean = {
+    _sinkPins += sinks
     true
   }
 
-  def outputTo(sink: chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
-    _sinkPins += SOCTVivado.portToBdPin(sink)
+  /**
+   * Lazily register Multiple sink chisel3.Data ports provided by this component.
+   *
+   * @param sinks Function that returns the sequence of sink chisel3.Data ports
+   * @param bd    The block design builder context
+   * @return Whether the registration was successful
+   */
+  def outputToLM(sinks: () => Seq[chisel3.Data])(implicit bd: SOCTBdBuilder): Boolean = {
+    _sinkPins += (() => sinks().map(SOCTVivado.portToBdPin))
+    true
+  }
+
+  /**
+   * Lazily register a single sink BdPinPort provided by this component.
+   *
+   * @param sink Function that returns the sink BdPinPort
+   * @return Whether the registration was successful
+   */
+  def outputToL(sink: () => BdPinPort): Boolean = {
+    _sinkPins += (() => Seq(sink()))
+    true
+  }
+
+  /**
+   * Lazily register a single sink chisel3.Data port provided by this component.
+   *
+   * @param sink Function that returns the sink chisel3.Data port
+   * @param bd   The block design builder context
+   * @return Whether the registration was successful
+   */
+  def outputToL(sink: () => chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
+    _sinkPins += (() => Seq(SOCTVivado.portToBdPin(sink())))
+    true
+  }
+
+  /**
+   * Register a single sink BdPinPort provided by this component.
+   *
+   * @param sink The sink BdPinPort
+   * @return Whether the registration was successful
+   */
+  def outputTo(sink: => BdPinPort): Boolean = {
+    _sinkPins += (() => Seq(sink))
+    true
+  }
+
+  /**
+   * Register a single sink chisel3.Data port provided by this component.
+   *
+   * @param sink The sink chisel3.Data port
+   * @param bd   The block design builder context
+   * @return Whether the registration was successful
+   */
+  def outputTo(sink: => chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
+    _sinkPins += (() => Seq(SOCTVivado.portToBdPin(sink)))
     true
   }
 }
@@ -96,13 +155,13 @@ trait HasSinkPins {
    * @throws XilinxDesignException if no BdPinPort is found for the source
    */
   @throws[XilinxDesignException]
-  final def getPin(source: SourceForSinks): BdPinPort = {
+  final def getPin(source: SourceForSinks): () => BdPinPort = {
     val sinkOpt = getPinImpl(source)
     if (sinkOpt.isEmpty) {
       throw XilinxDesignException(s"No sink pin found for source $source in component $this")
     }
     sourcePins += source
-    sinkOpt.get
+    () => sinkOpt.get
   }
 }
 

@@ -13,7 +13,7 @@ trait IsXilinx {
   def partName: String
 
   /**
-   * The type of this Xilinx IP, e.g., "ip", "interface", "inline_hdl", etc.
+   * The type of this Xilinx IP, e.g., "ip", "interface", "inline_hdl", "signal" etc.
    */
   val tpe: String
 }
@@ -37,6 +37,14 @@ trait Xip extends IsXilinx {
  */
 trait XIntf extends IsXilinx {
   override val tpe: String = "interface"
+}
+
+
+/**
+ * Trait for Xilinx Signal components
+ */
+trait XSignal extends IsXilinx {
+  override val tpe: String = "signal"
 }
 
 
