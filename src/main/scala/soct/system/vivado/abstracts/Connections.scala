@@ -48,7 +48,7 @@ trait SourceForSinks extends CollectsSinks {
 }
 
 /**
- * Trait for components that can collect BdPinBases
+ * Trait for components that can collect BdPinPorts
  */
 trait CollectsSinks {
   protected val _sinkPins: mutable.Set[BdPinPort] = mutable.Set.empty
@@ -57,9 +57,9 @@ trait CollectsSinks {
   def sinkPins: View[BdPinPort] = _sinkPins.view
 
   /**
-   * Register a sink BdPinBase that this component provides data to.
+   * Register a sink BdPinPort that this component provides data to.
    *
-   * @param sink The sink BdPinBase
+   * @param sink The sink BdPinPort
    * @return True if the registration was successful
    */
   def outputTo(sink: BdPinPort): Boolean = {
@@ -81,19 +81,19 @@ trait HasSinkPins {
   protected val sourcePins = mutable.Set[SourceForSinks]()
 
   /**
-   * Get the BdPinBase corresponding to the given source, if any.
+   * Get the BdPinPort corresponding to the given source, if any.
    *
    * @param source The source to look up
-   * @return Some(BdPinBase) if found, None otherwise
+   * @return Some(BdPinPort) if found, None otherwise
    */
   protected def getPinImpl(source: SourceForSinks): Option[BdPinPort]
 
   /**
-   * Get the BdPinBase corresponding to the given source.
+   * Get the BdPinPort corresponding to the given source.
    *
    * @param source The source to look up
-   * @return The corresponding BdPinBase
-   * @throws XilinxDesignException if no BdPinBase is found for the source
+   * @return The corresponding BdPinPort
+   * @throws XilinxDesignException if no BdPinPort is found for the source
    */
   @throws[XilinxDesignException]
   final def getPin(source: SourceForSinks): BdPinPort = {

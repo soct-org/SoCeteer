@@ -137,25 +137,16 @@ class SOCTBdBuilder {
   }
 
   def portModifications(): Map[String, Seq[String]] = {
-    val allPortMods = mutable.Map.empty[String, Seq[String]]
-    components.foreach {
-      case xIntf: XIntfPortMapping =>
-        val portMods = xIntf.portMapping
-        portMods.foreach { case (portName, annotations) =>
-          // Append to existing annotations if present
-          val existing = allPortMods.getOrElse(portName, Seq.empty)
-          allPortMods(portName) = existing ++ annotations
-        }
-      case _ =>
-    }
-    allPortMods.toMap
+    components.collect { case xIntf: XIntfPortMapping => xIntf.portMapping }
+      .flatten
+      .groupBy(_._1)
+      .view.mapValues(_.toSeq.flatMap(_._2))
+      .toMap
   }
 
   def emitCollaterals(outDir: Path): Unit = {
-    components.foreach {
-      case c: HasCollaterals =>
-        c.dumpCollaterals(outDir)
-      case _ =>
+    components.collect {
+      case c: HasCollaterals => c.dumpCollaterals(outDir)
     }
   }
 
@@ -258,6 +249,7 @@ class SOCTBdBuilder {
        |}
        |
        |current_bd_design ${k.bdName}
+       |update_compile_order -fileset ${k.sources}
        |
        |# Check whether the BD is empty
        |set n_cells  [llength [get_bd_cells -quiet *]]

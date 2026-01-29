@@ -173,8 +173,7 @@ object SOCTVivado {
     val topVerilog = Files.readString(topModuleFile)
 
     val portLines = extractPortLines(topVerilog, config.topModuleName)
-    val portMappings = bd.portModifications()
-    val transformed = patchPortLines(topVerilog, config.topModuleName, addPortMappings(portLines, portMappings))
+    val transformed = patchPortLines(topVerilog, config.topModuleName, addPortMappings(portLines, bd.portModifications()))
     Files.writeString(topModuleFile, transformed)
 
     val initTCL = bd.generateInitScript()

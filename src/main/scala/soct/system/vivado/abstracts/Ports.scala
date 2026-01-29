@@ -3,12 +3,23 @@ package soct.system.vivado.abstracts
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}
 
+/**
+ * Trait for Board Design Pin Ports - used to connect component ports
+ */
+trait BdPortBase extends BdPinPort {
+  this: BdComp =>
+
+  override def parentInst(): BdComp = this
+
+  override def ref: String = instanceName
+}
+
 
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
 abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp()(bd, p, None) with SourceForSinks with BdPinPort {
+  extends BdComp()(bd, p, None) with SourceForSinks with BdPortBase {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -43,12 +54,6 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
     Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]".tcl)
   }
 
-  override def port(): String = instanceName
-
-  override def ref: String = instanceName
-
-  override def parentInst(): BdComp = this
-
   protected override def connectToSinksImpl: TCLCommands = {
     BdPinPort.connect(this, sinkPins)
   }
@@ -59,7 +64,7 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
 abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends BdComp with XIntf with SourceForSinks with BdPinPort {
+  extends BdComp with XIntf with SourceForSinks with BdPortBase {
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
    */
@@ -75,14 +80,7 @@ abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
   protected override def connectToSinksImpl: TCLCommands = {
     BdPinPort.connect(this, sinkPins)
   }
-
-  override def port(): String = instanceName
-
-  override def ref: String = instanceName
-
-  override def parentInst(): BdComp = this
 }
-
 
 
 /**

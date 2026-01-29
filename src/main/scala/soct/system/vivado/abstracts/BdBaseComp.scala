@@ -84,16 +84,16 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
 }
 
 /**
- * Base class for Board Design Pins, representing a port on a component instance.
+ * Base class for Board Design Pins, representing a port or pin on a component.
  */
 trait BdPinPort {
   /**
-   * The port name for this pin on its parent component. If this is a port, this is the instance name.
+   * The pin name for this pin/port. For ports, this is typically not defined.
    */
-  def port(): String
+  def pin(): Option[String] = None
 
   /**
-   * The parent component instance for this pin. If this is a port, the parent is itself.
+   * The parent component instance for this. For ports, this is the component itself.
    */
   def parentInst(): BdComp
 
