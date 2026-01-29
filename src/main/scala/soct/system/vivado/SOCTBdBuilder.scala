@@ -153,7 +153,9 @@ class SOCTBdBuilder {
   def generateBoardTcl(): String = {
     var instantiateCommands, connectCommands: mutable.Seq[TCLCommand] = mutable.Seq.empty[TCLCommand]
 
-    val xintfs, xips, xinlines, modules = mutable.ListBuffer.empty[BdBaseComp]
+    val xips, xinlines = mutable.ListBuffer.empty[IsXilinx]
+    val modules = mutable.ListBuffer.empty[IsModule]
+
     components.foreach {
       case inst: BdComp => instantiateCommands ++= inst.instTcl
       case _ =>
@@ -185,15 +187,11 @@ class SOCTBdBuilder {
     // Add the BD-specific variables which are defined statically in SOCTBdBuilder
     val bdVars: Map[String, TclVar] = vars.filter { case (v, _) => bdKeys.contains(v) } ++ this.bdVars
 
-    components.foreach {
+    components.collect {
       case x: Xip => xips += x
-      case x: BdIntfPort => xintfs += x
       case x: XInlineHDL => xinlines += x
       case m: IsModule => modules += m
-      case _ => // do nothing
     }
-
-    // TODO use xintfs, xips, xinlines, modules in a validation step
 
     s"""${genTCLHeader(bdVars)}
        |
@@ -211,6 +209,22 @@ class SOCTBdBuilder {
        |  common::send_gid_msg -ssname BD::TCL -id $$id -severity "INFO" $$msg
        |}
        |
+       |proc check_required {items check_cmd label err_code ok_code err_hint} {
+       |  set missing {}
+       |  foreach item $$items {
+       |    if {[$$check_cmd $$item]} {
+       |      lappend missing $$item
+       |    }
+       |  }
+       |  if {[llength $$missing]} {
+       |    error_exit $$err_code \\
+       |      "The following required $$label are missing:\n  [join $$missing "\n  "]\n$$err_hint"
+       |  }
+       |  info_msg $$ok_code "All required $$label are available."
+       |}
+       |
+       |proc has_module {m} { expr {[llength [can_resolve_reference $$m]] == 0} }
+       |proc has_ip     {v} { expr {[llength [get_ipdefs -all $$v]] == 0} }
        |
        |######## Project & Board design (bd) validation ########
        |
@@ -271,6 +285,22 @@ class SOCTBdBuilder {
        |info_msg 2005 "Created / opened block design ${k.bdName} successfully."
        |
        |
+       |######## Check required interfaces, IPs and Modules ########
+       |
+       |set list_check_ips [list \\
+       |${xips.map(_.partName).map(ip => s"  \"$ip\"").mkString(" \\\n")}
+       |]
+       |check_required $$list_check_ips has_ip "Xilinx IPs" 2006 2007 \\
+       |    "Please install them via the Vivado IP Catalog before sourcing this script."
+       |
+       |set list_check_modules [list \\
+       |${modules.map(_.reference).map(m =>s"  \"$m\"").mkString(" \\\n")}
+       |]
+       |check_required $$list_check_modules has_module "Modules" 2008 2009 \\
+       |    "Please ensure their collateral files are available in the sources directory before sourcing this script."
+       |
+       |
+       |######## Instantiate components and connect them ########
        |
        |# Instantiate ports and components
        |${instantiateCommands.sorted.mkString("\n")}
