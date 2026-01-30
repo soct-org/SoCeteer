@@ -85,6 +85,10 @@ trait HasCollaterals {
   }
 }
 
+/**
+ * Trait for components that need finalization before TCL generation
+ * This allows components to inject subcomponents based on their connections
+ */
 trait Finalizable {
   this: BdComp =>
 

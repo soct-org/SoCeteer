@@ -2,7 +2,9 @@ package soct.system.vivado.abstracts
 
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado, TCLCommands, XilinxDesignException}
 
+import scala.annotation.{implicitNotFound, unused}
 import scala.collection.{View, mutable}
+import scala.reflect.ClassTag
 
 /**
  * Generic trait for automatic domain-based connections (clock, reset, etc.)
@@ -72,87 +74,103 @@ trait HasSingleInput {
   def input: BdPinPort
 }
 
+@implicitNotFound(
+  "Unsupported sink type: ${T}.\n" +
+    "Allowed sinks are:\n" +
+    "  - BdPinPort\n" +
+    "  - chisel3.Data (or any subtype)\n" +
+    "  - () => BdPinPort | chisel3.Data\n" +
+    "  - () => Seq[BdPinPort] | Seq[chisel3.Data]"
+)
+sealed trait AllowedSink[T]
+
+@unused
+object AllowedSink {
+
+  // ----- eager -----
+
+  implicit val bdPin: AllowedSink[BdPinPort] =
+    new AllowedSink[BdPinPort] {}
+
+  implicit def dataSubtype[T <: chisel3.Data]: AllowedSink[T] =
+    new AllowedSink[T] {}
+
+  // ----- lazy single -----
+
+  implicit def fnBdPin: AllowedSink[() => BdPinPort] =
+    new AllowedSink[() => BdPinPort] {}
+
+  implicit def fnData[T <: chisel3.Data]: AllowedSink[() => T] =
+    new AllowedSink[() => T] {}
+
+  // ----- lazy multiple -----
+
+  implicit def fnSeqBdPin: AllowedSink[() => Seq[BdPinPort]] =
+    new AllowedSink[() => Seq[BdPinPort]] {}
+
+  implicit def fnSeqData[T <: chisel3.Data]: AllowedSink[() => Seq[T]] =
+    new AllowedSink[() => Seq[T]] {}
+}
+
+
 /**
  * Trait for components that can collect BdPinPorts
  */
 trait CollectsSinks {
-  protected val _sinkPins: mutable.Set[() => Seq[BdPinPort]] = mutable.Set.empty
+
+  private val _sinkPins: mutable.Set[() => Seq[BdPinPort]] = mutable.Set.empty
+
+  def sinkPins: View[BdPinPort] = _sinkPins.view.flatMap(_())
+
+  private def toBdPins(value: Any)(implicit bd: SOCTBdBuilder): Seq[BdPinPort] =
+    value match {
+      case p: BdPinPort =>
+        Seq(p)
+
+      case d: chisel3.Data =>
+        Seq(SOCTVivado.portToBdPin(d))
+
+      case s: Seq[_] =>
+        s.map {
+          case p: BdPinPort => p
+          case d: chisel3.Data => SOCTVivado.portToBdPin(d)
+          case other =>
+            throw new IllegalArgumentException(
+              s"Unsupported sink element: ${other.getClass}"
+            )
+        }
+
+      case other =>
+        throw new IllegalArgumentException(
+          s"Unsupported sink value: ${other.getClass}"
+        )
+    }
 
   /**
-   * Get the sink BdPinPorts that this component provides data to.
-   * This evaluates all registered sink functions which can result in Chisel module calls.
-   * Therefore, it should only be called after full evaluation of the Chisel design.
+   * Add a sink to this component. The sink can be:
+   * - A BdPinPort
+   * - A chisel3.Data
+   * - A function that returns either of the above, or a sequence of either of these
    *
-   * @return A view of the sink BdPinPorts
+   * @param sink The sink to add (lazy)
+   * @tparam T The sink type (inferred)
+   * @throws IllegalArgumentException if the sink type is unsupported
+   * @return
    */
-  def sinkPins: View[BdPinPort] = _sinkPins.view.flatMap(fn => fn())
+  @throws[IllegalArgumentException]
+  def outputTo[T](sink: => T)(
+    implicit
+    allowed: AllowedSink[T],
+    bd: SOCTBdBuilder
+  ): Boolean = {
 
-  /**
-   * Lazily register Multiple sink BdPinPorts provided by this component.
-   *
-   * @param sinks Function that returns the sequence of sink BdPinPorts
-   * @return Whether the registration was successful
-   */
-  def outputToLM(sinks: () => Seq[BdPinPort]): Boolean = {
-    _sinkPins += sinks
-    true
-  }
+    val fn: () => Seq[BdPinPort] = () =>
+      sink match {
+        case f: Function0[_] => toBdPins(f())
+        case other => toBdPins(other)
+      }
 
-  /**
-   * Lazily register Multiple sink chisel3.Data ports provided by this component.
-   *
-   * @param sinks Function that returns the sequence of sink chisel3.Data ports
-   * @param bd    The block design builder context
-   * @return Whether the registration was successful
-   */
-  def outputToLM(sinks: () => Seq[chisel3.Data])(implicit bd: SOCTBdBuilder): Boolean = {
-    _sinkPins += (() => sinks().map(SOCTVivado.portToBdPin))
-    true
-  }
-
-  /**
-   * Lazily register a single sink BdPinPort provided by this component.
-   *
-   * @param sink Function that returns the sink BdPinPort
-   * @return Whether the registration was successful
-   */
-  def outputToL(sink: () => BdPinPort): Boolean = {
-    _sinkPins += (() => Seq(sink()))
-    true
-  }
-
-  /**
-   * Lazily register a single sink chisel3.Data port provided by this component.
-   *
-   * @param sink Function that returns the sink chisel3.Data port
-   * @param bd   The block design builder context
-   * @return Whether the registration was successful
-   */
-  def outputToL(sink: () => chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
-    _sinkPins += (() => Seq(SOCTVivado.portToBdPin(sink())))
-    true
-  }
-
-  /**
-   * Register a single sink BdPinPort provided by this component.
-   *
-   * @param sink The sink BdPinPort
-   * @return Whether the registration was successful
-   */
-  def outputTo(sink: => BdPinPort): Boolean = {
-    _sinkPins += (() => Seq(sink))
-    true
-  }
-
-  /**
-   * Register a single sink chisel3.Data port provided by this component.
-   *
-   * @param sink The sink chisel3.Data port
-   * @param bd   The block design builder context
-   * @return Whether the registration was successful
-   */
-  def outputTo(sink: => chisel3.Data)(implicit bd: SOCTBdBuilder): Boolean = {
-    _sinkPins += (() => Seq(SOCTVivado.portToBdPin(sink)))
+    _sinkPins += fn
     true
   }
 }

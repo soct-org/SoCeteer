@@ -1,6 +1,5 @@
 package soct.system.vivado.components
 
-import chisel3.reflect.DataMirror
 import chisel3.{Data, Record}
 import org.chipsalliance.cde.config.Parameters
 import soct.HasSOCTConfig

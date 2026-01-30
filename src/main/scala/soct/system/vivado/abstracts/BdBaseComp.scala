@@ -67,8 +67,8 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       }
       // Connect the reset ports of this component to the reset provider in the clock domain
       dom.foreach(_.reset.foreach {
-        case rst: Reset => rst.outputToLM(comp.resetInPorts)
-        case rstN: ResetN => rstN.outputToLM(comp.resetNInPorts)
+        case rst: Reset => rst.outputTo(comp.resetInPorts)
+        case rstN: ResetN => rstN.outputTo(comp.resetNInPorts)
       })
     case _ => // Do nothing
   }
@@ -78,7 +78,7 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       if (dom.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
       }
-      dom.foreach { d => d.outputToLM(comp.clockInPorts) }
+      dom.foreach { d => d.outputTo(comp.clockInPorts) }
     case _ => // Do nothing
   }
 }

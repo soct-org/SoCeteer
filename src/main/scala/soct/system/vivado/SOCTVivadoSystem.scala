@@ -47,13 +47,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
 
       val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
-      require(ddr4Port.outputToL(ddr4.getPin(ddr4Port)))
+      require(ddr4Port.outputTo(ddr4.getPin(ddr4Port)))
 
       val clkWiz = WithDomain(ddr4OutDom) { implicit dom =>
         ClkWiz(Seq(coreDomain, peripheryDomain))
       }
 
-      clkWiz.outputToL(peripheryReset.getPin(clkWiz, ProcSysReset.Keys.DcmLocked))
+      clkWiz.outputTo(peripheryReset.getPin(clkWiz, ProcSysReset.Keys.DcmLocked))
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
       axiInfts.foreach { axiInft => AXIMM(axiInft) }
@@ -61,7 +61,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       if (p(HasSDCardPMOD).isDefined) {
         val ports = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         val sdPmod = WithDomain(peripheryDomain) { implicit dom => SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get) }
-        ports.foreach { port => port.outputToL(sdPmod.getPin(port)) }
+        ports.foreach { port => port.outputTo(sdPmod.getPin(port)) }
       }
 
       val debugIf = debug.getWrappedValue.get
@@ -93,8 +93,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val bscan = BSCAN()
         val b2j = BSCAN2JTAG()
 
-        require(bscan.outputToL(b2j.getPin(bscan, BSCAN2JTAG.Keys.BSCAN)))
-        require(b2j.outputToL(jtagXIntf.getPin(b2j, JTAG.Keys.BSCAN2JTAG)))
+        require(bscan.outputTo(b2j.getPin(bscan, BSCAN2JTAG.Keys.BSCAN)))
+        require(b2j.outputTo(jtagXIntf.getPin(b2j, JTAG.Keys.BSCAN2JTAG)))
       }
     }
   }
