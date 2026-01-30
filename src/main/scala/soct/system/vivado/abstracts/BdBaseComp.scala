@@ -22,9 +22,9 @@ abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends H
 abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdBaseComp {
 
   /**
-   * Optional index to differentiate multiple instances of the same component
+   * Optional index to differentiate multiple instances of the same component - Must be a val to ensure stable value.
    */
-  def index: Int = bd.countInstancesOf(this)
+  val index: Int = bd.countInstancesOf(this)
 
   /**
    * The instance name for this component. By default, use the friendly name converted to snake_case with an optional index suffix.
@@ -109,10 +109,10 @@ trait BdPinPort {
 object BdPinPort {
 
   def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
-    sinks.map(sink => connect(source, sink)).toSeq
+    sinks.map(sink => connect1(source, sink)).toSeq
   }
 
-  def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
+  def connect1(source: BdPinPort, sink: BdPinPort): TCLCommand = {
     val command = (source, sink) match {
       // -------- Interface connections --------
       case (_: BdIntfPin, _: BdIntfPin) =>

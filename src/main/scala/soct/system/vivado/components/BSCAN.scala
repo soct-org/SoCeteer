@@ -24,7 +24,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(b
     sinkPins.zipWithIndex.map {
       case (sinkPin: BdIntfPin, i) =>
         val sourcePin = BdIntfPin(outPort(i), this) // TODO check type
-        BdPinPort.connect(sourcePin, sinkPin)
+        BdPinPort.connect1(sourcePin, sinkPin)
       case _ => throw XilinxDesignException("BSCAN only supports BdIntfPin sink pins")
     }.toSeq
   }

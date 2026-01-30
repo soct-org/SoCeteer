@@ -44,7 +44,6 @@ object SOCTLauncher {
   // Generate the design for Vivado synthesis
   private def generateVivadoDesign(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for Vivado synthesis")
-    log.debug(s"Using the following paths: ${boardPaths.toString}")
 
     if (args.xlen == 32) {
       config.params = config.params.orElse(new ExtMem32Bit)
@@ -83,7 +82,6 @@ object SOCTLauncher {
   // Generate the design for simulation
   private def generateSimDesign(args: SOCTArgs, simPaths: SimSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for simulation")
-    log.debug(s"Using the following paths: ${simPaths.toString}")
 
     config.params = config.params.orElse(new soct.RocketSimBaseConfig)
 

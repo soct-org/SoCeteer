@@ -19,6 +19,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
   if (p(BdBuilderKey).isDefined) {
     implicit val bd: SOCTBdBuilder = p(BdBuilderKey).get
+    require(p(HasDDR4ExtMem), "SOCTVivadoSystem currently requires HasDDR4ExtMem to be set in parameters.")
+
     InModuleBody {
       // Instantiate the FPGA board from class stored in parameters
       val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
@@ -27,7 +29,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
       val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
       peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
-
+      //val sl = InlineSlice(1,1,1,1)
       // Default to 100 MHz - TODO use parameters
       val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
       val topInstance = WithDomain(coreDomain) {
@@ -37,22 +39,19 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
           new SOCTVivadoSystemTop(this).withRESET(resetIntf).withCLOCK(clockIntf)
       }
 
-
       bd.init(p, topInstance, fpga)
 
-      // Connect DDR4 if present - it outputs to the clock wizard
-      if (p(HasDDR4ExtMem)) {
-        val ddr4Port = fpga.portsDDR4().headOption.getOrElse(
-          throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
-        )
-        // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
-        val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
-        val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
-        require(ddr4Port.outputToL(ddr4.getPin(ddr4Port)))
+      val ddr4Port = fpga.portsDDR4().headOption.getOrElse(
+        throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
+      )
+      // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
+      val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
 
-        WithDomain(ddr4OutDom) { implicit dom =>
-          ClkWiz(Seq(coreDomain, peripheryDomain))
-        }
+      val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
+      require(ddr4Port.outputToL(ddr4.getPin(ddr4Port)))
+
+      val clkWiz = WithDomain(ddr4OutDom) { implicit dom =>
+        ClkWiz(Seq(coreDomain, peripheryDomain))
       }
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten

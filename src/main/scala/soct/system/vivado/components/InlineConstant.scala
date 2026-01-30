@@ -15,7 +15,7 @@ import soct.system.vivado.abstracts._
  */
 case class InlineConstant(value: UInt, nBits: Int)
                          (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends BdComp with XInlineHDL with SourceForSinks {
+  extends BdComp with XInlineHDL with SourceForSinks with HasSingleOutput  {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -26,13 +26,11 @@ case class InlineConstant(value: UInt, nBits: Int)
     "CONFIG.CONST_WIDTH" -> s"$nBits"
   )
 
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  protected override def connectToSinksImpl(): TCLCommands = {
-    val source = BdPin(outPort, this)
-    BdPinPort.connect(source, sinkPins)
+  protected override def connectToSinksImpl: TCLCommands = {
+    BdPinPort.connect(output, sinkPins)
   }
+
+  override def output: BdPinPort = BdPin(outPort, this)
 }
 
 object InlineConstant {

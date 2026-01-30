@@ -151,15 +151,13 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    val instantiateCommands = components.collect {
+    // These must be lazy as getCommands currently might add new components that are not yet in the components set
+    // TODO this is a bit ugly, refactor at some point
+    lazy val instantiateCommands = components.collect {
       case inst: BdComp => inst.instTcl
     }.flatten.toSeq
 
-    val connectCommands = components.collect {
-      case c: SourceForSinks => c.getCommands
-    }.flatten.toSeq
-
-    val propertyCommands = components.collect {
+    lazy val propertyCommands = components.collect {
       case c: BdComp if c.defaultProperties.nonEmpty =>
         def tclLiteral(v: String): String =
           if (v.startsWith("$") || v.startsWith("[")) v
@@ -172,6 +170,10 @@ class SOCTBdBuilder {
            |] $$${c.instanceName}
            |""".stripMargin
     }.toSeq
+
+    val connectCommands = components.collect {
+      case c: SourceForSinks => c.getCommands
+    }.flatten.toSeq
 
     // Keys for TCL variables used in the script
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)

@@ -14,7 +14,13 @@ trait ProvidesAutoDomain[D <: CollectsSinks] {
   protected val domains: Seq[D]
 
   /**
-   * Resolve the output pin for a given domain and sink
+   * Get the output BdPinPort for the given domain and sink pin.
+   *
+   * @param domain    The domain
+   * @param domainIdx The index of the domain
+   * @param sinkPin   The sink BdPinPort
+   * @param pinIdx    The index of the sink pin within the domain
+   * @return The corresponding output BdPinPort
    */
   @throws[XilinxDesignException]
   protected def outPortImpl(domain: D, domainIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPinPort
@@ -24,7 +30,7 @@ trait ProvidesAutoDomain[D <: CollectsSinks] {
     (domain, domIdx) <- domains.zipWithIndex
     (sink, pinIdx) <- domain.sinkPins.zipWithIndex
     source = outPortImpl(domain, domIdx, sink, pinIdx)
-  } yield BdPinPort.connect(source, sink))
+  } yield BdPinPort.connect1(source, sink))
 }
 
 trait SourceForSinks extends CollectsSinks {
@@ -45,6 +51,25 @@ trait SourceForSinks extends CollectsSinks {
   def getCommands: TCLCommands = {
     connectToSinksImpl ++ otherConnects.flatMap(fn => fn()).toSeq
   }
+}
+
+/**
+ * Trait for components that have a single output BdPinPort - simplifies several use cases
+ */
+trait HasSingleOutput {
+
+  /**
+   * Get the single output BdPinPort provided by this component
+   */
+  def output: BdPinPort
+}
+
+trait HasSingleInput {
+
+  /**
+   * Get the single input BdPinPort received by this component
+   */
+  def input: BdPinPort
 }
 
 /**
