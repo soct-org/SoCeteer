@@ -3,6 +3,7 @@ package soct.system
 package object vivado {
   /**
    * TCL commands container
+   *
    * @param command Sequence of TCL commands
    */
   case class TCLCommand(command: String) {
@@ -17,5 +18,8 @@ package object vivado {
   // Provide an implicit Ordering so Seq[TCLCommand].sorted compiles
   implicit val tclCommandOrdering: Ordering[TCLCommand] = Ordering.by(_.command)
 
+  /**
+   * TCL commands sequence type
+   */
   type TCLCommands = Seq[TCLCommand]
 }

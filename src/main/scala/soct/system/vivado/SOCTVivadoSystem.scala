@@ -29,7 +29,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
       val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
       peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
-      //val sl = InlineSlice(1,1,1,1)
       // Default to 100 MHz - TODO use parameters
       val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
       val topInstance = WithDomain(coreDomain) {
@@ -53,6 +52,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val clkWiz = WithDomain(ddr4OutDom) { implicit dom =>
         ClkWiz(Seq(coreDomain, peripheryDomain))
       }
+
+      clkWiz.outputToL(peripheryReset.getPin(clkWiz, ProcSysReset.Keys.DcmLocked))
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
       axiInfts.foreach { axiInft => AXIMM(axiInft) }
@@ -92,8 +93,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val bscan = BSCAN()
         val b2j = BSCAN2JTAG()
 
-        require(bscan.outputToL(b2j.getPin(bscan)))
-        require(b2j.outputToL(jtagXIntf.getPin(b2j)))
+        require(bscan.outputToL(b2j.getPin(bscan, BSCAN2JTAG.Keys.BSCAN)))
+        require(b2j.outputToL(jtagXIntf.getPin(b2j, JTAG.Keys.BSCAN2JTAG)))
       }
     }
   }

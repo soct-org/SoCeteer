@@ -4,6 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.abstracts._
+import soct.system.vivado.components.SDCardPMOD.Keys._
 
 import java.nio.file.{Files, Path}
 
@@ -83,27 +84,33 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
     Some(dest)
   }
 
-  protected override def getPinImpl(source: SourceForSinks): Option[BdPinPort] = {
+  protected override def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
+
     source match {
       case _: SDIOCDPort => Some(BdPin(sdioCD, this))
       case _: SDIOCmdPort => Some(BdPin(sdioCMD, this))
       case _: SDIODataPort => Some(BdPin(sdioDat, this))
       case _: SDIOClkPort => Some(BdPin(sdioClk, this))
-      case _ => None
+      case _ =>
+        sinkKey match {
+          case Interrupt => Some(Interrupt.getPin(this)())
+          case _ => None
+        }
     }
   }
 }
 
 object SDCardPMOD {
+  object Keys {
+    object Interrupt extends KeyForSink {
+      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdPin("interrupt", comp)
+    }
+  }
+
   private val sdioCD = "sdio_cd"
-
   private val sdioCMD = "sdio_cmd"
-
   private val sdioDat = "sdio_dat"
-
   private val sdioClk = "sdio_clk"
-
   private val clock = "clock"
-
   private val resetN = "async_resetn"
 }

@@ -1,9 +1,10 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, TCLCommand, TCLCommands}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.components.ProcSysReset._
 import soct.system.vivado.abstracts._
+import soct.system.vivado.components.ProcSysReset.Keys._
 
 import scala.collection.mutable
 
@@ -14,11 +15,11 @@ import scala.collection.mutable
  * @param dom Only used for the slowestSyncClk connection
  */
 case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends BdComp with Xip with ReceivesClock with SourceForSinks with ProvidesAutoReset {
+  extends BdComp with Xip with ReceivesClock with SourceForSinks with ProvidesAutoReset with HasSinkPins with Finalizable {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
-  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin(slowestSyncClk, this))
+  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(SlowestSyncClk.getPin(this)())
 
   /**
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
@@ -67,62 +68,99 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
     InterconnectResetN
   )
 
-  private val sliceMap = Map(
-    PeripheralAResetN -> mutable.Map[Int, InlineSlice](),
-    PeripheralReset -> mutable.Map[Int, InlineSlice](),
-    BusStructReset -> mutable.Map[Int, InlineSlice](),
-    InterconnectResetN -> mutable.Map[Int, InlineSlice]()
+  case class Entry(name: String, max: Int, sliceMap: mutable.Map[Int, InlineSlice])
+
+  private val resetMap: mutable.Map[ResetType, Entry] = mutable.Map(
+    PeripheralAResetN -> Entry(peripheralAReset, MAX_PERIPHERAL_ARESETN, mutable.Map[Int, InlineSlice]()),
+    PeripheralReset -> Entry(peripheralReset, MAX_PERIPHERAL_RESET, mutable.Map[Int, InlineSlice]()),
+    BusStructReset -> Entry(busStructReset, MAX_BUS_STRUCT_RESET, mutable.Map[Int, InlineSlice]()),
+    InterconnectResetN -> Entry(interconnectAResetN, MAX_INTERCONNECT_ARESETN, mutable.Map[Int, InlineSlice]())
   )
 
-  private val maxMap = Map(
-    PeripheralAResetN -> MAX_PERIPHERAL_ARESETN,
-    PeripheralReset -> MAX_PERIPHERAL_RESET,
-    BusStructReset -> MAX_BUS_STRUCT_RESET,
-    InterconnectResetN -> MAX_INTERCONNECT_ARESETN
-  )
-
-  private val nameMap = Map(
-    PeripheralAResetN -> peripheralAReset,
-    PeripheralReset -> peripheralReset,
-    BusStructReset -> busStructReset,
-    InterconnectResetN -> interconnectAResetN
-  )
+  require(domains.toSet == resetMap.keySet, "Internal Bug: Reset domains do not match resetMap keys")
 
   override protected def outPortImpl(reset: ResetType, resetIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPinPort = {
     val dinWidth = reset.sinkPins.size
     if (dinWidth <= 1) { // No slicing needed
-      return BdPin(nameMap(reset), this)
+      return BdPin(resetMap(reset).name, this)
     }
-    val sliceCache = sliceMap(reset)
-    val idx = pinIdx % maxMap(reset)
-    val slice = sliceCache.getOrElseUpdate(idx,
-      new InlineSlice(dinWidth, idx, idx, 1) {override def instanceName: String = {
-        val procSysResetName = ProcSysReset.this.instanceName
-        s"${procSysResetName}_${nameMap(reset)}_slice_$idx"
-      }
-      }
-    )
+    val sliceCache = resetMap(reset).sliceMap
+    val idx = pinIdx % resetMap(reset).max
+    val slice = sliceCache.get(idx) match {
+      case Some(s) => s
+      case None =>
+        throw XilinxDesignException(s"Slice for reset $reset idx=$idx not allocated. Components must be finalized before generating connections.")
+    }
     slice.output
   }
 
   // Connect the slices to the main reset output pins
   otherConnects.addOne(() => {
-    sliceMap.toSeq.flatMap { case (reset, sliceCache) =>
-      sliceCache.values.toSeq.map { slice =>
+    resetMap.toSeq.flatMap { case (_, entry) =>
+      entry.sliceMap.values.toSeq.map { slice =>
         val sink = slice.input
-        val source = BdPin(nameMap(reset), this)
+        val source = BdPin(entry.name, this)
         BdPinPort.connect1(source, sink)
       }
     }
   })
 
+
+  override protected def finalizeBdImpl(): Seq[BdComp] = {
+    var slices: mutable.Seq[BdComp] = mutable.Seq.empty
+
+    def newSlice(dinWidth: Int, idx: Int, entry: Entry): InlineSlice = {
+      val slice = new InlineSlice(dinWidth, idx, idx, 1) {
+        override def instanceName: String = {
+          val procSysResetName = ProcSysReset.this.instanceName
+          s"${procSysResetName}_${entry.name}_slice_$idx"
+        }
+      }
+      slices :+= slice
+      slice
+    }
+
+    // For each reset type, create slices as needed
+    resetMap.foreach { case (resetType, entry) =>
+      val dinWidth = resetType.sinkPins.size
+      if (dinWidth > 1) {
+        for (idx <- 0 until (dinWidth min entry.max)) {
+          val slice = newSlice(dinWidth, idx, entry)
+          entry.sliceMap(idx) = slice
+        }
+      }
+    }
+    slices.toSeq
+  }
+
   override protected def connectToSinksImpl: TCLCommands = {
     Seq.empty
+  }
+
+  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
+    sinkKey match {
+      case DcmLocked => Some(DcmLocked.getPin(this)())
+      case _ => None
+    }
   }
 }
 
 
 object ProcSysReset {
+  object Keys {
+    object SlowestSyncClk extends KeyForSink {
+      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdPin("slowest_sync_clk", comp)
+    }
+
+    object DcmLocked extends KeyForSink {
+      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdPin("dcm_locked", comp)
+    }
+
+    object ExtReset extends KeyForSink {
+      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdPin("ext_reset_in", comp)
+    }
+  }
+
   private val peripheralAReset = "peripheral_aresetn"
   private val MAX_PERIPHERAL_ARESETN = 16
 
@@ -134,8 +172,4 @@ object ProcSysReset {
 
   private val interconnectAResetN = "interconnect_aresetn"
   private val MAX_INTERCONNECT_ARESETN = 8
-
-  private val slowestSyncClk = "slowest_sync_clk"
-  private val dcmLocked = "dcm_locked"
-  private val extReset = "ext_reset_in"
 }

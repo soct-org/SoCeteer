@@ -17,7 +17,10 @@ import scala.collection.mutable
 final case class TclVar(description: String, default: String)
 
 class SOCTBdBuilder {
+  // Set of all components in the block design
   private val components = mutable.Set.empty[BdBaseComp]
+
+  private var locked = false // To prevent further modifications after finalization
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
     val varDecls = vars.map { case (v, TclVar(description, default)) =>
@@ -37,7 +40,6 @@ class SOCTBdBuilder {
 
   // Map of variable names to their descriptions and default values
   private var vars: Map[String, TclVar] = Map.empty
-
 
   /**
    * Static map of block design specific TCL variables that are instantiated in the BD script.
@@ -131,6 +133,10 @@ class SOCTBdBuilder {
   }
 
   def add[T <: BdBaseComp](c: T): Unit = {
+    if (locked) {
+      throw XilinxDesignException("Cannot add components after finalization")
+    }
+
     if (!components.contains(c)) {
       components += c
     }
@@ -151,8 +157,9 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    // These must be lazy as getCommands currently might add new components that are not yet in the components set
-    // TODO this is a bit ugly, refactor at some point
+    components.collect { case f: Finalizable => f.finalizeBd() }
+    locked = true
+
     lazy val instantiateCommands = components.collect {
       case inst: BdComp => inst.instTcl
     }.flatten.toSeq

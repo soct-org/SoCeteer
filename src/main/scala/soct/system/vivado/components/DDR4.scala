@@ -50,7 +50,7 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
   }
 
 
-  override protected def getPinImpl(source: SourceForSinks): Option[BdPinPort] = {
+  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
     source match {
       case _: DDR4Port => Some(BdIntfPin(C0_DDR4, this))
       case _ => None
@@ -72,10 +72,10 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
 
 
 object DDR4 {
+
+
   private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
-
   private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
-
   private val C0_SYS_CLK = "C0_SYS_CLK"
   private val C0_DDR4 = "C0_DDR4"
 }

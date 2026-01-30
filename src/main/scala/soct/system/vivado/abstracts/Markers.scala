@@ -1,5 +1,7 @@
 package soct.system.vivado.abstracts
 
+import soct.system.vivado.XilinxDesignException
+
 import java.nio.file.{Files, Path}
 
 
@@ -82,6 +84,33 @@ trait HasCollaterals {
     None
   }
 }
+
+trait Finalizable {
+  this: BdComp =>
+
+  private var finalized: Boolean = false
+
+  /**
+   * Implementation of finalizeBd, to be provided by inheriting classes.
+   * You must not instantiate Finalizable subcomponents here as order of finalization is not guaranteed.
+   * @return A sequence of BdComp subcomponents created during finalization.
+   */
+  protected def finalizeBdImpl(): Seq[BdComp]
+
+  /** Called by SOCTBdBuilder before generating TCL to allow components to create/register subcomponents. */
+  def finalizeBd(): Unit = {
+    if (finalized) return
+    val newInstances = finalizeBdImpl()
+    // Require newInstances are not Finalizable to avoid recursion
+    newInstances.foreach { inst =>
+      if (inst.isInstanceOf[Finalizable]) {
+        throw XilinxDesignException(s"Finalizable component $this attempted to create Finalizable subcomponent ${inst.instanceName} during finalization. This is not allowed.")
+      }
+    }
+    finalized = true
+  }
+}
+
 
 /**
  * Trait for components that have a friendly name

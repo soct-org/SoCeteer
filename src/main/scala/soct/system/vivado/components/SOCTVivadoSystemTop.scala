@@ -4,8 +4,9 @@ import chisel3.reflect.DataMirror
 import chisel3.{Data, Record}
 import org.chipsalliance.cde.config.Parameters
 import soct.HasSOCTConfig
+import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTVivado.portToBdPin
-import soct.system.vivado.{SOCTBdBuilder, SOCTVivadoSystem}
+import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
 import soct.system.vivado.signal.{CLOCK, RESET}
 
@@ -13,7 +14,7 @@ import scala.reflect.ClassTag
 
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
-class SOCTVivadoSystemTop(s: SOCTVivadoSystem)(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain])
+class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain])
   extends BdComp with IsModule with AutoConnect {
 
   // This is the top-level instance representing this system in the block design

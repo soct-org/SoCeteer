@@ -54,7 +54,7 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
     BdPin(clkOut(clkoutIdx), this)
   }
 
-  override protected def getPinImpl(source: SourceForSinks): Option[BdPinPort] = {
+  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
     None // For now, no specific pin mapping.
   }
 

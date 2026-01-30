@@ -167,27 +167,47 @@ trait HasSinkPins {
   /**
    * Get the BdPinPort corresponding to the given source, if any.
    *
-   * @param source The source to look up
+   * @param source  The source to look up
+   * @param sinkKey The key for the sink
    * @return Some(BdPinPort) if found, None otherwise
    */
-  protected def getPinImpl(source: SourceForSinks): Option[BdPinPort]
+  protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort]
 
   /**
    * Get the BdPinPort corresponding to the given source.
    *
-   * @param source The source to look up
+   * @param source  The source to look up
+   * @param sinkKey The key for the sink
    * @return The corresponding BdPinPort
    * @throws XilinxDesignException if no BdPinPort is found for the source
    */
   @throws[XilinxDesignException]
-  final def getPin(source: SourceForSinks): () => BdPinPort = {
-    val sinkOpt = getPinImpl(source)
+  final def getPin(source: SourceForSinks, sinkKey: KeyForSink = NoneKeyForSink): () => BdPinPort = {
+    val sinkOpt = getPinImpl(source, sinkKey)
     if (sinkOpt.isEmpty) {
-      throw XilinxDesignException(s"No sink pin found for source $source in component $this")
+      throw XilinxDesignException(s"No BdPinPort found for source $source with sink key $sinkKey in component $this")
     }
     sourcePins += source
     () => sinkOpt.get
   }
+}
+
+/**
+ * Marker class to request a specific pin as a sink
+ */
+trait KeyForSink {
+  /**
+   * Get the BdPinPort for the given component
+   *
+   * @param comp The component
+   * @tparam T The component type
+   * @return Function that returns the BdPinPort
+   */
+  def getPin[T <: BdComp](comp: T): () => BdPinPort
+}
+
+object NoneKeyForSink extends KeyForSink {
+  override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => throw XilinxDesignException("NoneKeyForSink does not provide a pin")
 }
 
 
