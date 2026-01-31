@@ -19,7 +19,7 @@ trait BdPortBase extends BdPinPort {
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
 abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp()(bd, p, None) with SourceForSinks with BdPortBase {
+  extends BdComp()(bd, p, None) with BdPortBase {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -53,10 +53,6 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
     }
     Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]".tcl)
   }
-
-  protected override def connectToSinksImpl: TCLCommands = {
-    BdPinPort.connect(this, sinkPins)
-  }
 }
 
 
@@ -64,7 +60,7 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
 abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends BdComp with XIntf with SourceForSinks with BdPortBase {
+  extends BdComp with XIntf with BdPortBase {
   /**
    * The mode of this interface, e.g., "Master" or "Slave"
    */
@@ -75,10 +71,6 @@ abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
    */
   override def instTcl: TCLCommands = {
     Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]".tcl)
-  }
-
-  protected override def connectToSinksImpl: TCLCommands = {
-    BdPinPort.connect(this, sinkPins)
   }
 }
 

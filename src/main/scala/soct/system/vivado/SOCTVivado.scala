@@ -34,9 +34,13 @@ object SOCTVivado {
 
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
-  /** Convert a name to snake_case */
-  def snake(name: String): String = {
+  private def snake(name: String): String = {
     name.toLowerCase.replace(".", "_")
+  }
+
+  /** Convert a Chisel Data port to its name in Verilog */ // TODO validate somehow
+  def portToPortName(x: Data): String = {
+    snake(x.instanceName)
   }
 
   /** Convert a Chisel Data port to a BdPin */

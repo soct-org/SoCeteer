@@ -3,7 +3,7 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.ClkWiz._
-import soct.system.vivado.fpga.FPGAResetPortType
+import soct.system.vivado.fpga.FPGAResetPortSource
 import soct.system.vivado.abstracts._
 
 
@@ -18,7 +18,7 @@ import scala.collection.mutable
  * @param dom The input clock domain - for example from an FPGAClockDomain or driven by DDR4
  */
 case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock is connected externally
-  extends BdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
+  extends BdComp with Xip with AutoClockAndReset with ProvidesAutoClock {
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 
@@ -27,6 +27,8 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
   override def resetInPorts: () => Seq[BdPinPort] = () => Seq(BdPin(RSTIn, this))
 
   override def resetNInPorts: () => Seq[BdPinPort] = () => Seq.empty
+
+  object LOCKED extends Source
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
@@ -40,7 +42,7 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
     m += "CONFIG.NUM_OUT_CLKS" -> nCds.toString
     m += "CONFIG.USE_BOARD_FLOW" -> "true"
     dom.foreach(_.reset.foreach{
-      case r: FPGAResetPortType =>
+      case r: FPGAResetPortSource =>
         m += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
       case _ => // Ignore other reset types for now
     })
@@ -52,14 +54,6 @@ case class ClkWiz(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBui
     val clkoutIdx = domIdx + 1
     // TODO validate clkoutIdx based on selected board, some have more than others
     BdPin(clkOut(clkoutIdx), this)
-  }
-
-  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
-    None // For now, no specific pin mapping.
-  }
-
-  override protected def connectToSinksImpl: TCLCommands = {
-    Seq.empty // For now, only has clock outputs (will change in future)
   }
 }
 

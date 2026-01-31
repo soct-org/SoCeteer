@@ -16,10 +16,7 @@ trait ReceivesClock {
 /**
  * Trait for components that provide automatic clock connections
  */
-trait ProvidesAutoClock extends ProvidesAutoDomain[ClockDomain] {
-  this: SourceForSinks =>
-
-}
+trait ProvidesAutoClock extends ProvidesAutoDomain[ClockDomain]
 
 /**
  * Case class representing a clock domain in the design
@@ -29,9 +26,9 @@ trait ProvidesAutoClock extends ProvidesAutoDomain[ClockDomain] {
  * @param tclVarName Optional name of the dereferenced TCL variable representing this clock domain in the block design, e.g, "$clock_freq"
  */
 case class ClockDomain(freqMHz: Double,
-                       var reset: Option[ResetType] = None,
+                       var reset: Option[ResetSource] = None,
                        tclVarName: Option[String] = None)
-                      (implicit bd: SOCTBdBuilder) extends CollectsSinks {
+                      (implicit bd: SOCTBdBuilder) {
   if (tclVarName.isDefined) {
     bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
   }

@@ -5,7 +5,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SOCTVivadoSystemTop}
+import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.FPGARegistry
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAG}
@@ -47,21 +47,23 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
 
       val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
-      require(ddr4Port.outputTo(ddr4.getPin(ddr4Port)))
+      ddr4 <-> ddr4Port
 
       val clkWiz = WithDomain(ddr4OutDom) { implicit dom =>
         ClkWiz(Seq(coreDomain, peripheryDomain))
       }
 
-      clkWiz.outputTo(peripheryReset.getPin(clkWiz, ProcSysReset.Keys.DcmLocked))
+      clkWiz.LOCKED --> peripheryReset.DCM_LOCKED
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
       axiInfts.foreach { axiInft => AXIMM(axiInft) }
 
       if (p(HasSDCardPMOD).isDefined) {
-        val ports = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
+        val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         val sdPmod = WithDomain(peripheryDomain) { implicit dom => SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get) }
-        ports.foreach { port => port.outputTo(sdPmod.getPin(port)) }
+        ports.foreach { port =>
+          sdPmod <-> port
+        }
       }
 
       val debugIf = debug.getWrappedValue.get
@@ -78,23 +80,22 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {
           override def friendlyName: String = "jtag_mfr_id_constant"
         }
-        require(mfrIdConst.outputTo(jtagIO.mfr_id))
+        mfrIdConst --> jtagIO.mfr_id
 
         val partNumConst = new InlineConstant(0.U, jtagIO.part_number.getWidth) {
           override def friendlyName: String = "jtag_part_number_constant"
         }
-        require(partNumConst.outputTo(jtagIO.part_number))
+        partNumConst --> jtagIO.part_number
 
         val versionConst = new InlineConstant(0.U, jtagIO.version.getWidth) {
           override def friendlyName: String = "jtag_version_constant"
         }
-        require(versionConst.outputTo(jtagIO.version))
+        versionConst --> jtagIO.version
 
         val bscan = BSCAN()
         val b2j = BSCAN2JTAG()
-
-        require(bscan.outputTo(b2j.getPin(bscan, BSCAN2JTAG.Keys.BSCAN)))
-        require(b2j.outputTo(jtagXIntf.getPin(b2j, JTAG.Keys.BSCAN2JTAG)))
+        bscan --> b2j
+        b2j --> jtagXIntf
       }
     }
   }

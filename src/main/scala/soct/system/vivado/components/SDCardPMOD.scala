@@ -1,15 +1,20 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.components.SDCardPMOD._
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.abstracts._
-import soct.system.vivado.components.SDCardPMOD.Keys._
 
 import java.nio.file.{Files, Path}
 
+/**
+ * Base class for SDIO ports
+ */
+abstract class SDIOPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with HasIO {
+  override def getIO: BdPinPort = this
+}
 
-case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+
+case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort  {
   override def instanceName = "sdio_cd"
 
   override def ifType: String = "data"
@@ -17,7 +22,7 @@ case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPor
   override def dir: String = "I"
 }
 
-case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
   override def instanceName = "sdio_clk"
 
   override def ifType: String = "clk"
@@ -25,7 +30,7 @@ case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPo
   override def dir: String = "O"
 }
 
-case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
   override def instanceName = "sdio_cmd"
 
   override def ifType: String = "data"
@@ -33,7 +38,7 @@ case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPo
   override def dir: String = "IO"
 }
 
-case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort {
+case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
   override def instanceName = "sdio_data"
 
   override def ifType: String = "data"
@@ -52,15 +57,23 @@ case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdP
  * @param pmodIdx  The PMOD index to use
  */
 case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends BdComp with IsModule with AutoConnect with HasSinkPins {
+  extends BdComp with IsModule with AutoClockAndReset with HasAutoConnect[SDCardPMOD] {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
-  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin(clock, this))
+  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin("clock", this))
 
-  override def resetNInPorts: () => Seq[BdPinPort] = () => Seq(BdPin(resetN, this))
+  override def resetNInPorts: () => Seq[BdPinPort] = () => Seq(BdPin("async_resetn", this))
 
   override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
+
+  object SDIO_CD extends SingleIO {override def getIO: BdPinPort = BdPin("sdio_cd", SDCardPMOD.this)}
+
+  object SDIO_CMD extends SingleIO {override def getIO: BdPinPort = BdPin("sdio_cmd", SDCardPMOD.this)}
+
+  object SDIO_DATA extends SingleIO {override def getIO: BdPinPort = BdPin("sdio_dat", SDCardPMOD.this)}
+
+  object SDIO_CLK extends SingleIO {override def getIO: BdPinPort = BdPin("sdio_clk", SDCardPMOD.this)}
 
   override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
@@ -83,34 +96,16 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, d
     })
     Some(dest)
   }
-
-  protected override def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
-
-    source match {
-      case _: SDIOCDPort => Some(BdPin(sdioCD, this))
-      case _: SDIOCmdPort => Some(BdPin(sdioCMD, this))
-      case _: SDIODataPort => Some(BdPin(sdioDat, this))
-      case _: SDIOClkPort => Some(BdPin(sdioClk, this))
-      case _ =>
-        sinkKey match {
-          case Interrupt => Some(Interrupt.getPin(this)())
-          case _ => None
-        }
-    }
-  }
 }
 
 object SDCardPMOD {
-  object Keys {
-    object Interrupt extends KeyForSink {
-      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdPin("interrupt", comp)
+  implicit val a: AutoConnect[SDCardPMOD, SDIOPort] = (comp: SDCardPMOD, port: SDIOPort) =>
+    port match {
+      case p: SDIOCDPort => comp.SDIO_CD.connect(p)
+      case p: SDIOCmdPort => comp.SDIO_CMD.connect(p)
+      case p: SDIODataPort => comp.SDIO_DATA.connect(p)
+      case p: SDIOClkPort => comp.SDIO_CLK.connect(p)
+      case _ => throw XilinxDesignException(s"SDCardPMOD cannot connect to unknown port type: ${port.getClass}")
     }
-  }
 
-  private val sdioCD = "sdio_cd"
-  private val sdioCMD = "sdio_cmd"
-  private val sdioDat = "sdio_dat"
-  private val sdioClk = "sdio_clk"
-  private val clock = "clock"
-  private val resetN = "async_resetn"
 }

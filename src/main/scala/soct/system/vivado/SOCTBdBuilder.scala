@@ -157,13 +157,16 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    components.collect { case f: Finalizable => f.finalizeBd() }
+    val newConnects = components.collect { case f: Finalizable => f.finalizeBd() }.flatten
     locked = true
 
+    // Instantiations:
     lazy val instantiateCommands = components.collect {
       case inst: BdComp => inst.instTcl
     }.flatten.toSeq
 
+
+    // Property settings:
     lazy val propertyCommands = components.collect {
       case c: BdComp if c.defaultProperties.nonEmpty =>
         def tclLiteral(v: String): String =
@@ -177,10 +180,6 @@ class SOCTBdBuilder {
            |] $$${c.instanceName}
            |""".stripMargin
     }.toSeq
-
-    val connectCommands = components.collect {
-      case c: SourceForSinks => c.getCommands
-    }.flatten.toSeq
 
     // Keys for TCL variables used in the script
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)
@@ -313,7 +312,7 @@ class SOCTBdBuilder {
        |${propertyCommands.sorted.mkString("\n")}
        |
        |# Connect components
-       |${connectCommands.sorted.mkString("\n")}
+       |# TODO add me back
        |
        |""".stripMargin
   }

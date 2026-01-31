@@ -1,6 +1,6 @@
 package soct.system.vivado.abstracts
 
-import soct.system.vivado.XilinxDesignException
+import soct.system.vivado.{TCLCommands, XilinxDesignException}
 
 import java.nio.file.{Files, Path}
 
@@ -90,31 +90,33 @@ trait HasCollaterals {
  * This allows components to inject subcomponents based on their connections
  */
 trait Finalizable {
-  this: BdComp =>
-
-  private var finalized: Boolean = false
+  private var newConnects: Option[TCLCommands] = None
 
   /**
    * Implementation of finalizeBd, to be provided by inheriting classes.
    * You must not instantiate Finalizable subcomponents here as order of finalization is not guaranteed.
-   * @return A sequence of BdComp subcomponents created during finalization.
+   * @return A sequence of BdComp subcomponents and TCLCommands to be added to the design.
    */
-  protected def finalizeBdImpl(): Seq[BdComp]
+  protected def finalizeBdImpl(): (Seq[BdComp], TCLCommands)
+
 
   /** Called by SOCTBdBuilder before generating TCL to allow components to create/register subcomponents. */
-  def finalizeBd(): Unit = {
-    if (finalized) return
-    val newInstances = finalizeBdImpl()
+  def finalizeBd(): TCLCommands = {
+    if (this.newConnects.isDefined) {
+      return this.newConnects.get
+    }
+    val (newInstances, newConnects) = finalizeBdImpl()
+
     // Require newInstances are not Finalizable to avoid recursion
     newInstances.foreach { inst =>
       if (inst.isInstanceOf[Finalizable]) {
         throw XilinxDesignException(s"Finalizable component $this attempted to create Finalizable subcomponent ${inst.instanceName} during finalization. This is not allowed.")
       }
     }
-    finalized = true
+    this.newConnects = Some(newConnects)
+    newConnects
   }
 }
-
 
 /**
  * Trait for components that have a friendly name

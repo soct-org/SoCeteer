@@ -14,7 +14,7 @@ abstract class SignalPort[T <: chisel3.Data](implicit bd: SOCTBdBuilder, p: Para
     val signals = gens.flatMap(gen => gen())
     val portMappings = mutable.Map.empty[String, Seq[String]]
     signals.foreach { port =>
-      val portName = SOCTVivado.snake(port.instanceName)
+      val portName = SOCTVivado.portToPortName(port)
       portMappings(portName) = getAnnotations(port, portName)
     }
     portMappings.toMap

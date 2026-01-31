@@ -14,7 +14,7 @@ import scala.reflect.ClassTag
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
 class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain])
-  extends BdComp with IsModule with AutoConnect {
+  extends BdComp with IsModule with AutoClockAndReset {
 
   // This is the top-level instance representing this system in the block design
   private val c = p(HasSOCTConfig)

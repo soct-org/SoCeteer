@@ -3,17 +3,19 @@ package soct.system.vivado.abstracts
 /**
  * Marker trait for reset providers
  */
-trait ResetType extends CollectsSinks
+trait ResetSource extends Source
+
 
 /**
- * Reset type representing an active-high reset
+ * Marker trait for active low reset sinks
  */
-trait Reset extends ResetType
+trait ResetN
+
 
 /**
- * Reset type representing an active-low reset
+ * Marker trait for active high reset sinks
  */
-trait ResetN extends ResetType
+trait Reset
 
 
 /**
@@ -34,6 +36,5 @@ trait ReceivesReset {
 /**
  * Trait for components that provide automatic reset connections
  */
-trait ProvidesAutoReset extends ProvidesAutoDomain[ResetType] {
-  this: SourceForSinks =>
+trait ProvidesAutoReset extends ProvidesAutoDomain[ResetSource] {
 }

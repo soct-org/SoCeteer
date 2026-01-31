@@ -1,12 +1,13 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortType}
+import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortSource}
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
-import soct.system.vivado.components.DDR4._
 import soct.system.vivado.abstracts._
 
+import scala.annotation.unused
 import scala.collection.mutable
+
 
 /**
  * DDR4 memory controller component for Xilinx FPGAs.
@@ -15,28 +16,31 @@ import scala.collection.mutable
  * @param dom     The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
 case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends BdComp with Xip with SourceForSinks with HasSinkPins with AutoConnect with ProvidesAutoClock {
+  extends BdComp with Xip with AutoClockAndReset with ProvidesAutoClock with HasAutoConnect[DDR4] {
 
   require(dom.isDefined, s"DDR4 component must be instantiated in an FPGAClockDomain")
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
-  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdIntfPin(C0_SYS_CLK, this))
+  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdIntfPin("C0_SYS_CLK", this))
 
   override def resetNInPorts: () => Seq[BdPinPort] = () => Seq.empty
 
   override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
 
+  object C0_DDR4 extends SingleIO {override def getIO(): BdPinPort = BdIntfPin("C0_DDR4", DDR4.this)}
+
 
   override def defaultProperties: Map[String, String] = {
     val props = mutable.Map.empty[String, String]
 
-    val ddr4Intfs = sourcePins.collect { case ddr4Port: DDR4Port => ddr4Port }
-    require(ddr4Intfs.size == 1, s"DDR4 component $this must have exactly one DDR4Port source pin, found ${ddr4Intfs.size}")
-    props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intfs.head.instanceName
+    val ddr4Intf = C0_DDR4.source.getOrElse(
+      throw XilinxDesignException("DDR4 component requires a connected DDR4Port interface")
+    )
+    props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf
     props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.port.instanceName
     dom.get.reset.foreach {
-      case r: FPGAResetPortType =>
+      case r: FPGAResetPortSource =>
         props += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
       case _ => // Ignore other reset types for now
     }
@@ -50,13 +54,6 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
   }
 
 
-  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
-    source match {
-      case _: DDR4Port => Some(BdIntfPin(C0_DDR4, this))
-      case _ => None
-    }
-  }
-
   override def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPin = {
     val clkoutIdx = domIdx + 1
     if (clkoutIdx > 4) {
@@ -64,18 +61,12 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
     }
     BdPin(clkOut(clkoutIdx), this)
   }
-
-  override protected def connectToSinksImpl: TCLCommands = {
-    Seq.empty // For now, only has clock outputs (will change in future)
-  }
 }
 
 
 object DDR4 {
-
-
   private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
   private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
-  private val C0_SYS_CLK = "C0_SYS_CLK"
-  private val C0_DDR4 = "C0_DDR4"
+
+  implicit val a: AutoConnect[DDR4, DDR4Port] = (comp: DDR4, port: DDR4Port) => comp.C0_DDR4.connect(port)
 }

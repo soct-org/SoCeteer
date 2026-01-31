@@ -4,6 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
+import soct.system.vivado.intf.JTAG
 
 import java.nio.file.{Files, Path}
 
@@ -11,7 +12,7 @@ import java.nio.file.{Files, Path}
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
 case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp()(bd, p, None) with IsModule with HasSinkPins with SourceForSinks {
+  extends BdComp()(bd, p, None) with IsModule with HasAutoConnect[BSCAN2JTAG] {
 
   /**
    * The reference name of this module - as defined in the collateral files
@@ -33,28 +34,15 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
     Some(dest)
   }
 
-  /**
-   * Emit the TCL commands to connect this component in the design
-   */
-  protected override def connectToSinksImpl: TCLCommands = {
-    // This component only outputs JTAG, so we don't need to validate any sink connections
-    val source = BdIntfPin(jtagIntf, this)
-    BdPinPort.connect(source, sinkPins)
+  object S_BSCAN extends SingleIO {
+    override def getIO(): BdPinPort = BdIntfPin("S_BSCAN", BSCAN2JTAG.this)
   }
 
-  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
-    sinkKey match {
-      case Keys.BSCAN => Some(Keys.BSCAN.getPin(this)())
-      case _ => None
-    }
-  }
+
+  object M_JTAG extends Source {}
+
 }
 
 object BSCAN2JTAG {
-  object Keys {
-    case object BSCAN extends KeyForSink {
-      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdIntfPin("S_BSCAN", comp)
-    }
-  }
-  private val jtagIntf = "JTAG"
+  implicit val a: AutoConnect[BSCAN2JTAG, JTAG] = (comp: BSCAN2JTAG, port: JTAG) => comp.M_JTAG.add(port)
 }

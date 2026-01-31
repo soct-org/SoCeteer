@@ -61,7 +61,8 @@ object FPGARegistry {
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) extends BdIntfPort {
+case class DDR4Port(override val instanceName: String)
+                   (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) extends BdIntfPort {
 
   override def mode: String = "Master"
 
@@ -71,19 +72,19 @@ case class DDR4Port(override val instanceName: String)(implicit bd: SOCTBdBuilde
 /**
  * Case class representing a reset port on the FPGA board
  */
-abstract class FPGAResetPortType(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with ResetType {
+abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with ResetSource {
   override def ifType: String = "rst"
 
   override def dir: String = "I"
 }
 
-case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with Reset {
+case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.POLARITY" -> "ACTIVE_HIGH"
   )
 }
 
-case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortType with ResetN {
+case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with ResetN {
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.POLARITY" -> "ACTIVE_LOW"
   )
@@ -121,7 +122,7 @@ case class FPGAClockPort(override val instanceName: String)
  * @param freqMHz The frequency of the clock domain in MHz
  * @param reset   Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(override val freqMHz: Double, reset: ResetType)
+final class FPGAClockDomain(override val freqMHz: Double, reset: ResetSource)
                            (implicit bd: SOCTBdBuilder) extends ClockDomain(freqMHz, Some(reset)) {
 
   private var portOpt: Option[FPGAClockPort] = None
@@ -180,7 +181,7 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
   /**
    * The default reset port for this FPGA board, based on the reset polarity parameter
    */
-  lazy val defaultReset: FPGAResetPortType = {
+  lazy val defaultReset: FPGAResetPortSource = {
     if (p(FPGAResetPolarity)) {
       FPGAResetPort("reset")
     } else {

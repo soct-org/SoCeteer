@@ -4,14 +4,14 @@ import chisel3.Bool
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
-import soct.system.vivado.abstracts.{BdComp, BdIntfPin, BdPinPort, HasSinkPins, KeyForSink, MapsToPorts, SourceForSinks, XIntf}
-import soct.system.vivado.components.BSCAN2JTAG
-import soct.system.vivado.intf.JTAG.jtagIntf
+import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, HasIO, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
 case class JTAG(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends MapsToPorts with HasSinkPins with XIntf  {
+  extends MapsToPorts with XIntf with HasIO {
+
+  val jtagIntf: String = "JTAG"
 
   override def partName: String = "xilinx.com:interface:jtag:1.0"
 
@@ -25,27 +25,13 @@ case class JTAG(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parame
       TDT -> "TD_T"
     )
     ports2Xilinx.foreach { case (port, xilinxName) =>
-      val portName = SOCTVivado.snake(port.instanceName)
+      val portName = SOCTVivado.portToPortName(port)
       val intfString = s"(* X_INTERFACE_INFO = \"$partName $jtagIntf $xilinxName\" *)"
       portMappings(portName) = Seq(intfString)
     }
     portMappings.toMap
   }
 
-  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
-    sinkKey match {
-      case JTAG.Keys.BSCAN2JTAG => Some(JTAG.Keys.BSCAN2JTAG.getPin(bd.topInstance())())
-      case _ => None
-    }
-  }
-}
+  override def getIO(): BdPinPort = BdIntfPin(jtagIntf, bd.topInstance())
 
-object JTAG {
-  object Keys {
-    object BSCAN2JTAG extends KeyForSink {
-      override def getPin[T <: BdComp](comp: T): () => BdPinPort = () => BdIntfPin(jtagIntf, comp)
-    }
-  }
-
-  private val jtagIntf = "JTAG"
 }
