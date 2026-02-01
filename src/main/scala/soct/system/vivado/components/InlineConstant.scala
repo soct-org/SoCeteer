@@ -2,6 +2,7 @@ package soct.system.vivado.components
 
 import chisel3.UInt
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.abstracts._
 
@@ -14,7 +15,7 @@ import soct.system.vivado.abstracts._
  */
 case class InlineConstant(value: UInt, nBits: Int)
                          (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends BdComp with XInlineHDL with HasSingleSource with HasConnect[InlineConstant] {
+  extends BdComp with XInlineHDL with HasConnect[InlineConstant] {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -25,11 +26,10 @@ case class InlineConstant(value: UInt, nBits: Int)
     "CONFIG.CONST_WIDTH" -> s"$nBits"
   )
 
-  override val source: IsSource = new IsSource {
-    override def getIO: BdPinPort = BdPin("dout", InlineConstant.this)
-  }
+  object DOUT extends BdPin("dout", InlineConstant.this)
 }
 
 object InlineConstant {
-  implicit def a: AutoConnect[InlineConstant, BdPinPort] = (comp: InlineConstant, sink: BdPinPort) => comp.source.add(sink)
+  implicit def a[T <: chisel3.Data]: ToSinkConnect[InlineConstant, T] = (comp: InlineConstant, sink: T, bd: SOCTBdBuilder) =>
+    bd.connect(comp.DOUT, portToBdPin(sink)(bd))
 }

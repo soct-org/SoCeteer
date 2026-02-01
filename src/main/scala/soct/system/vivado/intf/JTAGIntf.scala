@@ -3,6 +3,7 @@ package soct.system.vivado.intf
 import chisel3.Bool
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.abstracts.BdPinPort.portToPortName
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, MapsToPorts, XIntf}
 
@@ -25,7 +26,7 @@ case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Pa
       TDT -> "TD_T"
     )
     ports2Xilinx.foreach { case (port, xilinxName) =>
-      val portName = SOCTVivado.portToPortName(port)
+      val portName = portToPortName(port)
       val intfString = s"(* X_INTERFACE_INFO = \"$partName $jtagIntf $xilinxName\" *)"
       portMappings(portName) = Seq(intfString)
     }

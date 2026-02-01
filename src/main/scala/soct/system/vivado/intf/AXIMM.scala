@@ -4,6 +4,7 @@ import chisel3.{Bundle, Data}
 import chisel3.reflect.DataMirror
 import freechips.rocketchip.amba.axi4.AXI4Bundle
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.abstracts.BdPinPort.portToPortName
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
 import soct.system.vivado.abstracts.{MapsToPorts, XIntf}
 
@@ -15,7 +16,7 @@ case class AXIMM(axiPort: AXI4Bundle)
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
 
-  def ifName: String = SOCTVivado.portToPortName(axiPort).toUpperCase()
+  def ifName: String = portToPortName(axiPort).toUpperCase()
 
   override def portMapping: Map[String, Seq[String]] = {
     val ignoredPorts: Set[String] = Set("bits", "user", "echo")
@@ -28,7 +29,7 @@ case class AXIMM(axiPort: AXI4Bundle)
         .foldLeft(Map.empty[String, Data])(_ ++ _)
         .filterNot { case (fieldName, _) => ignoredPorts.contains(fieldName) }
         .foreach { case (fieldName, port) =>
-          val portName = SOCTVivado.portToPortName(port)
+          val portName = portToPortName(port)
           val xilinxName = s"${channelName.toUpperCase}${fieldName.toUpperCase()}"
           val intfString = s"(* X_INTERFACE_INFO = \"$partName $ifName $xilinxName\" *)"
           val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {

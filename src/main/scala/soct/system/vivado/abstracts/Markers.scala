@@ -90,31 +90,17 @@ trait HasCollaterals {
  * This allows components to inject subcomponents based on their connections
  */
 trait Finalizable {
-  private var newConnects: Option[TCLCommands] = None
-
   /**
    * Implementation of finalizeBd, to be provided by inheriting classes.
    * You must not instantiate Finalizable subcomponents here as order of finalization is not guaranteed.
    * @return A sequence of BdComp subcomponents and TCLCommands to be added to the design.
    */
-  protected def finalizeBdImpl(): (Seq[BdComp], TCLCommands)
+  protected def finalizeBdImpl(): Unit
 
 
   /** Called by SOCTBdBuilder before generating TCL to allow components to create/register subcomponents. */
-  def finalizeBd(): TCLCommands = {
-    if (this.newConnects.isDefined) {
-      return this.newConnects.get
-    }
-    val (newInstances, newConnects) = finalizeBdImpl()
-
-    // Require newInstances are not Finalizable to avoid recursion
-    newInstances.foreach { inst =>
-      if (inst.isInstanceOf[Finalizable]) {
-        throw XilinxDesignException(s"Finalizable component $this attempted to create Finalizable subcomponent ${inst.instanceName} during finalization. This is not allowed.")
-      }
-    }
-    this.newConnects = Some(newConnects)
-    newConnects
+  final def finalizeBd(): Unit = {
+     finalizeBdImpl()
   }
 }
 

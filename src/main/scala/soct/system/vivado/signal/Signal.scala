@@ -1,7 +1,8 @@
 package soct.system.vivado.signal
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
+import soct.system.vivado.abstracts.BdPinPort.portToPortName
+import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts.{MapsToPorts, XSignal}
 
 import scala.collection.mutable
@@ -14,7 +15,7 @@ abstract class SignalPort[T <: chisel3.Data](implicit bd: SOCTBdBuilder, p: Para
     val signals = gens.flatMap(gen => gen())
     val portMappings = mutable.Map.empty[String, Seq[String]]
     signals.foreach { port =>
-      val portName = SOCTVivado.portToPortName(port)
+      val portName = portToPortName(port)
       portMappings(portName) = getAnnotations(port, portName)
     }
     portMappings.toMap

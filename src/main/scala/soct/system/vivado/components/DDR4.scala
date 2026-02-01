@@ -28,9 +28,12 @@ case class DDR4(domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parame
 
   override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
 
-
   object C0_DDR4 extends BdIntfPin("C0_DDR4", this)
 
+
+  private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
+
+  private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
 
   override def defaultProperties: Map[String, String] = {
     val props = mutable.Map.empty[String, String]
@@ -57,9 +60,6 @@ case class DDR4(domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parame
 
 
 object DDR4 {
-  private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
-  private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
-
   implicit val a: AutoConnect[DDR4, DDR4Port] = (comp: DDR4, port: DDR4Port, bd: SOCTBdBuilder) =>
     bd.connect(comp.C0_DDR4, port)
 }

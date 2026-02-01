@@ -1,5 +1,6 @@
 package soct.system.vivado.abstracts
 
+import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
 
@@ -13,6 +14,10 @@ import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCom
 abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
   // Register this component with the BDBuilder upon creation
   bd.addComponent(this)
+
+  if(bd.inFinalization && this.isInstanceOf[Finalizable]) {
+    soct.log.warn(s"Component $this created after BdBuilder finalization. Finalization logic will not be called.")
+  }
 }
 
 
@@ -66,10 +71,10 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
         soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
       }
       // Connect the reset ports of this component to the reset provider in the clock domain
-      dom.foreach(_.reset.foreach {
-        case rst: Reset => rst.outputTo(comp.resetInPorts)
-        case rstN: ResetN => rstN.outputTo(comp.resetNInPorts)
-      })
+      //dom.foreach(_.reset.foreach {
+      //  case rst: Reset => rst.outputTo(comp.resetInPorts)
+      //  case rstN: ResetN => rstN.outputTo(comp.resetNInPorts)
+      //})
     case _ => // Do nothing
   }
 
@@ -78,7 +83,7 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       if (dom.isEmpty) {
         soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
       }
-      dom.foreach { d => d.outputTo(comp.clockInPorts) }
+      //dom.foreach { d => d.outputTo(comp.clockInPorts) }
     case _ => // Do nothing
   }
 }
@@ -86,7 +91,7 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
 /**
  * Base class for Board Design Pins, representing a port or pin on a component.
  */
-trait BdPinPort {
+trait BdPinPort extends HasConnect[BdPinPort] {
 
   /**
    * The parent component instance for this. For ports, this is the component itself.
@@ -104,6 +109,26 @@ trait BdPinPort {
 
 
 object BdPinPort {
+  implicit def a[T <: BdPinPort]: ToSinkConnect[BdPinPort, T] = (source: BdPinPort, sink: T, bd: SOCTBdBuilder) =>
+    bd.connect(source, sink)
+
+  implicit def b[T <: BdPinPort]: ToSourceConnect[BdPinPort, T] = (ths: BdPinPort, source: T, bd: SOCTBdBuilder) =>
+    bd.connect(source, ths)
+
+  private def snake(name: String): String = {
+    name.toLowerCase.replace(".", "_")
+  }
+
+  /** Convert a Chisel Data port to its name in Verilog */
+  def portToPortName(x: Data): String = {
+    snake(x.instanceName)
+  }
+
+  /** Convert a Chisel Data port to a BdPin */
+  def portToBdPin(x: Data)(implicit bd: SOCTBdBuilder): BdPin = {
+    BdPin(snake(x.instanceName), bd.topInstance())
+  }
+
 
   def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
     sinks.map(sink => connect1(source, sink)).toSeq

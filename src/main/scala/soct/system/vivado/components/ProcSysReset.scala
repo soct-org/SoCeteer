@@ -25,21 +25,19 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
 
     val maxOutputs: Int
 
-    override protected def finalizeBdImpl(): (Seq[BdComp], TCLCommands) = {
+    override protected def finalizeBdImpl(): Unit = {
       val sinks = bd.getSinks(self)
       val dinWidth: Int = sinks.size min maxOutputs max 1 // Every ProcSysReset port has at least one output
 
       val idxToSlice = mutable.Map.empty[Int, InlineSlice]
-      var connections: TCLCommands = Seq.empty
       if (dinWidth < 2) {
-        return (Seq.empty, Seq.empty) // No slicing needed
+        return // No slicing needed
       } else {
         // Remove existing connections from bd as we will rewire after slicing
         bd.removeConnection(this)
       }
 
       soct.log.debug(s"Slicing $this of ${ProcSysReset.this.instanceName} into $dinWidth slices for ${sinks.size} sinks")
-
       // Go through each io and calc which slice it goes to (idx % maxOutputs) to have even distribution
       sinks.zipWithIndex.foreach {
         case (sink, i) =>
@@ -49,12 +47,18 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
               override def instanceName: String = s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx"
             }
           )
-          connections :+= BdPinPort.connect1(slice.getSource, sink)
+          soct.log.debug(s"Connecting sink $sink to slice $slice")
+          bd.connect(slice.DOUT, sink)
       }
-      (idxToSlice.values.toSeq, connections)
+
+      // Now connect the slices to this port
+      idxToSlice.values.foreach { slice =>
+        soct.log.debug(s"Connecting slice ${slice.instanceName} to $this")
+        bd.connect(this, slice.DIN)
+
+      }
     }
   }
-
 
   /**
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.

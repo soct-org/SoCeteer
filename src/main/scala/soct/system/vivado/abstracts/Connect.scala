@@ -5,11 +5,11 @@ import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 /**
  * Type class for automatic assignment of components
  *
- * @tparam C The component type
+ * @tparam C The type
  * @tparam T The type to assign from
  */
-trait AutoConnect[C <: BdComp, T] {
-  def apply(comp: C, that: T, bd: SOCTBdBuilder): Unit
+trait AutoConnect[C, T] {
+  def apply(ths: C, that: T, bd: SOCTBdBuilder): Unit
 }
 
 /**
@@ -18,8 +18,8 @@ trait AutoConnect[C <: BdComp, T] {
  * @tparam C The component type
  * @tparam T The sink type
  */
-trait ToSinkConnect[C <: BdComp, T] {
-  def apply(comp: C, sink: T, bd: SOCTBdBuilder): Unit
+trait ToSinkConnect[C, T] {
+  def apply(source: C, sink: T, bd: SOCTBdBuilder): Unit
 }
 
 
@@ -29,8 +29,8 @@ trait ToSinkConnect[C <: BdComp, T] {
  * @tparam C The component type
  * @tparam T The source type
  */
-trait ToSourceConnect[C <: BdComp, T]{
-  def apply(comp: C, source: T, bd: SOCTBdBuilder): Unit = {}
+trait ToSourceConnect[C, T] {
+  def apply(sink: C, source: T, bd: SOCTBdBuilder): Unit
 }
 
 /**
@@ -38,11 +38,11 @@ trait ToSourceConnect[C <: BdComp, T]{
  *
  * @tparam C The component type
  */
-trait HasConnect[C <: BdComp] {
+trait HasConnect[C] {
   self: C =>
-
   /**
    * Indicate that this component's source should be connected to the given sink
+   *
    * @param sink The sink to connect to
    */
   final def -->[T](sink: T)(implicit ev: ToSinkConnect[C, T], bd: SOCTBdBuilder): Unit = {
@@ -51,6 +51,7 @@ trait HasConnect[C <: BdComp] {
 
   /**
    * Indicate that this component's sink should be connected from the given source
+   *
    * @param source The source to connect from
    */
   final def <--[T](source: T)(implicit ev: ToSourceConnect[C, T], bd: SOCTBdBuilder): Unit = {
@@ -59,9 +60,10 @@ trait HasConnect[C <: BdComp] {
 
   /**
    * Indicate that this component's source should be connected from the given source
+   *
    * @param that The source to connect from
    */
-  final def <-> [T](that: T)(implicit ev: AutoConnect[C, T], bd: SOCTBdBuilder): Unit = {
+  final def <->[T](that: T)(implicit ev: AutoConnect[C, T], bd: SOCTBdBuilder): Unit = {
     ev(self, that, bd)
   }
 }

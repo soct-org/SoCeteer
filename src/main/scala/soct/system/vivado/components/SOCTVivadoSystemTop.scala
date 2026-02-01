@@ -4,8 +4,8 @@ import chisel3.{Data, Record}
 import org.chipsalliance.cde.config.Parameters
 import soct.HasSOCTConfig
 import soct.system.soceteer.SOCTSystem
-import soct.system.vivado.SOCTVivado.portToBdPin
 import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.signal.{CLOCK, RESET}
 

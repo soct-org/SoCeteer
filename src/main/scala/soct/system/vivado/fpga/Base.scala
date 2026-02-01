@@ -72,12 +72,10 @@ case class DDR4Port(override val instanceName: String)
 /**
  * Case class representing a reset port on the FPGA board
  */
-abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with IsSource with ProvidesReset {
+abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with ProvidesReset {
   override def ifType: String = "rst"
 
   override def dir: String = "I"
-
-  override def getIO: BdPinPort = BdPin(instanceName, this)
 }
 
 case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
@@ -99,7 +97,7 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
  */
 case class FPGAClockPort(override val instanceName: String)
                         (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends BdIntfPort with ProvidesAutoClock {
+  extends BdIntfPort {
 
   require(dom.isDefined, s"FPGAClockPort $instanceName requires an associated FPGAClockDomain")
 
@@ -110,8 +108,6 @@ case class FPGAClockPort(override val instanceName: String)
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.FREQ_HZ" -> (dom.get.freqMHz * 1e6).toInt.toString
   )
-
-  override val domains: Seq[ClockDomain] = Seq(dom.get)
 }
 
 /**

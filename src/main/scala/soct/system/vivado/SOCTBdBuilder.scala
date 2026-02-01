@@ -16,6 +16,7 @@ import scala.collection.{View, mutable}
  */
 final case class TclVar(description: String, default: String)
 
+
 class SOCTBdBuilder {
   // Set of all components in the block design
   private val components = mutable.Set.empty[BdBaseComp]
@@ -23,6 +24,8 @@ class SOCTBdBuilder {
   private val connects: mutable.Map[BdPinPort, Seq[BdPinPort]] = mutable.Map.empty
 
   private var locked = false // To prevent further modifications after finalization
+
+  var inFinalization = false // To prevent recursive finalization
 
   private def genTCLHeader(vars: Map[String, TclVar]): String = {
     val varDecls = vars.map { case (v, TclVar(description, default)) =>
@@ -228,8 +231,10 @@ class SOCTBdBuilder {
   }
 
   def generateBoardTcl(): String = {
-    val newConnects = components.collect { case f: Finalizable => f.finalizeBd() }.flatten
+    inFinalization = true
+    components.collect { case f: Finalizable => f.finalizeBd() }
     locked = true
+    inFinalization = false
 
     // Instantiations:
     lazy val instantiateCommands = components.collect {
