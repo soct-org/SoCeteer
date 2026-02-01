@@ -56,18 +56,20 @@ sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) e
   override val vivadoKind: VivadoHandleKind = VivadoHandleKind.ScalarPort
 }
 
+
 abstract class BdVirtualPortI(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with DrivesNet {
   final override def dir: String = "I"
 }
+
 
 abstract class BdVirtualPortO(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with DrivenByNet {
   final override def dir: String = "O"
 }
 
+
 abstract class BdVirtualPortIO(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with BiDirNet {
   final override def dir: String = "IO"
 }
-
 
 
 /**
@@ -90,12 +92,16 @@ abstract class BdIntfPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends
 }
 
 
-abstract class BdIntfPortMaster(override val mode: String = "Master")
-                               (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortBase
+/**
+ * Master Board Interface Port
+ */
+abstract class BdIntfPortMaster(override val mode: String = "Master")(implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortBase
 
 
-abstract class BdIntfPortSlave(override val mode: String = "Slave")
-                              (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortBase
+/**
+ * Slave Board Interface Port
+ */
+abstract class BdIntfPortSlave(override val mode: String = "Slave")(implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortBase
 
 
 /**

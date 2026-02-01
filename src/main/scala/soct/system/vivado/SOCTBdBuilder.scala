@@ -190,6 +190,36 @@ class SOCTBdBuilder extends SOCTBd {
   }
 
   /**
+   * Add Vivado port mappings to the given lines
+   *
+   * @param portLines    Lines of the Verilog file containing the port declarations
+   * @param portMappings Map of port names to Vivado attribute strings
+   * @return Modified lines with Vivado annotations added
+   */
+  def addPortMappings(
+                       portLines: Seq[String],
+                       portMappings: Map[String, Seq[String]],
+                     ): Seq[String] = {
+    require(locked, "Please call finalizeDesign() before adding port mappings")
+    val lines = mutable.Buffer.from(portLines)
+    portMappings.foreach { case (portName, attrStrings) =>
+      val lineIdxOpt = lines.zipWithIndex.find { case (line, _) =>
+        line.toLowerCase.contains(portName.toLowerCase) // FIXME: This will fail for ports like "reset" which match other ports like "reset_n"
+      }.map { case (_, idx) => idx }
+      if (lineIdxOpt.isEmpty) {
+        soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")
+      } else {
+        val lineIdx = lineIdxOpt.get
+        // Insert the annotations before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
+        attrStrings.reverse.foreach { attrString =>
+          lines.insert(lineIdx, "  " + attrString)
+        }
+      }
+    }
+    lines.toSeq
+  }
+
+  /**
    * Initialize the BDBuilder with parameters and top-level instance.
    *
    * @param p       Parameters
@@ -237,11 +267,17 @@ class SOCTBdBuilder extends SOCTBd {
     }
   }
 
+  def finalizeDesign(): Unit = {
+    if (!inFinalization && !locked) {
+      inFinalization = true
+      components.collect { case f: Finalizable => f.finalizeBd() }
+      locked = true
+      inFinalization = false
+    }
+  }
+
   def generateBoardTcl(): String = {
-    inFinalization = true
-    components.collect { case f: Finalizable => f.finalizeBd() }
-    locked = true
-    inFinalization = false
+    require(locked, "Please call finalizeDesign() before generating the board TCL script")
 
     // Instantiations:
     lazy val instantiateCommands = components.collect {

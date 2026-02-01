@@ -115,13 +115,12 @@ object BdPinPort {
     name.toLowerCase.replace(".", "_")
   }
 
-  def vivadoGetExpr(x: BdPinPort): String = x.vivadoKind match {
+  private def vivadoGetExpr(x: BdPinPort): String = x.vivadoKind match {
     case VivadoHandleKind.ScalarPin => s"[get_bd_pins $x]"
     case VivadoHandleKind.ScalarPort => s"[get_bd_ports $x]"
     case VivadoHandleKind.IntfPin => s"[get_bd_intf_pins $x]"
     case VivadoHandleKind.IntfPort => s"[get_bd_intf_ports $x]"
   }
-
 
   /** Convert a Chisel Data port to its name in Verilog */
   def portToPortName(x: Data): String = {
@@ -133,20 +132,18 @@ object BdPinPort {
     new BdPinInOut(snake(x.instanceName), bd.topInstance()) // TODO get direction?, for now assume inout. Also, more elegant way to get parent?
   }
 
-
   def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
-    sinks.map(sink => connect1(source, sink)).toSeq
+    sinks.map(sink => connect(source, sink)).toSeq
   }
 
-  def connect1(source: BdPinPort, sink: BdPinPort): TCLCommand = {
+  def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
     val isIntf = source.vivadoKind match {
       case VivadoHandleKind.IntfPin | VivadoHandleKind.IntfPort => true
       case _ => false
     }
 
-    val cmd =
-      if (isIntf) s"connect_bd_intf_net ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
-      else s"connect_bd_net      ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
+    val cmd = if (isIntf) s"connect_bd_intf_net ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
+    else s"connect_bd_net      ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
 
     cmd.tcl
   }

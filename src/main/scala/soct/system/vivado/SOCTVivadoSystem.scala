@@ -9,7 +9,7 @@ import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineCon
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
-import soct.system.vivado.signal.{CLOCK, RESET}
+import soct.system.vivado.signal.{ClockSignal, ResetSignal}
 
 
 /**
@@ -25,9 +25,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
       val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.fastestClock
       val topInstance = {
-        val resetIntf = RESET("SYS_RESET")
-        val clockIntf = CLOCK("SYS_CLK")
-        new SOCTVivadoSystemTop(this).withRESET(resetIntf).withCLOCK(clockIntf)
+        new SOCTVivadoSystemTop(this)
       }
       bd.init(p, topInstance, fpga)
 

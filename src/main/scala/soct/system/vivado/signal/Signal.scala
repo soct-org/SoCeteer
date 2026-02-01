@@ -7,28 +7,23 @@ import soct.system.vivado.abstracts.{MapsToPorts, XSignal}
 
 import scala.collection.mutable
 
-abstract class SignalPort[T <: chisel3.Data](implicit bd: SOCTBdBuilder, p: Parameters) extends MapsToPorts with XSignal {
-
-  private var gens: mutable.Seq[() => Seq[T]] = mutable.Seq.empty
+abstract class SignalPort[T <: chisel3.Data](val signalGroup: String, val ports: Seq[T])
+  (implicit bd: SOCTBdBuilder, p: Parameters) extends MapsToPorts with XSignal {
 
   override def portMapping: Map[String, Seq[String]] = {
-    val signals = gens.flatMap(gen => gen())
     val portMappings = mutable.Map.empty[String, Seq[String]]
-    signals.foreach { port =>
+    ports.foreach { port =>
       val portName = portToPortName(port)
       portMappings(portName) = getAnnotations(port, portName)
     }
     portMappings.toMap
   }
 
-  def add(gen: () => Seq[T]): Unit = {
-    gens :+= gen
-  }
-
   def getAnnotations(port: T, portName: String): Seq[String]
 }
 
-case class CLOCK(signalGroup: String) (implicit bd: SOCTBdBuilder, p: Parameters) extends SignalPort[chisel3.Clock] {
+case class ClockSignal(override val signalGroup: String, override val ports: Seq[chisel3.Clock])
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends SignalPort[chisel3.Clock](signalGroup, ports) {
 
   override val partName: String = "xilinx.com:signal:clock:1.0"
 
@@ -37,7 +32,8 @@ case class CLOCK(signalGroup: String) (implicit bd: SOCTBdBuilder, p: Parameters
   }
 }
 
-case class RESET(signalGroup: String) (implicit bd: SOCTBdBuilder, p: Parameters) extends SignalPort[chisel3.Reset] {
+case class ResetSignal(override val signalGroup: String, override val ports: Seq[chisel3.Reset])
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends SignalPort[chisel3.Reset](signalGroup, ports) {
 
   override val partName: String = "xilinx.com:signal:reset:1.0"
 

@@ -34,35 +34,6 @@ object SOCTVivado {
   val DEFAULT_MMIO_ADDR = "0x60000000"
 
   /**
-   * Add Vivado port mappings to the given lines
-   *
-   * @param portLines    Lines of the Verilog file containing the port declarations
-   * @param portMappings Map of port names to Vivado attribute strings
-   * @return Modified lines with Vivado annotations added
-   */
-  private def addPortMappings(
-                               portLines: Seq[String],
-                               portMappings: Map[String, Seq[String]],
-                             ): Seq[String] = {
-    val lines = mutable.Buffer.from(portLines)
-    portMappings.foreach { case (portName, attrStrings) =>
-      val lineIdxOpt = lines.zipWithIndex.find { case (line, _) =>
-        line.toLowerCase.contains(portName.toLowerCase) // FIXME: This will fail for ports like "reset" which match other ports like "reset_n"
-      }.map { case (_, idx) => idx }
-      if (lineIdxOpt.isEmpty) {
-        soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")
-      } else {
-        val lineIdx = lineIdxOpt.get
-        // Insert the annotations before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
-        attrStrings.reverse.foreach { attrString =>
-          lines.insert(lineIdx, "  " + attrString)
-        }
-      }
-    }
-    lines.toSeq
-  }
-
-  /**
    * Vivado does not allow a SystemVerilog top-level.
    * We do a highly illegal trick here by just renaming the file extension,
    * hoping that Chisel did not include any SystemVerilog-specific constructs in the top-level module.
@@ -157,12 +128,12 @@ object SOCTVivado {
     }
     implicit val bd: SOCTBdBuilder = bdOpt.get
 
-
+    bd.finalizeDesign()
     val topModuleFile: Path = getTopModuleFile(boardPaths, config)
     val topVerilog = Files.readString(topModuleFile)
 
     val portLines = extractPortLines(topVerilog, config.topModuleName)
-    val transformed = patchPortLines(topVerilog, config.topModuleName, addPortMappings(portLines, bd.portModifications()))
+    val transformed = patchPortLines(topVerilog, config.topModuleName, bd.addPortMappings(portLines, bd.portModifications()))
     Files.writeString(topModuleFile, transformed)
 
     val initTCL = bd.generateInitScript()

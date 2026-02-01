@@ -1,34 +1,58 @@
 package soct.system.vivado.abstracts
 
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.SOCTBdBuilder
+import scala.annotation.implicitNotFound
 
 /**
- * Type class for automatic assignment of components
+ * Type class for automatic bidirectional connect (<->)
  *
- * @tparam C The type
- * @tparam T The type to assign from
+ * C = left-hand side type
+ * T = right-hand side type
  */
+@implicitNotFound(
+  "No AutoConnect instance found for:\n" +
+    "  ${C}  <->  ${T}\n\n" +
+    "Meaning: there is no rule that allows bidirectional connection between these endpoint types.\n\n" +
+    "Fix:\n" +
+    "  - Add an implicit AutoConnect[${C}, ${T}] in scope, or\n" +
+    "  - Use a directional operator (--> or <--), if the connection is directional."
+)
 trait AutoConnect[-C, -T] {
   def apply(ths: C, that: T, bd: SOCTBdBuilder): Unit
 }
 
 /**
- * Type class for automatic assignment of components to sinks
- *
- * @tparam C The component type
- * @tparam T The sink type
+ * Type class for directional connect (-->), i.e. source drives sink
  */
+@implicitNotFound(
+  "No ToSinkConnect instance found for:\n" +
+    "  ${C}  -->  ${T}\n\n" +
+    "Meaning: the left endpoint is not allowed to drive the right endpoint.\n\n" +
+    "Fix:\n" +
+    "  - Ensure the left endpoint is a driver (e.g. DrivesNet / BdPinOut / BdVirtualPortI), and\n" +
+    "    the right endpoint is a sink (e.g. DrivenByNet / BdPinIn / BdVirtualPortO), or\n" +
+    "  - Use '<--' if you meant the reverse direction, or\n" +
+    "  - Use '<->' for directionless/interface connections, or\n" +
+    "  - Add an implicit ToSinkConnect[${C}, ${T}] in scope."
+)
 trait ToSinkConnect[-C, -T] {
   def apply(source: C, sink: T, bd: SOCTBdBuilder): Unit
 }
 
-
 /**
- * Type class for automatic assignment of components from sources
- *
- * @tparam C The component type
- * @tparam T The source type
+ * Type class for directional connect (<--), i.e. sink is driven by source
  */
+@implicitNotFound(
+  "No ToSourceConnect instance found for:\n" +
+    "  ${C}  <--  ${T}\n\n" +
+    "Meaning: the right endpoint is not allowed to drive the left endpoint.\n\n" +
+    "Fix:\n" +
+    "  - Ensure the right endpoint is a driver (e.g. DrivesNet / BdPinOut / BdVirtualPortI), and\n" +
+    "    the left endpoint is a sink (e.g. DrivenByNet / BdPinIn / BdVirtualPortO), or\n" +
+    "  - Use '-->' if you meant the opposite direction, or\n" +
+    "  - Use '<->' for directionless/interface connections, or\n" +
+    "  - Add an implicit ToSourceConnect[${C}, ${T}] in scope."
+)
 trait ToSourceConnect[-C, -T] {
   def apply(sink: C, source: T, bd: SOCTBdBuilder): Unit
 }
