@@ -4,12 +4,12 @@ import chisel3.Bool
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
-import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, HasIO, MapsToPorts, XIntf}
+import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
-case class JTAG(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends MapsToPorts with XIntf with HasIO {
+case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends MapsToPorts with XIntf {
 
   val jtagIntf: String = "JTAG"
 
@@ -32,6 +32,6 @@ case class JTAG(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parame
     portMappings.toMap
   }
 
-  override def getIO(): BdPinPort = BdIntfPin(jtagIntf, bd.topInstance())
+  object JTAG extends BdIntfPin("JTAG", bd.topInstance())
 
 }

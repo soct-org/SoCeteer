@@ -3,19 +3,20 @@ package soct.system.vivado.abstracts
 /**
  * Marker trait for reset providers
  */
-trait ResetSource extends Source
+trait ProvidesReset
 
 
 /**
  * Marker trait for active low reset sinks
  */
-trait ResetN
+trait ResetN extends ProvidesReset
 
 
 /**
  * Marker trait for active high reset sinks
  */
-trait Reset
+trait Reset extends ProvidesReset
+
 
 
 /**
@@ -31,10 +32,4 @@ trait ReceivesReset {
    * The active high reset ports for this component, to be connected to the reset provider of the clock domain if available
    */
   def resetInPorts: () => Seq[BdPinPort]
-}
-
-/**
- * Trait for components that provide automatic reset connections
- */
-trait ProvidesAutoReset extends ProvidesAutoDomain[ResetSource] {
 }

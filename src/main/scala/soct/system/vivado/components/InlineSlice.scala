@@ -2,8 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
-import soct.system.vivado.abstracts.{BdComp, BdPin, BdPinPort, ClockDomain, HasSingleSink, HasSingleSource, HasSinkPins, KeyForSink, SourceForSinks, XInlineHDL}
-import soct.system.vivado.components.InlineSlice.{inPort, outPort}
+import soct.system.vivado.abstracts.{AutoConnect, BdComp, BdPin, BdPinPort, ClockDomain, HasConnect, ToSinkConnect, ToSourceConnect, XInlineHDL}
 
 
 /**
@@ -16,7 +15,9 @@ import soct.system.vivado.components.InlineSlice.{inPort, outPort}
  */
 case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
                       (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends BdComp with XInlineHDL with SourceForSinks with HasSingleSource with HasSinkPins with HasSingleSink {
+  extends BdComp with XInlineHDL with HasConnect[InlineSlice] {
+
+  override def partName: String = "xilinx.com:inline_hdl:ilslice:1.0"
 
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.DIN_WIDTH" -> s"$dinWidth",
@@ -25,22 +26,16 @@ case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
     "CONFIG.DOUT_WIDTH" -> s"$doutWidth"
   )
 
-  protected override def connectToSinksImpl: TCLCommands = {
-    BdPinPort.connect(getSource, sinkPins)
-  }
+  object DOUT extends BdPin("Dout", this)
 
-  override def partName: String = "xilinx.com:inline_hdl:ilslice:1.0"
+  object DIN extends BdPin("Din", this)
 
-  override def getSource: BdPinPort = BdPin(outPort, this)
-
-  override def getSink: BdPinPort = BdPin(inPort, this)
-
-  override protected def getPinImpl(source: SourceForSinks, sinkKey: KeyForSink): Option[BdPinPort] = {
-    Some(getSink)
-  }
 }
 
 object InlineSlice {
-  val outPort = "Dout"
-  val inPort = "Din"
+  implicit val a: ToSinkConnect[InlineSlice, BdPinPort] = (comp: InlineSlice, sink: BdPinPort, bd: SOCTBdBuilder) =>
+    bd.connect(comp.DOUT, sink)
+
+  implicit val b: ToSourceConnect[InlineSlice, BdPinPort] = (comp: InlineSlice, source: BdPinPort, bd: SOCTBdBuilder) =>
+    bd.connect(source, comp.DIN)
 }

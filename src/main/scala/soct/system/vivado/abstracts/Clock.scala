@@ -14,11 +14,6 @@ trait ReceivesClock {
 }
 
 /**
- * Trait for components that provide automatic clock connections
- */
-trait ProvidesAutoClock extends ProvidesAutoDomain[ClockDomain]
-
-/**
  * Case class representing a clock domain in the design
  *
  * @param freqMHz    The frequency of the clock domain in MHz
@@ -26,7 +21,7 @@ trait ProvidesAutoClock extends ProvidesAutoDomain[ClockDomain]
  * @param tclVarName Optional name of the dereferenced TCL variable representing this clock domain in the block design, e.g, "$clock_freq"
  */
 case class ClockDomain(freqMHz: Double,
-                       var reset: Option[ResetSource] = None,
+                       var reset: Option[ProvidesReset] = None,
                        tclVarName: Option[String] = None)
                       (implicit bd: SOCTBdBuilder) {
   if (tclVarName.isDefined) {

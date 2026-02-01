@@ -8,7 +8,7 @@ import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, X
 import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.FPGARegistry
 import soct.system.vivado.abstracts._
-import soct.system.vivado.intf.{AXIMM, JTAG}
+import soct.system.vivado.intf.{AXIMM, JTAGIntf}
 import soct.system.vivado.signal.{CLOCK, RESET}
 
 
@@ -74,7 +74,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val jtag = jtagIO.jtag
         val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")
         jtag_tdt := ~jtag.TDO.driven
-        val jtagXIntf = JTAG(jtag, jtag_tdt)
+        val jtagXIntf = JTAGIntf(jtag, jtag_tdt)
 
         // Tie off unused fields using inline constants - rename for clarity in block design
         val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {

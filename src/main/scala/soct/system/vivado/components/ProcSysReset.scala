@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
-import soct.system.vivado.abstracts.{ResetSource, _}
+import soct.system.vivado.abstracts._
 
 import scala.collection.mutable
 
@@ -20,27 +20,25 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
   override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin("slowest_sync_clk", this))
 
 
-  abstract class ProcSysResetPort extends ResetSource with Finalizable {
+  trait ProcSysResetPort extends Finalizable {
+    self: BdPin =>
+
     val maxOutputs: Int
 
-    val portName: String
-
-    lazy val dinWidth: Int = getIOs.size min maxOutputs max 1 // Every ProcSysReset port has at least one output
-
-    override def getIO: BdPinPort = BdPin(friendlyName, ProcSysReset.this)
-
     override protected def finalizeBdImpl(): (Seq[BdComp], TCLCommands) = {
+      val sinks = bd.getSinks(self)
+      val dinWidth: Int = sinks.size min maxOutputs max 1 // Every ProcSysReset port has at least one output
+
       val idxToSlice = mutable.Map.empty[Int, InlineSlice]
       var connections: TCLCommands = Seq.empty
-      val sinks = getIOs.toSeq
       if (dinWidth < 2) {
         return (Seq.empty, Seq.empty) // No slicing needed
       } else {
-        // Clear all connections to the pins themselves, will be reconnected via slices and slices are connected to the pins
-        clearIOs()
+        // Remove existing connections from bd as we will rewire after slicing
+        bd.removeConnection(this)
       }
 
-      soct.log.debug(s"Slicing $portName of ${ProcSysReset.this.instanceName} into $dinWidth slices for ${sinks.size} sinks")
+      soct.log.debug(s"Slicing $this of ${ProcSysReset.this.instanceName} into $dinWidth slices for ${sinks.size} sinks")
 
       // Go through each io and calc which slice it goes to (idx % maxOutputs) to have even distribution
       sinks.zipWithIndex.foreach {
@@ -48,7 +46,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
           val sliceIdx = i % maxOutputs
           val slice = idxToSlice.getOrElseUpdate(sliceIdx,
             new InlineSlice(dinWidth, sliceIdx, sliceIdx, 1) {
-              override def instanceName: String = s"${ProcSysReset.this.instanceName}_${portName}_slice_$sliceIdx"
+              override def instanceName: String = s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx"
             }
           )
           connections :+= BdPinPort.connect1(slice.getSource, sink)
@@ -62,57 +60,44 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralAResetN extends ProcSysResetPort with ResetN {
+  object PeripheralAResetN extends BdPin("peripheral_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
     override val maxOutputs: Int = 16
-
-    override val portName: String = "peripheral_aresetn"
   }
 
   /**
    * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralReset extends ProcSysResetPort with Reset {
-
+  object PeripheralReset extends BdPin("peripheral_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
     override val maxOutputs: Int = 16
-
-    override val portName: String = "peripheral_reset"
   }
 
   /**
    * Bus Structures reset - for example, arbiters for bridges. Active-High
    */
-  object BusStructReset extends ProcSysResetPort with Reset {
-
+  object BusStructReset extends BdPin("bus_struct_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
     override val maxOutputs: Int = 8
-
-    override val portName: String = "bus_struct_reset"
   }
 
   /**
    * Interconnect reset, for example, interconnects with active-Low reset inputs.
    */
-  object InterconnectResetN extends ProcSysResetPort with ResetN {
-
+  object InterconnectResetN extends BdPin("interconnect_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
     override val maxOutputs: Int = 8
-
-    override val portName: String = "interconnect_aresetn"
   }
 
   /**
    * DCM Locked input - connect to the DCM or PLL lock output driving the slowestSyncClk
    */
-  object DCM_LOCKED extends SingleIO {
-    override def getIO: BdPinPort = BdPin("dcm_locked", ProcSysReset.this)
-  }
+  object DCM_LOCKED extends BdPin("dcm_locked", ProcSysReset.this)
 
 
   override def defaultProperties: Map[String, String] = {
     Map(
-      "CONFIG.C_NUM_PERP_ARESETN" -> PeripheralAResetN.dinWidth.toString,
-      "CONFIG.C_NUM_PERP_RST" -> PeripheralReset.dinWidth.toString,
-      "CONFIG.C_NUM_BUS_RST" -> BusStructReset.dinWidth.toString,
-      "CONFIG.C_NUM_INTERCONNECT_ARESETN" -> InterconnectResetN.dinWidth.toString
+      "CONFIG.C_NUM_PERP_ARESETN" -> bd.numSinks(PeripheralAResetN).toString,
+      "CONFIG.C_NUM_PERP_RST" -> bd.numSinks(PeripheralReset).toString,
+      "CONFIG.C_NUM_BUS_RST" -> bd.numSinks(BusStructReset).toString,
+      "CONFIG.C_NUM_INTERCONNECT_ARESETN" -> bd.numSinks(InterconnectResetN).toString
     )
   }
 }

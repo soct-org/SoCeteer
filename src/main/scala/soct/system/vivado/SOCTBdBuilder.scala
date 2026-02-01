@@ -6,7 +6,7 @@ import soct.system.vivado.fpga.FPGA
 import soct.system.vivado.abstracts._
 
 import java.nio.file.Path
-import scala.collection.mutable
+import scala.collection.{View, mutable}
 
 /**
  * Tcl variable with description and default value
@@ -19,6 +19,8 @@ final case class TclVar(description: String, default: String)
 class SOCTBdBuilder {
   // Set of all components in the block design
   private val components = mutable.Set.empty[BdBaseComp]
+
+  private val connects: mutable.Map[BdPinPort, Seq[BdPinPort]] = mutable.Map.empty
 
   private var locked = false // To prevent further modifications after finalization
 
@@ -132,7 +134,76 @@ class SOCTBdBuilder {
     }
   }
 
-  def add[T <: BdBaseComp](c: T): Unit = {
+  /**
+   * Remove a connection from the block design
+   * @param from The source port to remove connections from
+   * @param toOpt Optional sink port to remove connection to, if None all connections from 'from' are removed
+   */
+  def removeConnection(from: BdPinPort, toOpt: Option[BdPinPort] = None): Unit = {
+    if (locked) {
+      throw XilinxDesignException("Cannot remove connections after finalization")
+    }
+    toOpt match {
+      case Some(to) =>
+        connects.get(from) match {
+          case Some(sinks) =>
+            connects.update(from, sinks.filterNot(_ == to))
+          case None => // No connections to remove
+        }
+      case None =>
+        connects.remove(from)
+    }
+  }
+
+  /**
+   * Get all connections that satisfy a given property
+   *
+   * @param prop The property function to filter connections
+   * @return A map of connections that satisfy the property
+   */
+  def connectsWithProperty(prop: (BdPinPort, Seq[BdPinPort]) => Boolean): Map[BdPinPort, Seq[BdPinPort]] = {
+    connects.filter { case (from, sinks) => prop(from, sinks) }.toMap
+  }
+
+  def numSinks(from: BdPinPort): Int = {
+    connects.get(from) match {
+      case Some(sinks) => sinks.size
+      case None => 0
+    }
+  }
+
+  def connect(from: BdPinPort, to: BdPinPort): Unit = {
+    if (locked) {
+      throw XilinxDesignException("Cannot add connections after finalization")
+    }
+    val existing = connects.getOrElse(from, Seq.empty)
+    connects.update(from, existing :+ to)
+  }
+
+  def getConnectors(port: BdPinPort): View[BdPinPort] = {
+    connects.get(port) match {
+      case Some(sinks) =>
+        sinks.view
+      case None =>
+        connects.collect {
+          case (src, sinks) if sinks.contains(port) => src
+        }.view
+    }
+  }
+
+  def getSinks(source: BdPinPort): Seq[BdPinPort] = {
+    connects.getOrElse(source, Seq.empty)
+  }
+
+  def getSource(sink: BdPinPort): BdPinPort = {
+    connects.collectFirst {
+      case (src, sinks) if sinks.contains(sink) => src
+    }.getOrElse(
+      throw XilinxDesignException(s"No source found for sink port $sink")
+    )
+  }
+
+  def addComponent[T <: BdBaseComp](c: T): Unit = {
     if (locked) {
       throw XilinxDesignException("Cannot add components after finalization")
     }

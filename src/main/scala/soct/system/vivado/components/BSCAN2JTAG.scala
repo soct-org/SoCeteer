@@ -4,7 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
-import soct.system.vivado.intf.JTAG
+import soct.system.vivado.intf.JTAGIntf
 
 import java.nio.file.{Files, Path}
 
@@ -12,7 +12,7 @@ import java.nio.file.{Files, Path}
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
 case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp()(bd, p, None) with IsModule with HasAutoConnect[BSCAN2JTAG] {
+  extends BdComp()(bd, p, None) with IsModule with HasConnect[BSCAN2JTAG] {
 
   /**
    * The reference name of this module - as defined in the collateral files
@@ -34,15 +34,12 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
     Some(dest)
   }
 
-  object S_BSCAN extends SingleIO {
-    override def getIO(): BdPinPort = BdIntfPin("S_BSCAN", BSCAN2JTAG.this)
-  }
-
-
-  object M_JTAG extends Source {}
+  object S_BSCAN extends BdPin("S_BSCAN", BSCAN2JTAG.this)
+  object JTAG extends BdPin("JTAG", BSCAN2JTAG.this)
 
 }
 
 object BSCAN2JTAG {
-  implicit val a: AutoConnect[BSCAN2JTAG, JTAG] = (comp: BSCAN2JTAG, port: JTAG) => comp.M_JTAG.add(port)
+  implicit val a: AutoConnect[BSCAN2JTAG, JTAGIntf] = (comp: BSCAN2JTAG, port: JTAGIntf, bd: SOCTBdBuilder) =>
+    bd.connect(comp.JTAG, port.JTAG)
 }

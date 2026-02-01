@@ -15,8 +15,8 @@ import scala.collection.mutable
  * @param domains The clock domains to which this DDR4 component will output clocks. Up to 4 additional clock outputs can be specified.
  * @param dom     The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
-case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends BdComp with Xip with AutoClockAndReset with ProvidesAutoClock with HasAutoConnect[DDR4] {
+case class DDR4(domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
+  extends BdComp with Xip with AutoClockAndReset with HasConnect[DDR4] {
 
   require(dom.isDefined, s"DDR4 component must be instantiated in an FPGAClockDomain")
 
@@ -28,16 +28,17 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
 
   override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
 
-  object C0_DDR4 extends SingleIO {override def getIO(): BdPinPort = BdIntfPin("C0_DDR4", DDR4.this)}
+
+  object C0_DDR4 extends BdIntfPin("C0_DDR4", this)
 
 
   override def defaultProperties: Map[String, String] = {
     val props = mutable.Map.empty[String, String]
 
-    val ddr4Intf = C0_DDR4.source.getOrElse(
-      throw XilinxDesignException("DDR4 component requires a connected DDR4Port interface")
+    val ddr4Intf = bd.getConnectors(C0_DDR4).headOption.getOrElse(
+      throw XilinxDesignException(s"DDR4 component's C0_DDR4 interface is not connected to any board interface.")
     )
-    props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf
+    props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
     props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.port.instanceName
     dom.get.reset.foreach {
       case r: FPGAResetPortSource =>
@@ -52,15 +53,6 @@ case class DDR4(override val domains: Seq[ClockDomain])(implicit bd: SOCTBdBuild
     }
     props.toMap ++ freqs
   }
-
-
-  override def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdPin = {
-    val clkoutIdx = domIdx + 1
-    if (clkoutIdx > 4) {
-      throw XilinxDesignException(s"DDR4 only supports up to 4 clock outputs, requested output index $clkoutIdx")
-    }
-    BdPin(clkOut(clkoutIdx), this)
-  }
 }
 
 
@@ -68,5 +60,6 @@ object DDR4 {
   private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
   private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
 
-  implicit val a: AutoConnect[DDR4, DDR4Port] = (comp: DDR4, port: DDR4Port) => comp.C0_DDR4.connect(port)
+  implicit val a: AutoConnect[DDR4, DDR4Port] = (comp: DDR4, port: DDR4Port, bd: SOCTBdBuilder) =>
+    bd.connect(comp.C0_DDR4, port)
 }

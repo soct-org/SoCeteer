@@ -14,7 +14,7 @@ import soct.system.vivado.abstracts._
  */
 case class InlineConstant(value: UInt, nBits: Int)
                          (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
-  extends BdComp with XInlineHDL with HasSingleSource with HasAutoConnect[InlineConstant] {
+  extends BdComp with XInlineHDL with HasSingleSource with HasConnect[InlineConstant] {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -25,13 +25,11 @@ case class InlineConstant(value: UInt, nBits: Int)
     "CONFIG.CONST_WIDTH" -> s"$nBits"
   )
 
-  override val source: Source = new Source
+  override val source: IsSource = new IsSource {
+    override def getIO: BdPinPort = BdPin("dout", InlineConstant.this)
+  }
 }
 
 object InlineConstant {
-  val outPort = "dout"
-
-  implicit def a[T <: chisel3.Data]: AutoConnect[InlineConstant, T] = (comp: InlineConstant, sink: T) => comp.source.add(sink)
-
-
+  implicit def a: AutoConnect[InlineConstant, BdPinPort] = (comp: InlineConstant, sink: BdPinPort) => comp.source.add(sink)
 }

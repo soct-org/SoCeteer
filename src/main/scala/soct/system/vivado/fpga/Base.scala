@@ -72,10 +72,12 @@ case class DDR4Port(override val instanceName: String)
 /**
  * Case class representing a reset port on the FPGA board
  */
-abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with ResetSource {
+abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with IsSource with ProvidesReset {
   override def ifType: String = "rst"
 
   override def dir: String = "I"
+
+  override def getIO: BdPinPort = BdPin(instanceName, this)
 }
 
 case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
@@ -109,10 +111,6 @@ case class FPGAClockPort(override val instanceName: String)
     "CONFIG.FREQ_HZ" -> (dom.get.freqMHz * 1e6).toInt.toString
   )
 
-  override protected def outPortImpl(cd: ClockDomain, domIdx: Int, sinkPin: BdPinPort, pinIdx: Int): BdIntfPort = {
-    this
-  }
-
   override val domains: Seq[ClockDomain] = Seq(dom.get)
 }
 
@@ -122,13 +120,14 @@ case class FPGAClockPort(override val instanceName: String)
  * @param freqMHz The frequency of the clock domain in MHz
  * @param reset   Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(override val freqMHz: Double, reset: ResetSource)
+final class FPGAClockDomain(override val freqMHz: Double, reset: FPGAResetPortSource)
                            (implicit bd: SOCTBdBuilder) extends ClockDomain(freqMHz, Some(reset)) {
 
   private var portOpt: Option[FPGAClockPort] = None
 
   /**
    * Get the associated FPGAClockPort for this clock domain.
+   *
    * @throws XilinxDesignException if no port is associated
    * @return The FPGAClockPort associated with this clock domain
    */

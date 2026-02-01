@@ -12,7 +12,7 @@ import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCom
  */
 abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
   // Register this component with the BDBuilder upon creation
-  bd.add(this)
+  bd.addComponent(this)
 }
 
 
@@ -87,10 +87,6 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
  * Base class for Board Design Pins, representing a port or pin on a component.
  */
 trait BdPinPort {
-  /**
-   * The pin name for this pin/port. For ports, this is typically not defined.
-   */
-  def pin(): Option[String] = None
 
   /**
    * The parent component instance for this. For ports, this is the component itself.
@@ -98,9 +94,10 @@ trait BdPinPort {
   def parentInst(): BdComp
 
   /**
-   * The reference string for this pin in TCL commands
+   * How to reference this in TCL commands
    */
   def ref: String
+
 
   override def toString: String = ref
 }

@@ -18,8 +18,7 @@ trait BdPortBase extends BdPinPort {
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp()(bd, p, None) with BdPortBase {
+abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(bd, p, None) with BdPortBase {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
