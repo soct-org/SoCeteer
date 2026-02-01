@@ -15,7 +15,7 @@ import soct.system.vivado.abstracts._
  */
 case class InlineConstant(value: UInt, nBits: Int)
                          (implicit bd: SOCTBdBuilder, p: Parameters) // Clock not needed
-  extends BdComp with XInlineHDL with HasConnect[InlineConstant] {
+  extends BdComp with XInlineHDL with ConnectOps {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
@@ -26,7 +26,7 @@ case class InlineConstant(value: UInt, nBits: Int)
     "CONFIG.CONST_WIDTH" -> s"$nBits"
   )
 
-  object DOUT extends BdPin("dout", InlineConstant.this)
+  object DOUT extends BdPinOut("dout", InlineConstant.this)
 }
 
 object InlineConstant {

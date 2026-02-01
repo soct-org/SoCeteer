@@ -62,20 +62,15 @@ object FPGARegistry {
  * Case class representing a DDR4 port on the FPGA board.
  */
 case class DDR4Port(override val instanceName: String)
-                   (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPort {
-
-  override def mode: String = "Master"
-
+                   (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
   override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
 }
 
 /**
  * Case class representing a reset port on the FPGA board
  */
-abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort with ProvidesReset {
+abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with ProvidesReset {
   override def ifType: String = "rst"
-
-  override def dir: String = "I"
 }
 
 case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
@@ -96,9 +91,7 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
  * @param instanceName The instance name of the clock port
  */
 case class FPGAClockPort(override val instanceName: String, dom: () => ClockDomain)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdIntfPort {
-
-  override def mode: String = "Slave"
+  extends BdIntfPortSlave with DrivesNet {
 
   override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
 

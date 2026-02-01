@@ -8,7 +8,7 @@ import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
  * @tparam C The type
  * @tparam T The type to assign from
  */
-trait AutoConnect[C, T] {
+trait AutoConnect[-C, -T] {
   def apply(ths: C, that: T, bd: SOCTBdBuilder): Unit
 }
 
@@ -18,7 +18,7 @@ trait AutoConnect[C, T] {
  * @tparam C The component type
  * @tparam T The sink type
  */
-trait ToSinkConnect[C, T] {
+trait ToSinkConnect[-C, -T] {
   def apply(source: C, sink: T, bd: SOCTBdBuilder): Unit
 }
 
@@ -29,41 +29,17 @@ trait ToSinkConnect[C, T] {
  * @tparam C The component type
  * @tparam T The source type
  */
-trait ToSourceConnect[C, T] {
+trait ToSourceConnect[-C, -T] {
   def apply(sink: C, source: T, bd: SOCTBdBuilder): Unit
 }
 
-/**
- * Trait for components that support automatic assignment
- *
- * @tparam C The component type
- */
-trait HasConnect[C] {
-  self: C =>
-  /**
-   * Indicate that this component's source should be connected to the given sink
-   *
-   * @param sink The sink to connect to
-   */
-  final def -->[T](sink: T)(implicit ev: ToSinkConnect[C, T], bd: SOCTBdBuilder): Unit = {
-    ev(self, sink, bd)
-  }
+trait ConnectOps { this: AnyRef =>
+  final def -->[T](sink: T)(implicit ev: ToSinkConnect[this.type, T], bd: SOCTBdBuilder): Unit =
+    ev(this, sink, bd)
 
-  /**
-   * Indicate that this component's sink should be connected from the given source
-   *
-   * @param source The source to connect from
-   */
-  final def <--[T](source: T)(implicit ev: ToSourceConnect[C, T], bd: SOCTBdBuilder): Unit = {
-    ev(self, source, bd)
-  }
+  final def <--[T](source: T)(implicit ev: ToSourceConnect[this.type, T], bd: SOCTBdBuilder): Unit =
+    ev(this, source, bd)
 
-  /**
-   * Indicate that this component's source should be connected from the given source
-   *
-   * @param that The source to connect from
-   */
-  final def <->[T](that: T)(implicit ev: AutoConnect[C, T], bd: SOCTBdBuilder): Unit = {
-    ev(self, that, bd)
-  }
+  final def <->[T](that: T)(implicit ev: AutoConnect[this.type, T], bd: SOCTBdBuilder): Unit =
+    ev(this, that, bd)
 }

@@ -9,17 +9,31 @@ abstract class BdPinBase(pinFn: => String, instFn: => BdComp) extends BdPinPort 
   override def parentInst(): BdComp = instFn
 
   override def ref: String = s"${parentInst().instanceName}/$pinFn"
+
+  override val vivadoKind: VivadoHandleKind = VivadoHandleKind.ScalarPin // Overridden in BdIntfPin - different retrieval
 }
 
-class BdPin(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) {}
+/**
+ * Board Design Input Pin
+ */
+class BdPinIn(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) with DrivenByNet
 
-object BdPin {
-  def apply(pinFn: => String, instFn: => BdComp): BdPin = new BdPin(pinFn, instFn)
-}
+
+/**
+ * Board Design Output Pin
+ */
+class BdPinOut(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) with DrivesNet
 
 
-class BdIntfPin(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) {}
+/**
+ * Board Design Input/Output Pin (bidirectional)
+ */
+class BdPinInOut(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) with BiDirNet
 
-object BdIntfPin {
-  def apply(pinFn: => String, instFn: => BdComp): BdIntfPin = new BdIntfPin(pinFn, instFn)
+
+/**
+ * Board Design Interface Pin (no direction)
+ */
+class BdIntfPin(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) {
+  override val vivadoKind: VivadoHandleKind = VivadoHandleKind.IntfPin
 }

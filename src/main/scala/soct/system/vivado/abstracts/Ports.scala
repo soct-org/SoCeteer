@@ -18,7 +18,7 @@ trait BdPortBase extends BdPinPort {
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPortBase {
+sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPortBase {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -52,18 +52,32 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp 
     }
     Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]".tcl)
   }
+
+  override val vivadoKind: VivadoHandleKind = VivadoHandleKind.ScalarPort
 }
+
+abstract class BdVirtualPortI(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with DrivesNet {
+  final override def dir: String = "I"
+}
+
+abstract class BdVirtualPortO(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with DrivenByNet {
+  final override def dir: String = "O"
+}
+
+abstract class BdVirtualPortIO(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with BiDirNet {
+  final override def dir: String = "IO"
+}
+
 
 
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with XIntf with BdPortBase {
+abstract class BdIntfPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPortBase with XIntf {
   /**
-   * The mode of this interface, e.g., "Master" or "Slave"
+   * The mode of this interface port, e.g., "Master" or "Slave"
    */
-  def mode: String
+  val mode: String
 
   /**
    * Emit the TCL command to create the port for this component
@@ -71,7 +85,17 @@ abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
   override def instTcl: TCLCommands = {
     Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]".tcl)
   }
+
+  override val vivadoKind: VivadoHandleKind = VivadoHandleKind.IntfPort
 }
+
+
+abstract class BdIntfPortMaster(override val mode: String = "Master")
+                               (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortBase
+
+
+abstract class BdIntfPortSlave(override val mode: String = "Slave")
+                              (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortBase
 
 
 /**

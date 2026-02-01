@@ -17,10 +17,10 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
-  object SLOWEST_SYNC_CLK extends BdPin("slowest_sync_clk", ProcSysReset.this)
+  object SLOWEST_SYNC_CLK extends BdPinIn("slowest_sync_clk", ProcSysReset.this)
 
   trait ProcSysResetPort extends Finalizable {
-    self: BdPin =>
+    self: BdPinOut =>
 
     val maxOutputs: Int
 
@@ -64,7 +64,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralAResetN extends BdPin("peripheral_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
+  object PeripheralAResetN extends BdPinOut("peripheral_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
     override val maxOutputs: Int = 16
   }
 
@@ -72,28 +72,28 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
    * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  object PeripheralReset extends BdPin("peripheral_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
+  object PeripheralReset extends BdPinOut("peripheral_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
     override val maxOutputs: Int = 16
   }
 
   /**
    * Bus Structures reset - for example, arbiters for bridges. Active-High
    */
-  object BusStructReset extends BdPin("bus_struct_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
+  object BusStructReset extends BdPinOut("bus_struct_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
     override val maxOutputs: Int = 8
   }
 
   /**
    * Interconnect reset, for example, interconnects with active-Low reset inputs.
    */
-  object InterconnectResetN extends BdPin("interconnect_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
+  object InterconnectResetN extends BdPinOut("interconnect_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
     override val maxOutputs: Int = 8
   }
 
   /**
    * DCM Locked input - connect to the DCM or PLL lock output driving the slowestSyncClk
    */
-  object DCM_LOCKED extends BdPin("dcm_locked", ProcSysReset.this)
+  object DCM_LOCKED extends BdPinIn("dcm_locked", ProcSysReset.this)
 
 
   override def defaultProperties: Map[String, String] = {

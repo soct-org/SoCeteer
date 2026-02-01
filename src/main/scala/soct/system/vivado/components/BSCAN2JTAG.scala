@@ -12,7 +12,7 @@ import java.nio.file.{Files, Path}
  * BSCAN to JTAG bridge component for Xilinx FPGAs
  */
 case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with IsModule with HasConnect[BSCAN2JTAG] {
+  extends BdComp with IsModule with ConnectOps {
 
   /**
    * The reference name of this module - as defined in the collateral files
@@ -40,6 +40,6 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
 }
 
 object BSCAN2JTAG {
-  implicit val a: ToSinkConnect[BSCAN2JTAG, JTAGIntf] = (comp: BSCAN2JTAG, port: JTAGIntf, bd: SOCTBdBuilder) =>
+  implicit val a: AutoConnect[BSCAN2JTAG, JTAGIntf] = (comp: BSCAN2JTAG, port: JTAGIntf, bd: SOCTBdBuilder) =>
     bd.connect(comp.JTAG, port.JTAG)
 }

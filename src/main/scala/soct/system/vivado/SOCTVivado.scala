@@ -4,7 +4,6 @@ import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
-import soct.system.vivado.abstracts.BdPin
 import soct.{BdBuilderKey, VivadoSOCTPaths}
 
 import java.nio.file.{Files, Path}

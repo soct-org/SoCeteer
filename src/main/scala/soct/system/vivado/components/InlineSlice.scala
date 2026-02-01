@@ -1,8 +1,8 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
-import soct.system.vivado.abstracts.{AutoConnect, BdComp, BdPin, BdPinPort, ClockDomain, HasConnect, ToSinkConnect, ToSourceConnect, XInlineHDL}
+import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.abstracts._
 
 
 /**
@@ -15,7 +15,7 @@ import soct.system.vivado.abstracts.{AutoConnect, BdComp, BdPin, BdPinPort, Cloc
  */
 case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
                       (implicit bd: SOCTBdBuilder, p: Parameters) // Clock not needed
-  extends BdComp with XInlineHDL with HasConnect[InlineSlice] {
+  extends BdComp with XInlineHDL with ConnectOps {
 
   override def partName: String = "xilinx.com:inline_hdl:ilslice:1.0"
 
@@ -26,9 +26,9 @@ case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
     "CONFIG.DOUT_WIDTH" -> s"$doutWidth"
   )
 
-  object DOUT extends BdPin("Dout", this)
+  object DOUT extends BdPinOut("Dout", this)
 
-  object DIN extends BdPin("Din", this)
+  object DIN extends BdPinIn("Din", this)
 
 }
 

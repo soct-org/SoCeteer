@@ -12,17 +12,17 @@ import scala.collection.mutable
  * DDR4 memory controller component for Xilinx FPGAs.
  */
 case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with Xip with HasConnect[DDR4] {
+  extends BdComp with Xip with ConnectOps {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
   object C0_DDR4 extends BdIntfPin("C0_DDR4", this)
 
-  object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", this)
+  object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", this) with DrivenByNet
 
-  object SYS_RST extends BdPin("sys_rst", this)
+  object SYS_RST extends BdPinIn("sys_rst", this)
 
-  case class ADDN_UI_CLKOUT_I(idx: Int, dom: ClockDomain) extends BdPin(s"addn_ui_clkout$idx", DDR4.this)
+  case class ADDN_UI_CLKOUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"addn_ui_clkout$idx", DDR4.this)
 
   // Helper functions to create interfaces with multiple instances:
   private val addn_ui_clkouts: mutable.Map[Int, ADDN_UI_CLKOUT_I] = mutable.Map.empty

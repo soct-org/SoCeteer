@@ -9,39 +9,31 @@ import java.nio.file.{Files, Path}
 /**
  * Abstract class for SDIO ports
  */
-abstract class SDIOPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPort
+trait SDIOPort
 
 
-case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
+case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with SDIOPort {
   override def instanceName = "sdio_cd"
 
   override def ifType: String = "data"
-
-  override def dir: String = "I"
 }
 
-case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
+case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with SDIOPort {
   override def instanceName = "sdio_clk"
 
   override def ifType: String = "clk"
-
-  override def dir: String = "O"
 }
 
-case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
+case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDIOPort {
   override def instanceName = "sdio_cmd"
 
   override def ifType: String = "data"
-
-  override def dir: String = "IO"
 }
 
-case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDIOPort {
+case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDIOPort {
   override def instanceName = "sdio_data"
 
   override def ifType: String = "data"
-
-  override def dir: String = "IO"
 
   override def from: Option[String] = Some("3")
 
@@ -55,21 +47,21 @@ case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDI
  * @param pmodIdx The PMOD index to use
  */
 case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with IsModule with HasConnect[SDCardPMOD] {
+  extends BdComp with IsModule with ConnectOps {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
-  object ASYNC_RESETN extends BdPin("async_resetn", SDCardPMOD.this)
+  object ASYNC_RESETN extends BdPinIn("async_resetn", SDCardPMOD.this)
 
-  object CLOCK extends BdPin("clock", SDCardPMOD.this)
+  object CLOCK extends BdPinIn("clock", SDCardPMOD.this)
 
-  private object SDIO_CD extends BdPin("sdio_cd", SDCardPMOD.this)
+  private object SDIO_CD extends BdPinIn("sdio_cd", SDCardPMOD.this)
 
-  private object SDIO_CMD extends BdPin("sdio_cmd", SDCardPMOD.this)
+  private object SDIO_CMD extends BdPinInOut("sdio_cmd", SDCardPMOD.this)
 
-  private object SDIO_DATA extends BdPin("sdio_dat", SDCardPMOD.this)
+  private object SDIO_DATA extends BdPinInOut("sdio_dat", SDCardPMOD.this)
 
-  private object SDIO_CLK extends BdPin("sdio_clk", SDCardPMOD.this)
+  private object SDIO_CLK extends BdPinOut("sdio_clk", SDCardPMOD.this)
 
   override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
@@ -97,10 +89,10 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
 object SDCardPMOD {
   implicit val a: AutoConnect[SDCardPMOD, SDIOPort] = (comp: SDCardPMOD, port: SDIOPort, bd: SOCTBdBuilder) =>
     port match {
-      case p: SDIOCDPort => bd.connect(comp.SDIO_CD, p)
-      case p: SDIOCmdPort => bd.connect(comp.SDIO_CMD, p)
-      case p: SDIODataPort => bd.connect(comp.SDIO_DATA, p)
-      case p: SDIOClkPort => bd.connect(comp.SDIO_CLK, p)
+      case p: SDIOCDPort => bd.connect(p, comp.SDIO_CD) // input
+      case p: SDIOCmdPort => bd.connect(comp.SDIO_CMD, p) // inout
+      case p: SDIODataPort => bd.connect(comp.SDIO_DATA, p) // inout
+      case p: SDIOClkPort => bd.connect(comp.SDIO_CLK, p) // output
       case _ => throw XilinxDesignException(s"SDCardPMOD cannot connect to unknown port type: ${port.getClass}")
     }
 }

@@ -6,7 +6,7 @@ import soct.system.vivado.abstracts._
 
 
 case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
-  with Xip with HasConnect[BSCAN] {
+  with Xip with ConnectOps {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
 
@@ -30,6 +30,6 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
 }
 
 object BSCAN {
-  implicit val a: ToSinkConnect[BSCAN, BSCAN2JTAG] = (comp: BSCAN, sink: BSCAN2JTAG, bd: SOCTBdBuilder) =>
+  implicit val a: AutoConnect[BSCAN, BSCAN2JTAG] = (comp: BSCAN, sink: BSCAN2JTAG, bd: SOCTBdBuilder) =>
     bd.connect(comp.M0_BSCAN, sink.S_BSCAN) // By default, only connect the first BSCAN port
 }

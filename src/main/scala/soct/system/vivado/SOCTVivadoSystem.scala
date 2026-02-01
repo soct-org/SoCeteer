@@ -89,8 +89,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
         val bscan = BSCAN()
         val b2j = BSCAN2JTAG()
-        bscan --> b2j
-        b2j --> jtagXIntf
+        bscan <-> b2j
+        b2j <-> jtagXIntf
       }
     }
   }

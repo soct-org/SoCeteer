@@ -20,14 +20,14 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
 
-  object CLK_IN1 extends BdPin("clk_in1", ClkWiz.this)
+  object CLK_IN1 extends BdPinIn("clk_in1", ClkWiz.this)
 
-  object RESET extends BdPin("reset", ClkWiz.this)
+  object RESET extends BdPinIn("reset", ClkWiz.this)
 
-  object LOCKED extends BdPin("locked", ClkWiz.this)
+  object LOCKED extends BdPinOut("locked", ClkWiz.this)
 
   private val clkouts: mutable.Map[Int, CLK_OUT_I] = mutable.Map.empty
-  case class CLK_OUT_I(idx: Int, dom: ClockDomain) extends BdPin(s"clk_out$idx", ClkWiz.this)
+  case class CLK_OUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"clk_out$idx", ClkWiz.this)
   def CLK_OUT(idx: Int, dom: ClockDomain): CLK_OUT_I = {
     // TODO upper limit on number of clkouts based on FPGA family
     require(idx >= 1, s"ClkWiz CLK_OUT index must be >= 1, got $idx")
