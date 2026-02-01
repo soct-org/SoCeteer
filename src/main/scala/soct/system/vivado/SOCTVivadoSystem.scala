@@ -9,7 +9,6 @@ import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineCon
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
-import soct.system.vivado.signal.{ClockSignal, ResetSignal}
 
 
 /**
@@ -24,10 +23,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     InModuleBody {
       val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
       val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.fastestClock
-      val topInstance = {
-        new SOCTVivadoSystemTop(this)
-      }
-      bd.init(p, topInstance, fpga)
+      val top = new SOCTVivadoSystemTop(this)
+
+      bd.init(p, top, fpga)
 
       val peripheryDomain = new ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
       val coreDomain = new ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
@@ -49,6 +47,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
       clkWiz.LOCKED --> pcr.DCM_LOCKED
       clkWiz.CLK_OUT(1, peripheryDomain) --> pcr.SLOWEST_SYNC_CLK
+
+      top.RESET.foreach { rstPin => pcr.PeripheralReset --> rstPin}
+      top.CLOCK.foreach { clkPin => clkWiz.CLK_OUT(2, coreDomain) --> clkPin}
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
       axiInfts.foreach { axiInft => AXIMM(axiInft) }

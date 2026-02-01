@@ -7,13 +7,14 @@ import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
 import soct.system.vivado.signal.{ClockSignal, ResetSignal}
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 
 import scala.reflect.ClassTag
 
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
 class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder)
-  extends BdComp with IsModule with Finalizable {
+  extends ChiselModuleTop with IsModule {
 
   private val c = p(HasSOCTConfig)
 
@@ -47,9 +48,15 @@ class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuild
   }
 
 
+  private def resetMap: Map[BdPinInOut, chisel3.Reset] = getPorts[chisel3.Reset].map(p => portToBdPin(p) -> p).toMap
+  val RESET: Seq[BdPinInOut] = resetMap.keys.toSeq
+
+  def clockMap: Map[BdPinInOut, chisel3.Clock] = getPorts[chisel3.Clock].map(p => portToBdPin(p) -> p).toMap
+  val CLOCK: Seq[BdPinInOut] = clockMap.keys.toSeq
+
   override protected def finalizeBdImpl(): Unit = {
-    ClockSignal("CLOCK", getPorts[chisel3.Clock])
-    ResetSignal("RESET", getPorts[chisel3.Reset])
+    ClockSignal("CLOCK", clockMap)
+    ResetSignal("RESET", resetMap)
   }
 
   override def reference: String = c.topModuleName

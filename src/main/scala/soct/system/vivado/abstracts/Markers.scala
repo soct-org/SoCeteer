@@ -1,7 +1,5 @@
 package soct.system.vivado.abstracts
 
-import soct.system.vivado.{TCLCommands, XilinxDesignException}
-
 import java.nio.file.{Files, Path}
 
 
@@ -103,6 +101,14 @@ trait Finalizable {
      finalizeBdImpl()
   }
 }
+
+
+/**
+ * Trait for Chisel modules that need finalization before TCL generation.
+ * Will be called after the Chisel modules are elaborated and before all other finalization.
+ */
+trait ChiselModuleTop extends BdComp with Finalizable
+
 
 /**
  * Trait for components that have a friendly name

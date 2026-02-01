@@ -14,6 +14,8 @@ class SOCTBd {
 
   var locked = false // To prevent further modifications after finalization
 
+  var inFinalization = false // To prevent recursive finalization
+
   // Set of all components in the block design
   val components = mutable.Set.empty[BdBaseComp]
 
@@ -171,14 +173,16 @@ class SOCTBd {
 
 
 class SOCTBdBuilder extends SOCTBd {
-  val args = new SOCTBdVars
 
-  var inFinalization = false // To prevent recursive finalization
+  /**
+   * TCL arguments for the block design
+   */
+  val args = new SOCTBdVars
 
   /**
    * Get the top-level instance representing the design in the block design
    */
-  var topInstance: () => BdComp with IsModule = () => {
+  var topInstance: () => ChiselModuleTop = () => {
     throw XilinxDesignException("Please call init before accessing topInstance")
   }
 
@@ -196,10 +200,7 @@ class SOCTBdBuilder extends SOCTBd {
    * @param portMappings Map of port names to Vivado attribute strings
    * @return Modified lines with Vivado annotations added
    */
-  def addPortMappings(
-                       portLines: Seq[String],
-                       portMappings: Map[String, Seq[String]],
-                     ): Seq[String] = {
+  def addPortMappings(portLines: Seq[String], portMappings: Map[String, Seq[String]]): Seq[String] = {
     require(locked, "Please call finalizeDesign() before adding port mappings")
     val lines = mutable.Buffer.from(portLines)
     portMappings.foreach { case (portName, attrStrings) =>
@@ -226,7 +227,7 @@ class SOCTBdBuilder extends SOCTBd {
    * @param topInst Top-level instantiable block design component
    * @param fpga    Target FPGA
    */
-  def init(p: Parameters, topInst: BdComp with IsModule, fpga: FPGA): Unit = {
+  def init(p: Parameters, topInst: ChiselModuleTop, fpga: FPGA): Unit = {
     val paths = p(HasSOCTPaths).asInstanceOf[VivadoSOCTPaths]
     val config = p(HasSOCTConfig)
     val aggressive = config.args.overrideVivadoProject
@@ -267,9 +268,15 @@ class SOCTBdBuilder extends SOCTBd {
     }
   }
 
+  /**
+   * Finalize the block design by calling finalizeBd on all components and locking the design
+   */
   def finalizeDesign(): Unit = {
     if (!inFinalization && !locked) {
       inFinalization = true
+      // First finalize the Chisel modules, as they have not had the chance to evaluate their IO yet (only possible after elaboration)
+      components.collect { case m: ChiselModuleTop => m.finalizeBd() }
+      // Then finalize all other components
       components.collect { case f: Finalizable => f.finalizeBd() }
       locked = true
       inFinalization = false
@@ -277,6 +284,7 @@ class SOCTBdBuilder extends SOCTBd {
   }
 
   def generateBoardTcl(): String = {
+    checkInit()
     require(locked, "Please call finalizeDesign() before generating the board TCL script")
 
     // Instantiations:

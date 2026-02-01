@@ -129,6 +129,7 @@ object SOCTVivado {
     implicit val bd: SOCTBdBuilder = bdOpt.get
 
     bd.finalizeDesign()
+
     val topModuleFile: Path = getTopModuleFile(boardPaths, config)
     val topVerilog = Files.readString(topModuleFile)
 
