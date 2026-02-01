@@ -25,7 +25,7 @@ case class ClockDomain(freqMHz: Double,
                        tclVarName: Option[String] = None)
                       (implicit bd: SOCTBdBuilder) {
   if (tclVarName.isDefined) {
-    bd.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
+    bd.args.addBdVar(tclVarName.get, "The core clock frequency in MHz", freqMHz.toString)
   }
 }
 
