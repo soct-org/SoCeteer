@@ -67,9 +67,3 @@ trait HasConnect[C] {
     ev(self, that, bd)
   }
 }
-
-
-/**
- * Trait for components that want automatic connection to clock and reset inputs
- */
-trait AutoClockAndReset extends ReceivesClock with ReceivesReset

@@ -12,13 +12,12 @@ import scala.collection.mutable
  *
  * @param dom Only used for the slowestSyncClk connection
  */
-case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends BdComp with Xip with ReceivesClock {
+case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with Xip {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
-  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin("slowest_sync_clk", this))
-
+  object SLOWEST_SYNC_CLK extends BdPin("slowest_sync_clk", ProcSysReset.this)
 
   trait ProcSysResetPort extends Finalizable {
     self: BdPin =>

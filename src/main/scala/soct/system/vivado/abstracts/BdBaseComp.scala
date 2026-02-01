@@ -24,7 +24,7 @@ abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends H
 /**
  * Trait for components that can be instantiated in the design
  */
-abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain]) extends BdBaseComp {
+abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseComp {
 
   /**
    * Optional index to differentiate multiple instances of the same component - Must be a val to ensure stable value.
@@ -60,31 +60,6 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[Clo
       case _ =>
         throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
     }
-  }
-
-  this match {
-    case comp: ReceivesReset =>
-      if (dom.isEmpty) {
-        soct.log.warn(s"Component $this implements ReceivesReset but has no clock domain provided.")
-      }
-      if (dom.get.reset.isEmpty) {
-        soct.log.warn(s"Component $this implements ReceivesReset but its clock domain has no reset provided.")
-      }
-      // Connect the reset ports of this component to the reset provider in the clock domain
-      //dom.foreach(_.reset.foreach {
-      //  case rst: Reset => rst.outputTo(comp.resetInPorts)
-      //  case rstN: ResetN => rstN.outputTo(comp.resetNInPorts)
-      //})
-    case _ => // Do nothing
-  }
-
-  this match {
-    case comp: ReceivesClock =>
-      if (dom.isEmpty) {
-        soct.log.warn(s"Component $this implements ReceivesClock but has no clock domain provided.")
-      }
-      //dom.foreach { d => d.outputTo(comp.clockInPorts) }
-    case _ => // Do nothing
   }
 }
 

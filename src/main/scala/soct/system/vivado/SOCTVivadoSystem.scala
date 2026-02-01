@@ -6,7 +6,7 @@ import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
 import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
-import soct.system.vivado.fpga.FPGARegistry
+import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
 import soct.system.vivado.signal.{CLOCK, RESET}
@@ -22,48 +22,43 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     require(p(HasDDR4ExtMem), "SOCTVivadoSystem currently requires HasDDR4ExtMem to be set in parameters.")
 
     InModuleBody {
-      // Instantiate the FPGA board from class stored in parameters
       val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
-      val fpgaDom = fpga.fastestClock()
-
-      val peripheryDomain = ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
-      val peripheryReset = WithDomain(peripheryDomain) { implicit dom => ProcSysReset() }
-      peripheryDomain.reset = Some(peripheryReset.PeripheralAResetN) // Watch out for active-low reset, change to other polarity if needed
-      // Default to 100 MHz - TODO use parameters
-      val coreDomain = ClockDomain(100.0, tclVarName = Some("$core_clk_freq"), reset = Some(peripheryReset.PeripheralReset))
-      val topInstance = WithDomain(coreDomain) {
-        implicit dom =>
-          val resetIntf = RESET("SYS_RESET")
-          val clockIntf = CLOCK("SYS_CLK")
-          new SOCTVivadoSystemTop(this).withRESET(resetIntf).withCLOCK(clockIntf)
+      val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.fastestClock
+      val topInstance = {
+        val resetIntf = RESET("SYS_RESET")
+        val clockIntf = CLOCK("SYS_CLK")
+        new SOCTVivadoSystemTop(this).withRESET(resetIntf).withCLOCK(clockIntf)
       }
-
       bd.init(p, topInstance, fpga)
 
+      val peripheryDomain = new ClockDomain(freqMHz = p(PeripheryClockDomain), tclVarName = Some("$periphery_clk_freq"))
+      val coreDomain = new ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
+      val ddr4OutDomain = new ClockDomain(freqMHz = coreDomain.freqMHz) // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
+
+      val pcr = ProcSysReset()
+      val clkWiz = ClkWiz()
       val ddr4Port = fpga.portsDDR4().headOption.getOrElse(
         throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
       )
-      // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
-      val ddr4OutDom = ClockDomain(freqMHz = coreDomain.freqMHz, reset = fpgaDom.reset)
+      val ddr4 = DDR4()
 
-      val ddr4 = WithDomain(fpgaDom) { implicit fpgaDom => DDR4(Seq(ddr4OutDom)) }
       ddr4 <-> ddr4Port
+      fpgaClk --> ddr4.C0_SYS_CLK
+      fpgaRst --> ddr4.SYS_RST
+      fpgaRst --> clkWiz.RESET
 
-      val clkWiz = WithDomain(ddr4OutDom) { implicit dom =>
-        ClkWiz(Seq(coreDomain, peripheryDomain))
-      }
+      ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain) --> clkWiz.CLK_IN1
 
-      clkWiz.LOCKED --> peripheryReset.DCM_LOCKED
+      clkWiz.LOCKED --> pcr.DCM_LOCKED
+      clkWiz.CLK_OUT(1, peripheryDomain) --> pcr.SLOWEST_SYNC_CLK
 
       val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
       axiInfts.foreach { axiInft => AXIMM(axiInft) }
 
       if (p(HasSDCardPMOD).isDefined) {
         val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
-        val sdPmod = WithDomain(peripheryDomain) { implicit dom => SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get) }
-        ports.foreach { port =>
-          sdPmod <-> port
-        }
+        val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get)
+        ports.foreach { p => sdPmod <-> p}
       }
 
       val debugIf = debug.getWrappedValue.get

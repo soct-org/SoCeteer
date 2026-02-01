@@ -62,7 +62,7 @@ object FPGARegistry {
  * Case class representing a DDR4 port on the FPGA board.
  */
 case class DDR4Port(override val instanceName: String)
-                   (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) extends BdIntfPort {
+                   (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPort {
 
   override def mode: String = "Master"
 
@@ -95,54 +95,27 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
  *
  * @param instanceName The instance name of the clock port
  */
-case class FPGAClockPort(override val instanceName: String)
-                        (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
+case class FPGAClockPort(override val instanceName: String, dom: () => ClockDomain)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPort {
-
-  require(dom.isDefined, s"FPGAClockPort $instanceName requires an associated FPGAClockDomain")
 
   override def mode: String = "Slave"
 
   override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
 
   override def defaultProperties: Map[String, String] = Map(
-    "CONFIG.FREQ_HZ" -> (dom.get.freqMHz * 1e6).toInt.toString
+    "CONFIG.FREQ_HZ" -> (dom().freqMHz * 1e6).toInt.toString
   )
 }
 
 /**
  * Case class representing a clock domain provided by the FPGA board.
  *
+ * @param clock   Clock provider that is synced to this clock domain
+ * @param reset   Reset provider that is synced to this clock domain
  * @param freqMHz The frequency of the clock domain in MHz
- * @param reset   Optional reset provider that is synced to this clock domain
  */
-final class FPGAClockDomain(override val freqMHz: Double, reset: FPGAResetPortSource)
-                           (implicit bd: SOCTBdBuilder) extends ClockDomain(freqMHz, Some(reset)) {
-
-  private var portOpt: Option[FPGAClockPort] = None
-
-  /**
-   * Get the associated FPGAClockPort for this clock domain.
-   *
-   * @throws XilinxDesignException if no port is associated
-   * @return The FPGAClockPort associated with this clock domain
-   */
-  @throws[XilinxDesignException]
-  def port: FPGAClockPort = {
-    portOpt.getOrElse(throw new XilinxDesignException(s"FPGAClockDomain $this has no associated FPGAClockPort"))
-  }
-
-  /**
-   * Associate an FPGAClockPort with this clock domain.
-   *
-   * @param port The FPGAClockPort to associate
-   * @return This FPGAClockDomain with the associated port
-   */
-  def withPort(port: FPGAClockPort): FPGAClockDomain = {
-    portOpt = Some(port)
-    this
-  }
-}
+case class FPGAClockDomain(clock: FPGAClockPort, reset: FPGAResetPortSource, override val freqMHz: Double)
+                          (implicit bd: SOCTBdBuilder) extends ClockDomain(freqMHz)
 
 /**
  * Abstract base class for FPGA boards. Subclasses must provide information about the specific FPGA board,
@@ -159,9 +132,8 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
 
   /**
    * The clock domain representing the fastest clock available on this FPGA board.
-   * Provides
    */
-  def fastestClock(): FPGAClockDomain
+  val fastestClock: FPGAClockDomain
 
   /**
    * The DDR4 ports provided by this FPGA board

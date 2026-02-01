@@ -13,8 +13,8 @@ import scala.reflect.ClassTag
 
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
-class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder, dom: Option[ClockDomain])
-  extends BdComp with IsModule with AutoClockAndReset {
+class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder)
+  extends BdComp with IsModule {
 
   // This is the top-level instance representing this system in the block design
   private val c = p(HasSOCTConfig)
@@ -61,7 +61,7 @@ class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuild
   private def clockGen: () => Seq[chisel3.Clock] = () => {
     getPort[chisel3.Clock]
   }
-
+  /*
   override def clockInPorts: () => Seq[BdPinPort] = () => {
     clockGen().map { clk =>
       portToBdPin(clk)
@@ -73,9 +73,7 @@ class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuild
       portToBdPin(rst)
     }
   }
-
-  def resetNInPorts: () => Seq[BdPinPort] = () => Seq.empty
-
+  */
   /**
    * Attach a RESET interface to this top-level module
    *

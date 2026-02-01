@@ -54,16 +54,14 @@ case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends SDI
  *
  * @param pmodIdx The PMOD index to use
  */
-case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
-  extends BdComp with IsModule with AutoClockAndReset with HasConnect[SDCardPMOD] {
+case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with IsModule with HasConnect[SDCardPMOD] {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
-  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdPin("clock", this))
+  object ASYNC_RESETN extends BdPin("async_resetn", SDCardPMOD.this)
 
-  override def resetNInPorts: () => Seq[BdPinPort] = () => Seq(BdPin("async_resetn", this))
-
-  override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
+  object CLOCK extends BdPin("clock", SDCardPMOD.this)
 
   private object SDIO_CD extends BdPin("sdio_cd", SDCardPMOD.this)
 

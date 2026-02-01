@@ -14,7 +14,7 @@ import soct.system.vivado.abstracts.{AutoConnect, BdComp, BdPin, BdPinPort, Cloc
  * @param doutWidth The width of the output data bus
  */
 case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
-                      (implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain] = None) // Clock not needed
+                      (implicit bd: SOCTBdBuilder, p: Parameters) // Clock not needed
   extends BdComp with XInlineHDL with HasConnect[InlineSlice] {
 
   override def partName: String = "xilinx.com:inline_hdl:ilslice:1.0"

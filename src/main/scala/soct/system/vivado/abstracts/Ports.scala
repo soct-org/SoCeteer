@@ -18,7 +18,7 @@ trait BdPortBase extends BdPinPort {
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(bd, p, None) with BdPortBase {
+abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPortBase {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -58,7 +58,7 @@ abstract class BdPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp(
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[ClockDomain])
+abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with XIntf with BdPortBase {
   /**
    * The mode of this interface, e.g., "Master" or "Slave"

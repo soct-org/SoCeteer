@@ -1,60 +1,52 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.fpga.{DDR4Port, FPGAClockDomain, FPGAResetPortSource}
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
+import soct.system.vivado.fpga.{DDR4Port, FPGAClockPort, FPGAResetPortSource}
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.abstracts._
 
-import scala.annotation.unused
 import scala.collection.mutable
 
 
 /**
  * DDR4 memory controller component for Xilinx FPGAs.
- *
- * @param domains The clock domains to which this DDR4 component will output clocks. Up to 4 additional clock outputs can be specified.
- * @param dom     The clock domain in which this DDR4 component is instantiated - for now, must be an FPGAClockDomain
  */
-case class DDR4(domains: Seq[ClockDomain])(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option[FPGAClockDomain])
-  extends BdComp with Xip with AutoClockAndReset with HasConnect[DDR4] {
-
-  require(dom.isDefined, s"DDR4 component must be instantiated in an FPGAClockDomain")
+case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with Xip with HasConnect[DDR4] {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
-  override def clockInPorts: () => Seq[BdPinPort] = () => Seq(BdIntfPin("C0_SYS_CLK", this))
-
-  override def resetNInPorts: () => Seq[BdPinPort] = () => Seq.empty
-
-  override def resetInPorts: () => Seq[BdPinPort] = () => Seq.empty
-
   object C0_DDR4 extends BdIntfPin("C0_DDR4", this)
 
+  object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", this)
 
-  private def clkOut(idx: Int): String = s"addn_ui_clkout$idx"
+  object SYS_RST extends BdPin("sys_rst", this)
 
-  private def clkOutFreq(idx: Int): String = s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ"
+  case class ADDN_UI_CLKOUT_I(idx: Int, dom: ClockDomain) extends BdPin(s"addn_ui_clkout$idx", DDR4.this)
+
+  // Helper functions to create interfaces with multiple instances:
+  private val addn_ui_clkouts: mutable.Map[Int, ADDN_UI_CLKOUT_I] = mutable.Map.empty
+  def ADDN_UI_CLKOUT(idx: Int, dom: ClockDomain): ADDN_UI_CLKOUT_I = {
+    require(idx >= 1 && idx <= 4, s"DDR4 ADDN_UI_CLKOUT index must be between 1 and 4, got $idx")
+    addn_ui_clkouts.getOrElseUpdate(idx, ADDN_UI_CLKOUT_I(idx, dom))
+  }
+
 
   override def defaultProperties: Map[String, String] = {
-    val props = mutable.Map.empty[String, String]
+    val m = mutable.Map.empty[String, String]
+    val ddr4Intf = bd.getConnector(C0_DDR4, p => p.isInstanceOf[DDR4Port])
+    val boardClk = bd.getConnector(C0_SYS_CLK, p => p.isInstanceOf[FPGAClockPort])
+    val boardRst = bd.getConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
+    m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
+    m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> boardClk.ref
+    m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
 
-    val ddr4Intf = bd.getConnectors(C0_DDR4).headOption.getOrElse(
-      throw XilinxDesignException(s"DDR4 component's C0_DDR4 interface is not connected to any board interface.")
-    )
-    props += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
-    props += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> dom.get.port.instanceName
-    dom.get.reset.foreach {
-      case r: FPGAResetPortSource =>
-        props += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
-      case _ => // Ignore other reset types for now
+    addn_ui_clkouts.foreach {
+      case (idx, clk) =>
+        m += s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ" -> clk.dom.freqMHz.toInt.toString
     }
 
-    val freqs = domains.zipWithIndex.foldLeft(mutable.Map.empty[String, String]) {
-      case (acc, (cd, idx)) =>
-        acc += clkOutFreq(idx + 1) -> cd.freqMHz.toInt.toString
-        acc
-    }
-    props.toMap ++ freqs
+    m.toMap
   }
 }
 

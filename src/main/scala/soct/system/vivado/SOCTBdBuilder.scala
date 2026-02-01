@@ -108,6 +108,23 @@ class SOCTBd {
   }
 
   /**
+   * Get a single connector (source or sink) for a given port, throwing an error if not exactly one is found
+   *
+   * @param port     The port to get the connector for
+   * @param prop     An optional property function to filter connectors. Formatted as BdPinPort => Boolean
+   * @param errorMsg An optional custom error message if the number of connectors that satisfy the property is not exactly one
+   * @return The single connector for the given port
+   */
+  def getConnector(port: BdPinPort, prop: BdPinPort => Boolean = _ => true, errorMsg: Option[String] = None): BdPinPort = {
+    val errorMsgFinal = errorMsg.getOrElse(s"Expected exactly one connector for port $port that satisfies the given property, but found a different number.")
+    val connectors = getConnectors(port).toSeq
+    connectors filter prop match {
+      case Seq(single) => single
+      case _ => throw XilinxDesignException(errorMsgFinal)
+    }
+  }
+
+  /**
    * Get all sink ports connected to a given source port
    *
    * @param source The source port
@@ -115,6 +132,23 @@ class SOCTBd {
    */
   def getSinks(source: BdPinPort): Seq[BdPinPort] = {
     connects.getOrElse(source, Seq.empty)
+  }
+
+  /**
+   * Get the source port connected to a given sink port
+   *
+   * @param sink The sink port
+   * @return An optional source port connected to the sink port
+   */
+  def getSource(sink: BdPinPort): Option[BdPinPort] = {
+    // throw warning if multiple sources found - should not happen in well-formed designs
+    val sources = connects.collect {
+      case (src, sinks) if sinks.contains(sink) => src
+    }.toSeq
+    if (sources.size > 1) {
+      soct.log.warn(s"Multiple sources found for sink $sink: ${sources.mkString(", ")}")
+    }
+    sources.headOption
   }
 
 
@@ -134,7 +168,6 @@ class SOCTBd {
     }
   }
 }
-
 
 
 class SOCTBdBuilder extends SOCTBd {
@@ -229,6 +262,10 @@ class SOCTBdBuilder extends SOCTBd {
            |${c.defaultProperties.map { case (k, v) => s"  $k ${tclLiteral(v)}" }.mkString(" \\\n") + " \\"}
            |] $$${c.instanceName}
            |""".stripMargin
+    }.toSeq
+
+    val connectTCL = connects.flatMap {
+      case (from, tos) => BdPinPort.connect(from, tos)
     }.toSeq
 
     // Keys for TCL variables used in the script
@@ -363,7 +400,7 @@ class SOCTBdBuilder extends SOCTBd {
        |${propertyCommands.sorted.mkString("\n")}
        |
        |# Connect components
-       |# TODO add me back
+       |${connectTCL.sorted.mkString("\n")}
        |
        |""".stripMargin
   }

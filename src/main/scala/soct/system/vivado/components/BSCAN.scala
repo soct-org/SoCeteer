@@ -5,7 +5,7 @@ import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
 
 
-case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(bd, p, None)
+case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
   with Xip with HasConnect[BSCAN] {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
@@ -20,10 +20,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp()(b
     )
   }
 
-  private def outPort(i: Int): String = s"m${i}_bscan"
-
-  case class M_BSCAN(i: Int) extends BdIntfPin(outPort(i), BSCAN.this)
-
+  case class M_BSCAN(i: Int) extends BdIntfPin(s"m${i}_bscan", BSCAN.this)
   object M0_BSCAN extends M_BSCAN(0) {
     // Throw warning if this is already connected
     if (bd.numSinks(this) > 0) {
