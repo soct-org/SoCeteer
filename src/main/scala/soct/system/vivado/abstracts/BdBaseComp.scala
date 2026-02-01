@@ -1,6 +1,5 @@
 package soct.system.vivado.abstracts
 
-import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
 
@@ -16,7 +15,10 @@ abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends H
   bd.addComponent(this)
 
   if (bd.inFinalization && this.isInstanceOf[Finalizable]) {
-    soct.log.warn(s"Component $this created after BdBuilder finalization. Finalization logic will not be called.")
+    throw XilinxDesignException(s"Finalizable component $this was created during BdBuilder finalization. " +
+        s"This is not allowed because finalization order is not guaranteed.\n" +
+        s"Fix: create it before finalizeDesign(), or make it non-Finalizable."
+    )
   }
 }
 

@@ -88,6 +88,7 @@ trait HasCollaterals {
  * This allows components to inject subcomponents based on their connections
  */
 trait Finalizable {
+  this: BdBaseComp =>
   /**
    * Implementation of finalizeBd, to be provided by inheriting classes.
    * You must not instantiate Finalizable subcomponents here as order of finalization is not guaranteed.

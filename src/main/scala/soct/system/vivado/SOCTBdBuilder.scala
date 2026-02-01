@@ -272,13 +272,18 @@ class SOCTBdBuilder extends SOCTBd {
    * Finalize the block design by calling finalizeBd on all components and locking the design
    */
   def finalizeDesign(): Unit = {
-    if (!inFinalization && !locked) {
-      inFinalization = true
-      // First finalize the Chisel modules, as they have not had the chance to evaluate their IO yet (only possible after elaboration)
-      components.collect { case m: ChiselModuleTop => m.finalizeBd() }
-      // Then finalize all other components
-      components.collect { case f: Finalizable => f.finalizeBd() }
+    if (inFinalization || locked)
+      throw XilinxDesignException("Cannot finalize design recursively or after it has already been finalized")
+
+    inFinalization = true
+    try {
+      val comps = components.toSeq // Snapshot of components to avoid modification during iteration (e.g., new components added during finalization)
+      // Tops first
+      comps.collect { case m: ChiselModuleTop => m }.foreach(_.finalizeBd())
+      // Others
+      comps.collect { case f: Finalizable if !f.isInstanceOf[ChiselModuleTop] => f }.foreach(_.finalizeBd())
       locked = true
+    } finally {
       inFinalization = false
     }
   }
