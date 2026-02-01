@@ -25,10 +25,11 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
 
     val maxOutputs: Int
 
-    override protected def finalizeBdImpl(): Unit = {
-      val sinks = bd.getSinks(self)
-      val dinWidth: Int = sinks.size min maxOutputs max 1 // Every ProcSysReset port has at least one output
+    def sinks: Seq[BdPinPort] = bd.getSinks(self)
 
+    def dinWidth: Int = sinks.size min maxOutputs max 1 // Every ProcSysReset port has at least one output
+
+    override protected def finalizeBdImpl(): Unit = {
       val idxToSlice = mutable.Map.empty[Int, InlineSlice]
       if (dinWidth < 2) {
         return // No slicing needed
@@ -98,10 +99,10 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters, dom: Option
 
   override def defaultProperties: Map[String, String] = {
     Map(
-      "CONFIG.C_NUM_PERP_ARESETN" -> bd.numSinks(PeripheralAResetN).toString,
-      "CONFIG.C_NUM_PERP_RST" -> bd.numSinks(PeripheralReset).toString,
-      "CONFIG.C_NUM_BUS_RST" -> bd.numSinks(BusStructReset).toString,
-      "CONFIG.C_NUM_INTERCONNECT_ARESETN" -> bd.numSinks(InterconnectResetN).toString
+      "CONFIG.C_NUM_PERP_ARESETN" -> PeripheralAResetN.dinWidth.toString,
+      "CONFIG.C_NUM_PERP_RST" -> PeripheralReset.dinWidth.toString,
+      "CONFIG.C_NUM_BUS_RST" -> BusStructReset.dinWidth.toString,
+      "CONFIG.C_NUM_INTERCONNECT_ARESETN" -> InterconnectResetN.dinWidth.toString
     )
   }
 }
