@@ -34,9 +34,9 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
-    val ddr4Intf = bd.getConnector(C0_DDR4, p => p.isInstanceOf[DDR4Port])
-    val boardClk = bd.getConnector(C0_SYS_CLK, p => p.isInstanceOf[FPGAClockPort])
-    val boardRst = bd.getConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
+    val ddr4Intf = bd.singleConnector(C0_DDR4, p => p.isInstanceOf[DDR4Port])
+    val boardClk = bd.singleConnector(C0_SYS_CLK, p => p.isInstanceOf[FPGAClockPort])
+    val boardRst = bd.singleConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
     m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
     m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> boardClk.ref
     m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
@@ -53,5 +53,5 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
 
 object DDR4 {
   implicit val a: AutoConnect[DDR4, DDR4Port] = (comp: DDR4, port: DDR4Port, bd: SOCTBdBuilder) =>
-    bd.connect(comp.C0_DDR4, port)
+    bd.addEdge(comp.C0_DDR4, port)
 }

@@ -12,7 +12,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
 
   override def defaultProperties: Map[String, String] =  {
     // Count number of M_BSCAN sources
-    val nSlaves = bd.connectsWithPropertyView((source, _) => source.isInstanceOf[M_BSCAN]).size
+    val nSlaves = bd.edgesWhereView((source, _) => source.isInstanceOf[M_BSCAN]).size
     Map(
       "CONFIG.C_DEBUG_MODE" -> "7", // JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge
       "CONFIG.C_USER_SCAN_CHAIN" -> "1", // One user scan chain
@@ -23,7 +23,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
   case class M_BSCAN(i: Int) extends BdIntfPin(s"m${i}_bscan", BSCAN.this)
   object M0_BSCAN extends M_BSCAN(0) {
     // Throw warning if this is already connected
-    if (bd.numSinks(this) > 0) {
+    if (bd.outDegree(this) > 0) {
       soct.log.warn(s"BSCAN M0_BSCAN interface is already connected to another component, is this intended?")
     }
   }
@@ -31,5 +31,5 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
 
 object BSCAN {
   implicit val a: AutoConnect[BSCAN, BSCAN2JTAG] = (comp: BSCAN, sink: BSCAN2JTAG, bd: SOCTBdBuilder) =>
-    bd.connect(comp.M0_BSCAN, sink.S_BSCAN) // By default, only connect the first BSCAN port
+    bd.addEdge(comp.M0_BSCAN, sink.S_BSCAN) // By default, only connect the first BSCAN port
 }

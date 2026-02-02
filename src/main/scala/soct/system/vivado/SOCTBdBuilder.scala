@@ -101,7 +101,7 @@ class SOCTBdBuilder extends SOCTBd {
 
   def portModifications(): Map[String, Seq[String]] = {
     checkFinalized()
-    components.collect { case xIntf: MapsToPorts => xIntf.portMapping }
+    nodes.collect { case xIntf: MapsToPorts => xIntf.portMapping }
       .flatten
       .groupBy(_._1)
       .view.mapValues(_.toSeq.flatMap(_._2))
@@ -110,7 +110,7 @@ class SOCTBdBuilder extends SOCTBd {
 
   def emitCollaterals(outDir: Path): Unit = {
     checkFinalized()
-    components.collect {
+    nodes.collect {
       case c: HasCollaterals => c.dumpCollaterals(outDir)
     }
   }
@@ -124,7 +124,7 @@ class SOCTBdBuilder extends SOCTBd {
 
     inFinalization = true
     try {
-      val comps = components.toSeq // Snapshot of components to avoid modification during iteration (e.g., new components added during finalization)
+      val comps = nodes.toSeq // Snapshot of components to avoid modification during iteration (e.g., new components added during finalization)
       // Tops first
       comps.collect { case m: ChiselModuleTop => m }.foreach(_.finalizeBd())
       // Others
@@ -140,13 +140,13 @@ class SOCTBdBuilder extends SOCTBd {
     checkFinalized()
 
     // Instantiations:
-    lazy val instantiateCommands = components.collect {
+    lazy val instantiateCommands = nodes.collect {
       case inst: BdComp => inst.instTcl
     }.flatten.toSeq
 
 
     // Property settings:
-    lazy val propertyCommands = components.collect {
+    lazy val propertyCommands = nodes.collect {
       case c: BdComp if c.defaultProperties.nonEmpty =>
         def tclLiteral(v: String): String =
           if (v.startsWith("$") || v.startsWith("[")) v
@@ -160,9 +160,10 @@ class SOCTBdBuilder extends SOCTBd {
            |""".stripMargin
     }.toSeq
 
-    val connectTCL = connects.flatMap {
-      case (from, tos) => BdPinPort.connect(from, tos)
-    }.toSeq
+    val connectTCL = this.outAdj.iterator
+      .flatMap { case (from, tos) => BdPinPort.connect(from, tos) }
+      .toSeq
+
 
     // Keys for TCL variables used in the script
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)
@@ -174,7 +175,7 @@ class SOCTBdBuilder extends SOCTBd {
 
     val xips, xinlines = mutable.ListBuffer.empty[IsXilinx]
     val modules = mutable.ListBuffer.empty[IsModule]
-    components.collect {
+    nodes.collect {
       case x: Xip => xips += x
       case x: XInlineHDL => xinlines += x
       case m: IsModule => modules += m

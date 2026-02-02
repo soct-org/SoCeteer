@@ -31,5 +31,5 @@ case class InlineConstant(value: UInt, nBits: Int)
 
 object InlineConstant {
   implicit def a[T <: chisel3.Data]: ToSinkConnect[InlineConstant, T] = (comp: InlineConstant, sink: T, bd: SOCTBdBuilder) =>
-    bd.connect(comp.DOUT, portToBdPin(sink)(bd))
+    bd.addEdge(comp.DOUT, portToBdPin(sink)(bd))
 }

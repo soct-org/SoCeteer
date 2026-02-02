@@ -89,10 +89,10 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
 object SDCardPMOD {
   implicit val a: AutoConnect[SDCardPMOD, SDIOPort] = (comp: SDCardPMOD, port: SDIOPort, bd: SOCTBdBuilder) =>
     port match {
-      case p: SDIOCDPort => bd.connect(p, comp.SDIO_CD) // input
-      case p: SDIOCmdPort => bd.connect(comp.SDIO_CMD, p) // inout
-      case p: SDIODataPort => bd.connect(comp.SDIO_DATA, p) // inout
-      case p: SDIOClkPort => bd.connect(comp.SDIO_CLK, p) // output
+      case p: SDIOCDPort => bd.addEdge(p, comp.SDIO_CD) // input
+      case p: SDIOCmdPort => bd.addEdge(comp.SDIO_CMD, p) // inout
+      case p: SDIODataPort => bd.addEdge(comp.SDIO_DATA, p) // inout
+      case p: SDIOClkPort => bd.addEdge(comp.SDIO_CLK, p) // output
       case _ => throw XilinxDesignException(s"SDCardPMOD cannot connect to unknown port type: ${port.getClass}")
     }
 }

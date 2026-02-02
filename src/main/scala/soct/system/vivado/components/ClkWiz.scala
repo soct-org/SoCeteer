@@ -45,7 +45,7 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
     m += "CONFIG.NUM_OUT_CLKS" -> clkouts.size.toString
     m += "CONFIG.USE_BOARD_FLOW" -> "true"
 
-    bd.getSource(RESET) match {
+    bd.sourceOf(RESET) match {
       case Some(r: FPGAResetPortSource) =>
         m += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
       case _ =>

@@ -54,20 +54,20 @@ object BdPinPort {
   // -------------------------------------------------
 
   implicit def intfPinAuto[A <: BdIntfPin, B <: BdIntfPin]: AutoConnect[A, B] =
-    (ths, that, bd) => bd.connect(ths, that)
+    (ths, that, bd) => bd.addEdge(ths, that)
 
   implicit def anyToIntfPortAuto[A <: BdPinPort, B <: BdIntfPortBase]: AutoConnect[A, B] =
-    (ths, that, bd) => bd.connect(ths, that)
+    (ths, that, bd) => bd.addEdge(ths, that)
 
   implicit def intfPortToAnyAuto[A <: BdIntfPortBase, B <: BdPinPort]: AutoConnect[A, B] =
-    (ths, that, bd) => bd.connect(ths, that)
+    (ths, that, bd) => bd.addEdge(ths, that)
 
   // -------------------------------------------------
   // Scalar bidirectional pins (AutoConnect)
   // -------------------------------------------------
 
   implicit def inoutAuto[A <: BiDirNet, B <: BiDirNet]: AutoConnect[A, B] =
-    (a, b, bd) => bd.connect(a, b)
+    (a, b, bd) => bd.addEdge(a, b)
 
   // -------------------------------------------------
   // Scalar directional connections (ToSinkConnect)
@@ -75,19 +75,19 @@ object BdPinPort {
 
   // source (drives) --> sink (driven)
   implicit def drivesToDriven[A <: DrivesNet, B <: DrivenByNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.connect(a, b)
+    (a, b, bd) => bd.addEdge(a, b)
 
   // source (drives) --> sink (bidir)
   implicit def drivesToBidir[A <: DrivesNet, B <: BiDirNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.connect(a, b)
+    (a, b, bd) => bd.addEdge(a, b)
 
   // source (bidir) --> sink (driven)
   implicit def bidirToDriven[A <: BiDirNet, B <: DrivenByNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.connect(a, b)
+    (a, b, bd) => bd.addEdge(a, b)
 
   // source (bidir) --> sink (bidir)
   implicit def bidirToBidir[A <: BiDirNet, B <: BiDirNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.connect(a, b)
+    (a, b, bd) => bd.addEdge(a, b)
 
 
   // -------------------------------------------------
@@ -96,19 +96,19 @@ object BdPinPort {
 
   // sink (driven) <-- source (drives)
   implicit def drivenFromDrives[A <: DrivenByNet, B <: DrivesNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.connect(b, a)
+    (a, b, bd) => bd.addEdge(b, a)
 
   // sink (bidir) <-- source (drives)
   implicit def bidirFromDrives[A <: BiDirNet, B <: DrivesNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.connect(b, a)
+    (a, b, bd) => bd.addEdge(b, a)
 
   // sink (driven) <-- source (bidir)
   implicit def drivenFromBidir[A <: DrivenByNet, B <: BiDirNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.connect(b, a)
+    (a, b, bd) => bd.addEdge(b, a)
 
   // sink (bidir) <-- source (bidir)
   implicit def bidirFromBidir[A <: BiDirNet, B <: BiDirNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.connect(b, a)
+    (a, b, bd) => bd.addEdge(b, a)
 
 
   private def snake(name: String): String = {

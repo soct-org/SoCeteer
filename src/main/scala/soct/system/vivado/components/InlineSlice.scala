@@ -34,8 +34,8 @@ case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
 
 object InlineSlice {
   implicit val a: ToSinkConnect[InlineSlice, BdPinPort] = (comp: InlineSlice, sink: BdPinPort, bd: SOCTBdBuilder) =>
-    bd.connect(comp.DOUT, sink)
+    bd.addEdge(comp.DOUT, sink)
 
   implicit val b: ToSourceConnect[InlineSlice, BdPinPort] = (comp: InlineSlice, source: BdPinPort, bd: SOCTBdBuilder) =>
-    bd.connect(source, comp.DIN)
+    bd.addEdge(source, comp.DIN)
 }

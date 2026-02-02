@@ -25,7 +25,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
     val maxOutputs: Int
 
     lazy val sinks: Seq[BdPinPort] = {
-      bd.getSinks(self)
+      bd.successors(self)
     }
 
     def dinWidth: Int = sinks.size min maxOutputs max 1
@@ -51,13 +51,13 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
             }
           )
           soct.log.debug(s"Connecting sink $sink to slice $slice")
-          bd.connect(slice.DOUT, sink)
+          bd.addEdge(slice.DOUT, sink)
       }
 
       // Now connect the slices to this port
       idxToSlice.values.foreach { slice =>
         soct.log.debug(s"Connecting slice ${slice.instanceName} to $this")
-        bd.connect(this, slice.DIN)
+        bd.addEdge(this, slice.DIN)
       }
     }
   }

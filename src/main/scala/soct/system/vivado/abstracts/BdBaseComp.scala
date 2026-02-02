@@ -12,7 +12,7 @@ import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCom
  */
 abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
   // Register this component with the BDBuilder upon creation
-  bd.addComponent(this)
+  bd.addNode(this)
 
   if (bd.inFinalization && this.isInstanceOf[Finalizable]) {
     throw XilinxDesignException(s"Finalizable component $this was created during BdBuilder finalization. " +
