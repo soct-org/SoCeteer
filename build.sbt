@@ -1,7 +1,7 @@
 enablePlugins(BuildInfoPlugin)
 
-// 7.6.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
-val fallbackChiselVersion = "7.6.0"
+// 7.7.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
+val fallbackChiselVersion = "7.7.0"
 
 val params = sys.env.get("SOCT_CHISEL_VERSION") match {
   case Some(v) => Seq(v.startsWith("3."), v)
@@ -24,7 +24,7 @@ lazy val chiselSettings = if (useChisel3) {
 } else {
   Seq(
     addCompilerPlugin("org.chipsalliance" % "chisel-plugin" % chiselVersion cross CrossVersion.full),
-    libraryDependencies += "org.chipsalliance" %% "chisel" % chiselVersion,
+    libraryDependencies += "org.chipsalliance" %% "chisel" % chiselVersion
   )
 }
 

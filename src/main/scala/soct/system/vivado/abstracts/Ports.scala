@@ -107,7 +107,7 @@ abstract class BdIntfPortSlave(override val mode: String = "Slave")(implicit bd:
 /**
  * Add extra annotations to ports in the design.
  */
-abstract class MapsToPorts(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseComp {
+trait MapsToPorts {
   /**
    * The port mapping for this interface - maps signal names to sequences of annotation strings
    */

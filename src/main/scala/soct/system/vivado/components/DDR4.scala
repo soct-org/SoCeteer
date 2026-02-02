@@ -16,11 +16,13 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
-  object C0_DDR4 extends BdIntfPin("C0_DDR4", this)
+  object C0_DDR4 extends BdIntfPin("C0_DDR4", DDR4.this)
 
-  object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", this) with DrivenByNet
+  object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", DDR4.this) with DrivenByNet
 
-  object SYS_RST extends BdPinIn("sys_rst", this)
+  object SYS_RST extends BdPinIn("sys_rst", DDR4.this)
+
+  object C0_DDR4_S_AXI extends BdIntfPin("C0_DDR4_S_AXI", DDR4.this) with DrivesNet
 
   case class ADDN_UI_CLKOUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"addn_ui_clkout$idx", DDR4.this)
 
@@ -30,7 +32,6 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
     require(idx >= 1 && idx <= 4, s"DDR4 ADDN_UI_CLKOUT index must be between 1 and 4, got $idx")
     addn_ui_clkouts.getOrElseUpdate(idx, ADDN_UI_CLKOUT_I(idx, dom))
   }
-
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]

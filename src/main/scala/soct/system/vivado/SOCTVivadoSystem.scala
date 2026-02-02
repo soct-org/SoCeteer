@@ -5,7 +5,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
+import soct.system.vivado.components.{AXISmartConnect, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
@@ -38,6 +38,12 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       )
       val ddr4 = DDR4()
 
+      val memSMC = AXISmartConnect()
+
+      val mmioSMC = AXISmartConnect()
+
+      val dmaSMC = AXISmartConnect()
+
       ddr4 <-> ddr4Port
       fpgaClk --> ddr4.C0_SYS_CLK
       fpgaRst --> ddr4.SYS_RST
@@ -48,16 +54,36 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       clkWiz.LOCKED --> pcr.DCM_LOCKED
       clkWiz.CLK_OUT(1, peripheryDomain) --> pcr.SLOWEST_SYNC_CLK
 
-      top.RESET.foreach { rstPin => pcr.PeripheralReset --> rstPin}
-      top.CLOCK.foreach { clkPin => clkWiz.CLK_OUT(2, coreDomain) --> clkPin}
+      top.RESETS.foreach { rstPin => pcr.PeripheralReset --> rstPin}
+      top.CLOCKS.foreach { clkPin => clkWiz.CLK_OUT(2, coreDomain) --> clkPin}
 
-      val axiInfts = Seq(mem_axi4, mmio_axi4, l2_frontend_bus_axi4).flatten
-      axiInfts.foreach { axiInft => AXIMM(axiInft) }
+      val axiMem = Seq(mem_axi4).flatten.map { axi4 => AXIMM(axi4) }.headOption.getOrElse(
+        throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
+      )
+      val axiMMIO = Seq(mmio_axi4).flatten.map { axi4 => AXIMM(axi4) }.headOption.getOrElse(
+        throw new XilinxDesignException("No memory-mapped AXI4 port found for MMIO interface in SOCT system.")
+      )
+      val axiL2Frontend = Seq(l2_frontend_bus_axi4).flatten.map { axi4 => AXIMM(axi4) }.headOption.getOrElse(
+        throw new XilinxDesignException("No memory-mapped AXI4 port found for L2 frontend interface in SOCT system.")
+      )
+
+      pcr.PeripheralAResetN --> memSMC.ARESETN
+      pcr.PeripheralAResetN --> mmioSMC.ARESETN
+      pcr.PeripheralAResetN --> dmaSMC.ARESETN
+
+      memSMC.S_AXI(0) <-> axiMem
+      memSMC.M_AXI(0) <-> ddr4.C0_DDR4_S_AXI
+
+      mmioSMC.S_AXI(0) <-> axiMMIO
+
+      dmaSMC.M_AXI(0) <-> axiL2Frontend
 
       if (p(HasSDCardPMOD).isDefined) {
         val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get)
         ports.foreach { p => sdPmod <-> p}
+        dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
+        mmioSMC.M_AXI(0) <-> sdPmod.S_AXI_LITE
       }
 
       val debugIf = debug.getWrappedValue.get

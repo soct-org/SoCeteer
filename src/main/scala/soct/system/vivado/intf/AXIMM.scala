@@ -6,17 +6,15 @@ import freechips.rocketchip.amba.axi4.AXI4Bundle
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.abstracts.BdPinPort.portToPortName
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
-import soct.system.vivado.abstracts.{MapsToPorts, XIntf}
+import soct.system.vivado.abstracts.{BdIntfPin, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
 case class AXIMM(axiPort: AXI4Bundle)
                 (implicit bd: SOCTBdBuilder, p: Parameters)
-  extends MapsToPorts with XIntf {
+  extends BdIntfPin(portToPortName(axiPort).toUpperCase(), bd.topInstance()) with MapsToPorts with XIntf {
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
-
-  def ifName: String = portToPortName(axiPort).toUpperCase()
 
   override def portMapping: Map[String, Seq[String]] = {
     val ignoredPorts: Set[String] = Set("bits", "user", "echo")
@@ -31,10 +29,10 @@ case class AXIMM(axiPort: AXI4Bundle)
         .foreach { case (fieldName, port) =>
           val portName = portToPortName(port)
           val xilinxName = s"${channelName.toUpperCase}${fieldName.toUpperCase()}"
-          val intfString = s"(* X_INTERFACE_INFO = \"$partName $ifName $xilinxName\" *)"
+          val intfString = s"(* X_INTERFACE_INFO = \"$partName $pin $xilinxName\" *)"
           val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {
             Some(
-              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $ifName, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
+              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $pin, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
             )
           } else None
 

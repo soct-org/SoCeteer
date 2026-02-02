@@ -46,7 +46,7 @@ object Targets {
   case object Yosys extends Targets {
     val name: String = "yosys"
     val defaultBootrom: String = "sd-boot"
-    val defaultTop: ChiselTop  = Right(classOf[SOCTYosysSystem])
+    val defaultTop: ChiselTop = Right(classOf[SOCTYosysSystem])
   }
 
   /**
@@ -55,7 +55,7 @@ object Targets {
   case object Verilator extends Targets {
     val name: String = "verilator"
     val defaultBootrom: String = "testchipip-boot"
-    val defaultTop: ChiselTop  = Left(classOf[SOCTSimSystem])
+    val defaultTop: ChiselTop = Left(classOf[SOCTSimSystem])
   }
 
   /**
@@ -84,6 +84,7 @@ case class SOCTArgs(
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
+                     verboseChisel: Boolean = false,
                      singleVerilogFile: Boolean = false,
                      includeLocationInfo: Boolean = false,
                      target: Targets = Targets.Verilator,
@@ -159,6 +160,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure(s"Invalid log level. Allowed: ${logLevels.mkString(", ")}")
     )
     .text(s"The log level to use. Options: ${logLevels.mkString(", ")}. Default is ${defaultSOCTArgs.logLevel}.")
+  opt[Unit]("verbose-chisel").action((_, c) => c.copy(verboseChisel = true)).text(s"Enable verbose Chisel output during elaboration. Default is ${defaultSOCTArgs.verboseChisel}.")
   opt[Unit]("single-verilog-file").action((_, c) => c.copy(singleVerilogFile = true)).text(s"(Ignored for Chisel 3 compiler - it always outputs a single file) Generate a single verilog file instead of splitting it up into modules. Due to the way firtool handles things, this flag DISABLES ANY FORM OF VERIFICATION INCLUDING PRINTF.")
   opt[Unit]("include-location-info").action((_, c) => c.copy(includeLocationInfo = true)).text(s"Include location information (file and line number) as comments in the generated verilog/systemverilog file.")
   opt[String]('t', "target").action((x, c) => c.copy(target = Targets.parse(x))).text(s"Whether to simulate or synthesize the design using various backends. Available options: ${Targets.values.map(_.name).mkString(", ")}. Default is ${defaultSOCTArgs.target}.")

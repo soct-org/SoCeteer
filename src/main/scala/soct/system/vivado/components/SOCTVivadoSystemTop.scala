@@ -48,15 +48,13 @@ class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuild
   }
 
 
-  private def resetMap: Map[BdPinInOut, chisel3.Reset] = getPorts[chisel3.Reset].map(p => portToBdPin(p) -> p).toMap
-  val RESET: Seq[BdPinInOut] = resetMap.keys.toSeq
+  def RESETS: Seq[BdChiselPin] = getPorts[chisel3.Reset].map(portToBdPin)
 
-  def clockMap: Map[BdPinInOut, chisel3.Clock] = getPorts[chisel3.Clock].map(p => portToBdPin(p) -> p).toMap
-  val CLOCK: Seq[BdPinInOut] = clockMap.keys.toSeq
+  def CLOCKS: Seq[BdChiselPin] = getPorts[chisel3.Clock].map(portToBdPin)
 
   override protected def finalizeBdImpl(): Unit = {
-    ClockSignal("CLOCK", clockMap)
-    ResetSignal("RESET", resetMap)
+    ClockSignal("CLOCK", RESETS)
+    ResetSignal("RESET", CLOCKS)
   }
 
   override def reference: String = c.topModuleName

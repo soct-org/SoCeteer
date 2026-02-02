@@ -1,7 +1,7 @@
 package soct.system.vivado.abstracts
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 
 
 /**
@@ -10,7 +10,7 @@ import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCom
  * builder happens in this base class constructor - before subclass constructors run. Only defs are safe to use, as
  * they are resolved at call time.
  */
-abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
+abstract class BdBaseComp(implicit bd: SOCTBdBuilder, p: Parameters) extends HasFriendlyName {
   // Register this component with the BDBuilder upon creation
   bd.addNode(this)
 
@@ -20,6 +20,14 @@ abstract class BdBaseComp()(implicit bd: SOCTBdBuilder, p: Parameters) extends H
         s"Fix: create it before finalizeDesign(), or make it non-Finalizable."
     )
   }
+
+  override final def equals(other: Any): Boolean =
+    this eq other.asInstanceOf[AnyRef]
+
+
+  override final def hashCode(): Int =
+    System.identityHashCode(this)
+
 }
 
 

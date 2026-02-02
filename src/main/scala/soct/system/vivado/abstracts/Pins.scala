@@ -32,6 +32,14 @@ class BdPinInOut(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, i
 
 
 /**
+ * Board Design Chisel Pin (bidirectional at compile time - actual direction determined during elaboration)
+ */
+class BdChiselPin(pinFn: => String, instFn: => BdComp, chiselPort: => chisel3.Data) extends BdPinInOut(pinFn, instFn) {
+  def chiselPin: chisel3.Data = chiselPort
+}
+
+
+/**
  * Board Design Interface Pin (no direction)
  */
 class BdIntfPin(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) {

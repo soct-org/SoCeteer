@@ -1,6 +1,8 @@
 package soct.system.vivado.abstracts
 
+import chisel3.ActualDirection.Input
 import chisel3.Data
+import chisel3.reflect.DataMirror
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands}
 
 
@@ -128,8 +130,8 @@ object BdPinPort {
   }
 
   /** Convert a Chisel Data port to a BdPin */
-  def portToBdPin(x: Data)(implicit bd: SOCTBdBuilder): BdPinInOut = {
-    new BdPinInOut(snake(x.instanceName), bd.topInstance()) // TODO get direction?, for now assume inout. Also, more elegant way to get parent?
+  def portToBdPin(x: Data)(implicit bd: SOCTBdBuilder): BdChiselPin = {
+    new BdChiselPin(snake(x.instanceName), bd.topInstance(), x)
   }
 
   def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {

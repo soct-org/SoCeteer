@@ -24,9 +24,19 @@ object ChiselCompat {
   }
 }
 
-object Transpiler  {
+object Transpiler {
 
   val stage = new FirrtlStage
+
+  def toChiselLL(c: SOCTLauncher.SOCTConfig): String = {
+    if (c.args.verboseChisel) {
+      "debug"
+    } else {
+      val infoLL = logLevels.indexOf("info")
+      val userLL = logLevels.indexOf(c.args.logLevel.toLowerCase)
+      if (userLL < infoLL) "info" else c.args.logLevel.toLowerCase
+    }
+  }
 
   def evalDesign(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     // Contains a callable that returns a chisel model and that is used to generate the firrtl
@@ -75,7 +85,7 @@ object Transpiler  {
       FirrtlFileAnnotation(paths.firrtlFile.toString),
       OutputFileAnnotation(paths.lowFirrtlFile.toString)
     ) ++ annos
-    val out = stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=low-opt"), firrtlAnnos)
+    val out = stage.execute(Array(s"-ll=${toChiselLL(c)}", "-E=low-opt"), firrtlAnnos)
     Files.write(paths.annoFile, JsonProtocol.serialize(out).getBytes)
   }
 
@@ -85,7 +95,7 @@ object Transpiler  {
       OutputFileAnnotation(paths.verilogSrc.resolve(s"${c.topModuleName}.v").toString),
       FirrtlFileAnnotation(paths.lowFirrtlFile.toString),
     )
-    var loweringArgs = mutable.Seq("-E=verilog", "--start-from=low-opt", s"-ll=${c.args.logLevel}")
+    var loweringArgs = mutable.Seq("-E=verilog", "--start-from=low-opt", s"-ll=${toChiselLL(c)}")
 
     if (!c.args.includeLocationInfo) {
       loweringArgs ++= Seq("--info-mode=ignore")

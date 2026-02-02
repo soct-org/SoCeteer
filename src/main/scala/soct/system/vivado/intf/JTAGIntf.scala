@@ -10,9 +10,7 @@ import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, MapsToPorts, XIntf}
 import scala.collection.mutable
 
 case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends MapsToPorts with XIntf {
-
-  val jtagIntf: String = "JTAG"
+  extends BdIntfPin("JTAG", bd.topInstance()) with MapsToPorts with XIntf {
 
   override def partName: String = "xilinx.com:interface:jtag:1.0"
 
@@ -27,12 +25,9 @@ case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Pa
     )
     ports2Xilinx.foreach { case (port, xilinxName) =>
       val portName = portToPortName(port)
-      val intfString = s"(* X_INTERFACE_INFO = \"$partName $jtagIntf $xilinxName\" *)"
+      val intfString = s"(* X_INTERFACE_INFO = \"$partName $pin $xilinxName\" *)"
       portMappings(portName) = Seq(intfString)
     }
     portMappings.toMap
   }
-
-  object JTAG extends BdIntfPin("JTAG", bd.topInstance())
-
 }

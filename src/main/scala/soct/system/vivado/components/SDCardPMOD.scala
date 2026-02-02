@@ -55,6 +55,10 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
 
   object CLOCK extends BdPinIn("clock", SDCardPMOD.this)
 
+  object S_AXI_LITE extends BdIntfPin("S_AXI_LITE", SDCardPMOD.this)
+
+  object M_AXI extends BdIntfPin("M_AXI", SDCardPMOD.this)
+
   private object SDIO_CD extends BdPinIn("sdio_cd", SDCardPMOD.this)
 
   private object SDIO_CMD extends BdPinInOut("sdio_cmd", SDCardPMOD.this)
