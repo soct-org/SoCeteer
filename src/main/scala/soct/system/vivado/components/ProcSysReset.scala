@@ -66,7 +66,7 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
    * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  val PeripheralAResetN = new BdPinOut("peripheral_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
+  object PeripheralAResetN extends BdPinOut("peripheral_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
     override val maxOutputs: Int = 16
   }
 
@@ -74,21 +74,21 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
    * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
    * Deassertion is synchronized to the slowestSyncClk.
    */
-  val PeripheralReset = new BdPinOut("peripheral_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
+  object PeripheralReset extends BdPinOut("peripheral_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
     override val maxOutputs: Int = 16
   }
 
   /**
    * Bus Structures reset - for example, arbiters for bridges. Active-High
    */
-  val BusStructReset = new BdPinOut("bus_struct_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
+  object BusStructReset extends BdPinOut("bus_struct_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
     override val maxOutputs: Int = 8
   }
 
   /**
    * Interconnect reset, for example, interconnects with active-Low reset inputs.
    */
-  val InterconnectResetN = new BdPinOut("interconnect_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
+  object InterconnectResetN extends BdPinOut("interconnect_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
     override val maxOutputs: Int = 8
   }
 

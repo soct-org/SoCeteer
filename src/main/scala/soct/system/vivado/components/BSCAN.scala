@@ -12,7 +12,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
 
   override def defaultProperties: Map[String, String] =  {
     // Count number of M_BSCAN sources
-    val nSlaves = bd.connectsWithProperty((source, _) => source.isInstanceOf[M_BSCAN]).size
+    val nSlaves = bd.connectsWithPropertyView((source, _) => source.isInstanceOf[M_BSCAN]).size
     Map(
       "CONFIG.C_DEBUG_MODE" -> "7", // JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge
       "CONFIG.C_USER_SCAN_CHAIN" -> "1", // One user scan chain
