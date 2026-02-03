@@ -29,8 +29,7 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
   private val clkouts: mutable.Map[Int, CLK_OUT_I] = mutable.Map.empty
   case class CLK_OUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"clk_out$idx", ClkWiz.this)
   def CLK_OUT(idx: Int, dom: ClockDomain): CLK_OUT_I = {
-    // TODO upper limit on number of clkouts based on FPGA family
-    require(idx >= 1, s"ClkWiz CLK_OUT index must be >= 1, got $idx")
+    require(idx >= 1, s"ClkWiz CLK_OUT index must be >= 1, got $idx") // TODO upper limit on number of clkouts based on FPGA family
     clkouts.getOrElseUpdate(idx, CLK_OUT_I(idx, dom))
   }
 

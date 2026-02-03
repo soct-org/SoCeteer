@@ -5,6 +5,7 @@ import soct.system.vivado.abstracts.{BdBaseComp, BdPinPort}
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.collection.View
+import scala.reflect.ClassTag
 
 /**
  * Mutable directed multigraph:
@@ -266,11 +267,27 @@ class SOCTBd {
       .filter { case (from, tos) => prop(from, tos) }
       .map { case (from, tos) => from -> tos.view }
 
+
   /**
-   * Filter nodes by runtime type, etc. (snapshot).
+   * All BdPinPort (from + to) as snapshot (duplicates removed).
+   *
+   * @return
    */
-  def nodesWhere(pred: BdBaseComp => Boolean): Seq[BdBaseComp] =
-    nodes.iterator.filter(pred).toSeq
+  def pinPortsSnapshot: Seq[BdPinPort] =
+    (outAdj.keysIterator ++ outAdj.valuesIterator.flatten ++
+      inAdj.keysIterator ++ inAdj.valuesIterator.flatten).toSeq
+
+
+  /**
+   * All ports of type T as snapshot.
+   *
+   * @param pred Optional predicate to filter ports.
+   * @tparam T Type of port
+   * @return A snapshot sequence of ports of type T.
+   */
+  def pinPortsOfTWhere[T <: BdPinPort : ClassTag](pred: T => Boolean): Seq[T] =
+    pinPortsSnapshot.collect { case p: T if pred(p) => p }
+
 
   /**
    * Convenience: all outgoing edges from a given port as snapshot pairs.

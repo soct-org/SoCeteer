@@ -19,7 +19,7 @@ case class InlineConstant(value: UInt, nBits: Int)
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
 
-  override def friendlyName: String = s"constant_${nBits}bit_${value.litValue}"
+  override val friendlyName: String = s"constant_${nBits}bit_${value.litValue}"
 
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.CONST_VAL" -> s"${value.litValue}",

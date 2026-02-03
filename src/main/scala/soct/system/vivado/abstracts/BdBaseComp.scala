@@ -47,7 +47,7 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
    * @return The instance name
    */
   def instanceName: String = {
-    val name = friendlyName.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase
+    val name = camelToSnake.replaceAllIn(friendlyName, "$1_$2").toLowerCase
     s"${name}_$index"
   }
 
@@ -71,4 +71,6 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
         throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
     }
   }
+
+  private val camelToSnake = "([a-z])([A-Z])".r
 }

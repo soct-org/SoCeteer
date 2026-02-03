@@ -58,8 +58,4 @@ class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuild
   }
 
   override def reference: String = c.topModuleName
-
-  override def friendlyName: String = s.instanceName
-
-  override def instanceName: String = friendlyName
 }

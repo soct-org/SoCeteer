@@ -104,17 +104,17 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
         // Tie off unused fields using inline constants - rename for clarity in block design
         val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {
-          override def friendlyName: String = "jtag_mfr_id_constant"
+          override val friendlyName: String = "jtag_mfr_id_constant"
         }
         mfrIdConst --> jtagIO.mfr_id
 
         val partNumConst = new InlineConstant(0.U, jtagIO.part_number.getWidth) {
-          override def friendlyName: String = "jtag_part_number_constant"
+          override val friendlyName: String = "jtag_part_number_constant"
         }
         partNumConst --> jtagIO.part_number
 
         val versionConst = new InlineConstant(0.U, jtagIO.version.getWidth) {
-          override def friendlyName: String = "jtag_version_constant"
+          override val friendlyName: String = "jtag_version_constant"
         }
         versionConst --> jtagIO.version
 

@@ -5,13 +5,14 @@ import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}
 
 /**
  * Trait for Board Design Pin Ports - used to connect component ports
+ * Ports are always BdComps themselves.
  */
 trait BdPortBase extends BdPinPort {
   this: BdComp =>
 
-  override def parentInst(): BdComp = this
+  override lazy val parentInst: BdComp = this
 
-  override def ref: String = instanceName
+  override lazy val ref: String = instanceName
 }
 
 

@@ -1,9 +1,7 @@
 package soct.system.vivado.abstracts
 
-import chisel3.ActualDirection.Input
 import chisel3.Data
-import chisel3.reflect.DataMirror
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
 
 
 sealed trait VivadoHandleKind
@@ -37,15 +35,30 @@ trait BiDirNet extends BdPinPort
 trait BdPinPort extends ConnectOps {
 
   /** The parent component instance for this. For ports, this is the component itself. */
-  def parentInst(): BdComp
+  val parentInst: BdComp
 
   /** How to reference this in TCL commands */
-  def ref: String
+  val ref: String
 
   /** How Vivado should retrieve this endpoint */
-  def vivadoKind: VivadoHandleKind
+  val vivadoKind: VivadoHandleKind
 
-  override def toString: String = ref
+
+  /**
+   * Check for structural equality with another BdPinPort.
+   * This requires that the BdBuilder is locked, so that instance names are stable.
+   *
+   * @param that the other BdPinPort to compare against
+   * @param bd   the BdBuilder context
+   * @return true if the two BdPinPorts refer to the same pin/port on the same component instance
+   */
+  def sameAs(that: BdPinPort)(implicit bd: SOCTBdBuilder): Boolean = {
+    if (!bd.locked) {
+      throw new XilinxDesignException("BdPinPort.sameAs can only be called after the BdBuilder is locked. " +
+        "Before locking, the instance names may change, so equality cannot be determined.")
+    }
+    this.ref == that.ref
+  }
 }
 
 
@@ -117,11 +130,14 @@ object BdPinPort {
     name.toLowerCase.replace(".", "_")
   }
 
-  private def vivadoGetExpr(x: BdPinPort): String = x.vivadoKind match {
-    case VivadoHandleKind.ScalarPin => s"[get_bd_pins $x]"
-    case VivadoHandleKind.ScalarPort => s"[get_bd_ports $x]"
-    case VivadoHandleKind.IntfPin => s"[get_bd_intf_pins $x]"
-    case VivadoHandleKind.IntfPort => s"[get_bd_intf_ports $x]"
+  private def vivadoGetExpr(p: BdPinPort): String = {
+    val x = p.ref
+    p.vivadoKind match {
+      case VivadoHandleKind.ScalarPin => s"[get_bd_pins $x]"
+      case VivadoHandleKind.ScalarPort => s"[get_bd_ports $x]"
+      case VivadoHandleKind.IntfPin => s"[get_bd_intf_pins $x]"
+      case VivadoHandleKind.IntfPort => s"[get_bd_intf_ports $x]"
+    }
   }
 
   /** Convert a Chisel Data port to its name in Verilog */

@@ -118,5 +118,5 @@ trait HasFriendlyName {
   /**
    * A friendly name for this component, derived from the class name or overridden
    */
-  def friendlyName: String = this.getClass.getSimpleName.replaceAll("\\$", "")
+  val friendlyName: String = this.getClass.getSimpleName.replaceAll("\\$", "")
 }
