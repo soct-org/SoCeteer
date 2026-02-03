@@ -14,9 +14,13 @@ class ZCU104(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGA {
 
   override val tpe: String = "zcu104"
 
-  override val portsPMOD: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1 are available, 2 is I2C
+  override val getPMODPorts: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1 are available, 2 is I2C
 
-  override def portsDDR4(): Seq[DDR4Port] = Seq(DDR4Port(instanceName = "ddr4_sdram"))
+  override def initDDR4Port(i: Int): DDR4Port =
+    DDR4Port(instanceName = "ddr4_sdram") // ZCU104 has a single DDR4 port
+
+  override def initUARTPort(i: Int): UARTPort =
+    UARTPort(instanceName = "uart2_pl") // ZCU104 has a single UART port
 
   private val clk300: FPGAClockPort = FPGAClockPort("clk_300mhz", () => clk300Dom)
   private val clk300Dom: FPGAClockDomain = FPGAClockDomain(clk300, defaultReset, 300.0)

@@ -66,6 +66,16 @@ case class DDR4Port(override val instanceName: String)
   override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
 }
 
+
+/**
+ * Case class representing a UART port on the FPGA board.
+ */
+case class UARTPort(override val instanceName: String)
+                   (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
+  override def partName: String = "xilinx.com:interface:uart_rtl:1.0"
+}
+
+
 /**
  * Case class representing a reset port on the FPGA board
  */
@@ -129,14 +139,32 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
   val fastestClock: FPGAClockDomain
 
   /**
-   * The DDR4 ports provided by this FPGA board
+   * Get the i-th DDR4 port available on this FPGA board.
+   *
+   * @param i The index of the DDR4 port to initialize (default is 0)
+   * @throws XilinxDesignException if no DDR4 ports are defined for this FPGA board or if the index is out of range
+   * @return The initialized DDR4 port
    */
-  def portsDDR4(): Seq[DDR4Port] = Seq.empty
+  @throws[XilinxDesignException]
+  def initDDR4Port(i: Int = 0): DDR4Port = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any DDR4 ports defined.")
+
+
+  /**
+   * Get the i-th UART port available on this FPGA board.
+   *
+   * @param i The index of the UART port to initialize (default is 0)
+   * @throws XilinxDesignException if no UART ports are defined for this FPGA board or if the index is out of range
+   * @return The initialized UART port
+   */
+  @throws[XilinxDesignException]
+  def initUARTPort(i: Int = 0): UARTPort = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any UART ports defined.")
+
 
   /**
    * The PMOD ports available on this FPGA board
    */
-  val portsPMOD: Seq[Int] = Seq.empty
+  val getPMODPorts: Seq[Int] = Seq.empty
+
 
   /**
    * The default reset port for this FPGA board, based on the reset polarity parameter
@@ -150,5 +178,4 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
   }
 
   override def toString: String = friendlyName
-
 }

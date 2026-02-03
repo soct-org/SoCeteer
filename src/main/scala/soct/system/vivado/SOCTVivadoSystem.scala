@@ -5,7 +5,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXISmartConnect, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
+import soct.system.vivado.components.{AXISmartConnect, AXIUartLite, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
@@ -31,31 +31,38 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val coreDomain = new ClockDomain(100.0, tclVarName = Some("$core_clk_freq")) // Default to 100 MHz - TODO use parameters
       val ddr4OutDomain = new ClockDomain(freqMHz = coreDomain.freqMHz) // TODO: Currently uses core frequency for DDR4 clock wizard - can/should we drive it as fast as possible instead?
 
+      // Ports
+      val uartPort = fpga.initUARTPort()
+      val ddr4Port = fpga.initDDR4Port()
+
+      // Components
       val pcr = ProcSysReset()
       val clkWiz = ClkWiz()
-      val ddr4Port = fpga.portsDDR4().headOption.getOrElse(
-        throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any DDR4 ports defined but HasDDR4ExtMem is set in parameters.")
-      )
+      val uart = new AXIUartLite()
       val ddr4 = DDR4()
-
       val memSMC = AXISmartConnect()
-
       val mmioSMC = AXISmartConnect()
-
       val dmaSMC = AXISmartConnect()
 
       ddr4 <-> ddr4Port
+      ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain) --> clkWiz.CLK_IN1
+
+      uart.UART <-> uartPort
+
       fpgaClk --> ddr4.C0_SYS_CLK
       fpgaRst --> ddr4.SYS_RST
       fpgaRst --> clkWiz.RESET
-
-      ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain) --> clkWiz.CLK_IN1
 
       clkWiz.LOCKED --> pcr.DCM_LOCKED
       clkWiz.CLK_OUT(1, peripheryDomain) --> pcr.SLOWEST_SYNC_CLK
 
       top.RESETS.foreach { rstPin => pcr.PeripheralReset --> rstPin}
       top.CLOCKS.foreach { clkPin => clkWiz.CLK_OUT(2, coreDomain) --> clkPin}
+
+      pcr.PeripheralAResetN --> memSMC.ARESETN
+      pcr.PeripheralAResetN --> mmioSMC.ARESETN
+      pcr.PeripheralAResetN --> dmaSMC.ARESETN
+      pcr.PeripheralAResetN --> uart.S_AXI_ARESETN
 
       val axiMem = Seq(mem_axi4).flatten.map { axi4 => AXIMM(axi4) }.headOption.getOrElse(
         throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
@@ -67,9 +74,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         throw new XilinxDesignException("No memory-mapped AXI4 port found for L2 frontend interface in SOCT system.")
       )
 
-      pcr.PeripheralAResetN --> memSMC.ARESETN
-      pcr.PeripheralAResetN --> mmioSMC.ARESETN
-      pcr.PeripheralAResetN --> dmaSMC.ARESETN
 
       memSMC.S_AXI(0) <-> axiMem
       memSMC.M_AXI(0) <-> ddr4.C0_DDR4_S_AXI
@@ -77,6 +81,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       mmioSMC.S_AXI(0) <-> axiMMIO
 
       dmaSMC.M_AXI(0) <-> axiL2Frontend
+
+      mmioSMC.M_AXI(1) <-> uart.S_AXI
 
       if (p(HasSDCardPMOD).isDefined) {
         val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
