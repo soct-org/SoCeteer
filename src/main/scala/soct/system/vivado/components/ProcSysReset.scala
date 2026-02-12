@@ -9,8 +9,6 @@ import scala.collection.mutable
 /**
  * Proc Sys Reset IP core from Xilinx.
  * Documentation: https://docs.amd.com/v/u/en-US/pg164-proc-sys-reset
- *
- * @param dom Only used for the slowestSyncClk connection
  */
 case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with Finalizable {

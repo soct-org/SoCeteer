@@ -38,31 +38,34 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       // Components
       val pcr = ProcSysReset()
       val clkWiz = ClkWiz()
-      val uart = new AXIUartLite()
+      val uart = AXIUartLite()
       val ddr4 = DDR4()
       val memSMC = AXISmartConnect()
       val mmioSMC = AXISmartConnect()
       val dmaSMC = AXISmartConnect()
 
-      ddr4 <-> ddr4Port
-      ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain) --> clkWiz.CLK_IN1
+      // Pins
+      val ddr4Clk1 = ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain)
+      val peripheryClock = clkWiz.CLK_OUT(1, peripheryDomain)
+      val coreClock = clkWiz.CLK_OUT(2, coreDomain)
 
+      // Connections
+      ddr4 <-> ddr4Port
+      ddr4Clk1 --> clkWiz.CLK_IN(1)
       uart.UART <-> uartPort
 
       fpgaClk --> ddr4.C0_SYS_CLK
-      fpgaRst --> ddr4.SYS_RST
-      fpgaRst --> clkWiz.RESET
+      fpgaRst --*> Seq(ddr4.SYS_RST, clkWiz.RESET)
 
       clkWiz.LOCKED --> pcr.DCM_LOCKED
-      clkWiz.CLK_OUT(1, peripheryDomain) --> pcr.SLOWEST_SYNC_CLK
+      // TODO make sure its the slowest clock if we add more clock domains
+      peripheryClock --*> Seq(pcr.SLOWEST_SYNC_CLK, memSMC.ACLK(0), mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
 
-      top.RESETS.foreach { rstPin => pcr.PeripheralReset --> rstPin}
-      top.CLOCKS.foreach { clkPin => clkWiz.CLK_OUT(2, coreDomain) --> clkPin}
+      pcr.PeripheralReset --*> top.RESETS
+      coreClock --*> top.CLOCKS
 
-      pcr.PeripheralAResetN --> memSMC.ARESETN
-      pcr.PeripheralAResetN --> mmioSMC.ARESETN
-      pcr.PeripheralAResetN --> dmaSMC.ARESETN
-      pcr.PeripheralAResetN --> uart.S_AXI_ARESETN
+      pcr.PeripheralAResetN --*> Seq(memSMC.ARESETN, mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
+
 
       val axiMem = Seq(mem_axi4).flatten.map { axi4 => AXIMM(axi4) }.headOption.getOrElse(
         throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
@@ -85,9 +88,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       mmioSMC.M_AXI(1) <-> uart.S_AXI
 
       if (p(HasSDCardPMOD).isDefined) {
-        val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get)
-        ports.foreach { p => sdPmod <-> p}
+        val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
+        peripheryClock --> sdPmod.CLOCK
+        sdPmod <->* ports
         dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
         mmioSMC.M_AXI(0) <-> sdPmod.S_AXI_LITE
       }

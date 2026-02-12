@@ -9,7 +9,7 @@ import soct.system.vivado.fpga.UARTPort
 /**
  * AXI UART Lite component for Xilinx FPGAs.
  */
-class AXIUartLite(implicit bd: SOCTBdBuilder, p: Parameters)
+case class AXIUartLite()(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps {
 
   override def partName: String = "xilinx.com:ip:axi_uartlite:2.0"

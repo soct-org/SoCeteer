@@ -12,7 +12,7 @@ import scala.collection.mutable
  * DDR4 memory controller component for Xilinx FPGAs.
  */
 case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with Xip with ConnectOps {
+  extends BdComp with Xip with ConnectOps with HasIndexedPins {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
@@ -25,13 +25,10 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
   object C0_DDR4_S_AXI extends BdIntfPin("C0_DDR4_S_AXI", DDR4.this) with DrivesNet
 
   case class ADDN_UI_CLKOUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"addn_ui_clkout$idx", DDR4.this)
-
-  // Helper functions to create interfaces with multiple instances:
-  private val addn_ui_clkouts: mutable.Map[Int, ADDN_UI_CLKOUT_I] = mutable.Map.empty
-  def ADDN_UI_CLKOUT(idx: Int, dom: ClockDomain): ADDN_UI_CLKOUT_I = {
-    require(idx >= 1 && idx <= 4, s"DDR4 ADDN_UI_CLKOUT index must be between 1 and 4, got $idx")
-    addn_ui_clkouts.getOrElseUpdate(idx, ADDN_UI_CLKOUT_I(idx, dom))
-  }
+  object ADDN_UI_CLKOUT extends IndexedPinFactory[ADDN_UI_CLKOUT_I, ClockDomain](
+    indexRange = (1, 4),
+    pinConstructor = (idx, dom) => ADDN_UI_CLKOUT_I(idx, dom)
+  )
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
@@ -42,7 +39,7 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
     m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> boardClk.ref
     m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
 
-    addn_ui_clkouts.foreach {
+    ADDN_UI_CLKOUT.all.foreach {
       case (idx, clk) =>
         m += s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ" -> clk.dom.freqMHz.toInt.toString
     }

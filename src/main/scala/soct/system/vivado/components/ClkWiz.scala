@@ -4,8 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.components.ClkWiz._
 import soct.system.vivado.fpga.FPGAResetPortSource
-import soct.system.vivado.abstracts._
-
+import soct.system.vivado.abstracts.{HasIndexedPins, _}
 
 import scala.collection.mutable
 
@@ -16,26 +15,31 @@ import scala.collection.mutable
  * Documentation: https://docs.amd.com/r/en-US/pg065-clk-wiz
  */
 case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with Xip {
+  extends BdComp with Xip with HasIndexedPins {
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
-
-  object CLK_IN1 extends BdPinIn("clk_in1", ClkWiz.this)
 
   object RESET extends BdPinIn("reset", ClkWiz.this)
 
   object LOCKED extends BdPinOut("locked", ClkWiz.this)
 
-  private val clkouts: mutable.Map[Int, CLK_OUT_I] = mutable.Map.empty
   case class CLK_OUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"clk_out$idx", ClkWiz.this)
-  def CLK_OUT(idx: Int, dom: ClockDomain): CLK_OUT_I = {
-    require(idx >= 1, s"ClkWiz CLK_OUT index must be >= 1, got $idx") // TODO upper limit on number of clkouts based on FPGA family
-    clkouts.getOrElseUpdate(idx, CLK_OUT_I(idx, dom))
-  }
+  // TODO upper limit on number of clkouts based on FPGA family
+  object CLK_OUT extends IndexedPinFactory[CLK_OUT_I, ClockDomain](
+    indexRange = (1, 42),
+    pinConstructor = (idx, dom) => CLK_OUT_I(idx, dom)
+  )
+
+  case class CLK_IN_I(idx: Int) extends BdPinIn(s"clk_in$idx", ClkWiz.this)
+  object CLK_IN extends SimpleIndexedPinFactory[CLK_IN_I](
+    indexRange = (1, 1),
+    pinConstructor = idx => CLK_IN_I(idx)
+  )
 
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
+    val clkouts = CLK_OUT.all
     clkouts.foreach {
       case (idx, clkout) =>
         m += s"CONFIG.CLKOUT${idx}_REQUESTED_OUT_FREQ" -> clkout.dom.tclVarName.getOrElse(clkout.dom.freqMHz.toInt.toString)
