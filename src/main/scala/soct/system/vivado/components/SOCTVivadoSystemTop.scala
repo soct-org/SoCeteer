@@ -7,13 +7,13 @@ import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
 import soct.system.vivado.signal.{ClockSignal, ResetSignal}
-import soct.system.vivado.abstracts.BdPinPort.portToBdPin
+import soct.system.vivado.abstracts.BdPinPort.{portToBdPin}
 
 import scala.reflect.ClassTag
 
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
-class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder)
+class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder)
   extends ChiselModuleTop with IsModule {
 
   private val c = p(HasSOCTConfig)
@@ -47,10 +47,11 @@ class SOCTVivadoSystemTop(s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuild
     busPorts ++ debugPorts
   }
 
+  def INTERRUPTS: BdChiselPin = portToBdPin(s.module.interrupts)
 
-  def RESETS: Seq[BdChiselPin] = getPorts[chisel3.Reset].map(portToBdPin)
+  def RESETS: Seq[BdChiselPin] = getPorts[chisel3.Reset].map(x => portToBdPin(x))
 
-  def CLOCKS: Seq[BdChiselPin] = getPorts[chisel3.Clock].map(portToBdPin)
+  def CLOCKS: Seq[BdChiselPin] = getPorts[chisel3.Clock].map(x => portToBdPin(x))
 
   override protected def finalizeBdImpl(): Unit = {
     ClockSignal("CLOCK", RESETS)

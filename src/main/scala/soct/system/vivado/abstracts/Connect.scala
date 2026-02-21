@@ -79,7 +79,7 @@ trait ConnectOps {
    * @param bd   Implicit board builder for adding connections
    * @tparam T Type of the sink elements
    */
-  final def --*>[T](sink: Iterable[T])(implicit ev: ToSinkConnect[this.type, T], bd: SOCTBdBuilder): Unit =
+  final def -->[T](sink: Iterable[T])(implicit ev: ToSinkConnect[this.type, T], bd: SOCTBdBuilder): Unit =
     sink.foreach(s => ev(this, s, bd))
 
   /**
@@ -101,7 +101,7 @@ trait ConnectOps {
    * @param bd     Implicit board builder for adding connections
    * @tparam T Type of the source elements
    */
-  final def <--*[T](source: Iterable[T])(implicit ev: ToSourceConnect[this.type, T], bd: SOCTBdBuilder): Unit =
+  final def <--[T](source: Iterable[T])(implicit ev: ToSourceConnect[this.type, T], bd: SOCTBdBuilder): Unit =
     source.foreach(s => ev(this, s, bd))
 
 
@@ -126,6 +126,6 @@ trait ConnectOps {
    * @param bd   Implicit board builder for adding connections
    * @tparam T Type of the other endpoint elements
    */
-  final def <->*[T](that: Iterable[T])(implicit ev: AutoConnect[this.type, T], bd: SOCTBdBuilder): Unit =
+  final def <->[T](that: Iterable[T])(implicit ev: AutoConnect[this.type, T], bd: SOCTBdBuilder): Unit =
     that.foreach(t => ev(this, t, bd))
 }

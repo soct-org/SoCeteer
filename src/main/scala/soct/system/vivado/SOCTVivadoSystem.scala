@@ -5,7 +5,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXISmartConnect, AXIUartLite, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
+import soct.system.vivado.components.{AXISmartConnect, AXIUartLite, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConcat, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
@@ -43,6 +43,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val memSMC = AXISmartConnect()
       val mmioSMC = AXISmartConnect()
       val dmaSMC = AXISmartConnect()
+      val interruptConcat = InlineConcat(nExtInterrupts)
 
       // Pins
       val ddr4Clk1 = ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain)
@@ -55,17 +56,19 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       uart.UART <-> uartPort
 
       fpgaClk --> ddr4.C0_SYS_CLK
-      fpgaRst --*> Seq(ddr4.SYS_RST, clkWiz.RESET)
+      fpgaRst --> Seq(ddr4.SYS_RST, clkWiz.RESET)
 
       clkWiz.LOCKED --> pcr.DCM_LOCKED
       // TODO make sure its the slowest clock if we add more clock domains
-      peripheryClock --*> Seq(pcr.SLOWEST_SYNC_CLK, memSMC.ACLK(0), mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
+      peripheryClock --> Seq(pcr.SLOWEST_SYNC_CLK, memSMC.ACLK(0), mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
 
-      pcr.PeripheralReset --*> top.RESETS
-      coreClock --*> top.CLOCKS
+      pcr.PeripheralReset --> top.RESETS
+      coreClock --> top.CLOCKS
 
-      pcr.PeripheralAResetN --*> Seq(memSMC.ARESETN, mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
+      pcr.PeripheralAResetN --> Seq(memSMC.ARESETN, mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
 
+      interruptConcat.DOUT --> top.INTERRUPTS
+      uart.INTERRUPT --> interruptConcat.IN(0)
 
       val axiMem = Seq(mem_axi4).flatten.map { axi4 => AXIMM(axi4) }.headOption.getOrElse(
         throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
@@ -91,9 +94,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get)
         val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         peripheryClock --> sdPmod.CLOCK
-        sdPmod <->* ports
+        sdPmod <-> ports
         dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
         mmioSMC.M_AXI(0) <-> sdPmod.S_AXI_LITE
+        sdPmod.INTERRUPT --> interruptConcat.IN(1)
       }
 
       val debugIf = debug.getWrappedValue.get

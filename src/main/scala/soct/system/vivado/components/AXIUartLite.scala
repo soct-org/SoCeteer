@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.abstracts.{BdComp, BdIntfPin, BdPinIn, ConnectOps, DrivesNet, Xip}
+import soct.system.vivado.abstracts.{BdComp, BdIntfPin, BdPinIn, BdPinOut, ConnectOps, DrivesNet, Xip}
 import soct.system.vivado.fpga.UARTPort
 
 
@@ -25,14 +25,13 @@ case class AXIUartLite()(implicit bd: SOCTBdBuilder, p: Parameters)
     )
   }
 
-  object S_AXI extends BdIntfPin("S_AXI", AXIUartLite.this)
+  object INTERRUPT extends BdPinOut("interrupt", AXIUartLite.this)
 
+  object S_AXI extends BdIntfPin("S_AXI", AXIUartLite.this)
 
   object UART extends BdIntfPin("UART", AXIUartLite.this)
 
-
   object S_AXI_ACKL extends BdPinIn("s_axi_aclk", AXIUartLite.this)
-
 
   object S_AXI_ARESETN extends BdPinIn("s_axi_aresetn", AXIUartLite.this)
 }

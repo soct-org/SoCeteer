@@ -146,7 +146,7 @@ object BdPinPort {
   }
 
   /** Convert a Chisel Data port to a BdPin */
-  def portToBdPin(x: Data)(implicit bd: SOCTBdBuilder): BdChiselPin = {
+  def portToBdPin[T <: Data](x: => T)(implicit bd: SOCTBdBuilder): BdChiselPin = {
     new BdChiselPin(snake(x.instanceName), bd.topInstance(), x)
   }
 

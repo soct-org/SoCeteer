@@ -14,7 +14,7 @@ import soct.system.vivado.abstracts._
  * @param nBits The number of bits
  */
 case class InlineConstant(value: UInt, nBits: Int)
-                         (implicit bd: SOCTBdBuilder, p: Parameters) // Clock not needed
+                         (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with XInlineHDL with ConnectOps {
 
   override def partName: String = "xilinx.com:inline_hdl:ilconstant:1.0"
