@@ -36,7 +36,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val ddr4Port = fpga.initDDR4Port()
 
       // Components
-      val pcr = ProcSysReset()
+      val sysPsr = ProcSysReset()
+      val ddrPsr = ProcSysReset()
       val clkWiz = ClkWiz()
       val uart = AXIUartLite()
       val ddr4 = DDR4()
@@ -54,18 +55,23 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       ddr4 <-> ddr4Port
       ddr4Clk1 --> clkWiz.CLK_IN(1)
       uart.UART <-> uartPort
+      ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
+      ddr4.C0_DDR4_UI_CLK_SYNC_RST --> ddrPsr.EXT_RESET_IN
 
       fpgaClk --> ddr4.C0_SYS_CLK
-      fpgaRst --> Seq(ddr4.SYS_RST, clkWiz.RESET)
+      fpgaRst --> Seq(ddr4.SYS_RST, clkWiz.RESET, sysPsr.EXT_RESET_IN)
 
-      clkWiz.LOCKED --> pcr.DCM_LOCKED
+      clkWiz.LOCKED --> sysPsr.DCM_LOCKED
       // TODO make sure its the slowest clock if we add more clock domains
-      peripheryClock --> Seq(pcr.SLOWEST_SYNC_CLK, memSMC.ACLK(0), mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
+      peripheryClock --> Seq(sysPsr.SLOWEST_SYNC_CLK, mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
 
-      pcr.PeripheralReset --> top.RESETS
+      sysPsr.PeripheralReset --> top.RESETS
       coreClock --> top.CLOCKS
+      ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(0)
+      coreClock --> memSMC.ACLK(1)
 
-      pcr.PeripheralAResetN --> Seq(memSMC.ARESETN, mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
+      sysPsr.PeripheralAResetN --> Seq(memSMC.ARESETN, mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
+      ddrPsr.PeripheralAResetN --> ddr4.C0_DDR4_ARESETN
 
       interruptConcat.DOUT --> top.INTERRUPTS
       uart.INTERRUPT --> interruptConcat.IN(0)

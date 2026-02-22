@@ -4,22 +4,28 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}
 
 /**
- * Trait for Board Design Pin Ports - used to connect component ports
+ * Trait for Board Design Pin Ports - used to connect component ports.
  * Ports are always BdComps themselves.
  */
-trait BdPortBase extends BdPinPort {
-  this: BdComp =>
-
+abstract class BdPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPinPort {
   override lazy val parentInst: BdComp = this
 
-  override lazy val ref: String = instanceName
+  def portName: String
+
+  final override val index: Int = 0 // Ports are not indexed - the portName must be unique across the design
+
+  final override lazy val instanceName: String = portName
+
+  override lazy val ref: String = portName
+
+  final override def withInstanceName(name: String): BdPortBase.this.type = throw new UnsupportedOperationException("BdVirtualPort instance name cannot be changed after creation")
 }
 
 
 /**
  * Class for Board Design Ports - used to connect components to board ports like clocks, resets, etc.
  */
-sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPortBase {
+sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPortBase {
 
   /**
    * The type of this interface port, e.g., "clk", "data", etc.
@@ -54,7 +60,7 @@ sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) e
     Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]".tcl)
   }
 
-  override val vivadoKind: VivadoHandleKind = VivadoHandleKind.ScalarPort
+  final override val vivadoKind: VivadoHandleKind = VivadoHandleKind.ScalarPort
 }
 
 
@@ -76,7 +82,7 @@ abstract class BdVirtualPortIO(implicit bd: SOCTBdBuilder, p: Parameters) extend
 /**
  * Class for Xilinx Board Interface Ports - used to connect components to board interfaces like DDR4, Ethernet, etc.
  */
-abstract class BdIntfPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with BdPortBase with XIntf {
+abstract class BdIntfPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends BdPortBase with XIntf {
   /**
    * The mode of this interface port, e.g., "Master" or "Slave"
    */

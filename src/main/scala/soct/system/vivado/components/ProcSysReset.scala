@@ -15,8 +15,6 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
 
-  object SLOWEST_SYNC_CLK extends BdPinIn("slowest_sync_clk", ProcSysReset.this)
-
   trait ProcSysResetPort {
     self: BdPinOut =>
 
@@ -44,9 +42,8 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
         case (sink, i) =>
           val sliceIdx = i % maxOutputs
           val slice = idxToSlice.getOrElseUpdate(sliceIdx,
-            new InlineSlice(dinWidth, sliceIdx, sliceIdx, 1) {
-              override def instanceName: String = s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx"
-            }
+            InlineSlice(dinWidth, sliceIdx, sliceIdx, 1)
+            .withInstanceName(s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx")
           )
           soct.log.debug(s"Connecting sink $sink to slice $slice")
           bd.addEdge(slice.DOUT, sink)
@@ -95,6 +92,9 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
    */
   object DCM_LOCKED extends BdPinIn("dcm_locked", ProcSysReset.this)
 
+  object SLOWEST_SYNC_CLK extends BdPinIn("slowest_sync_clk", ProcSysReset.this)
+
+  object EXT_RESET_IN extends BdPinIn("ext_reset_in", ProcSysReset.this)
 
   override def defaultProperties: Map[String, String] = {
     Map(
@@ -112,9 +112,4 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
     BusStructReset.createSlices()
     InterconnectResetN.createSlices()
   }
-}
-
-
-object ProcSysReset {
-
 }

@@ -8,30 +8,28 @@ import java.nio.file.{Files, Path}
 
 /**
  * Abstract class for SDIO ports
+ * TODO we should enforce only one of these ports existing in the bd - they are virtual ports to PMOD connectors, so multiple would not make sense and likely indicate a user error. We could enforce this in the BdBuilder when adding edges to these ports, or we could add a check in the finalization phase to ensure only one of each type exists.
  */
 trait SDIOPort
 
 
 case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with SDIOPort {
-  override def instanceName = "sdio_cd"
-
+  override def portName: String = "sdio_cd"
   override def ifType: String = "data"
 }
 
 case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with SDIOPort {
-  override def instanceName = "sdio_clk"
-
+  override def portName: String = "sdio_clk"
   override def ifType: String = "clk"
 }
 
 case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDIOPort {
-  override def instanceName = "sdio_cmd"
-
+  override def portName: String = "sdio_cmd"
   override def ifType: String = "data"
 }
 
 case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDIOPort {
-  override def instanceName = "sdio_data"
+  override def portName: String = "sdio_data"
 
   override def ifType: String = "data"
 

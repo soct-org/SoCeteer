@@ -28,7 +28,7 @@ case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters)
     case _ => f"$idx%02d" // Two-digit index with leading zeros
   }
 
-  case class ACLK_I(idx: Int) extends BdPinIn(s"aclk" + axiIdxSuffix(idx), AXISmartConnect.this)
+  case class ACLK_I(idx: Int) extends BdPinIn(if (idx == 0) "aclk" else {s"aclk$idx"}, AXISmartConnect.this)
   object ACLK extends SimpleIndexedPinFactory[ACLK_I](
     indexRange = (0, Int.MaxValue), // TODO upper limit?
     pinConstructor = idx => ACLK_I(idx)
@@ -37,7 +37,9 @@ case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters)
   override def defaultProperties: Map[String, String] = {
     val mI = M_AXI.size max 1
     val sI = S_AXI.size max 1
+    val nACKLs = ACLK.all.size max 1
     Map(
+      "CONFIG.NUM_CLKS" -> nACKLs.toString,
       "CONFIG.NUM_MI" -> mI.toString,
       "CONFIG.NUM_SI" -> sI.toString
     )

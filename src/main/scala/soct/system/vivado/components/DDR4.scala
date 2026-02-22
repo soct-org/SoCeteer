@@ -20,6 +20,12 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", DDR4.this) with DrivenByNet
 
+  object C0_DDR4_UI_CLK_SYNC_RST extends BdPinOut("c0_ddr4_ui_clk_sync_rst", DDR4.this)
+
+  object C0_DDR4_UI_CLK extends BdPinOut("c0_ddr4_ui_clk", DDR4.this)
+
+  object C0_DDR4_ARESETN extends BdPinIn("c0_ddr4_aresetn", DDR4.this)
+
   object SYS_RST extends BdPinIn("sys_rst", DDR4.this)
 
   object C0_DDR4_S_AXI extends BdIntfPin("C0_DDR4_S_AXI", DDR4.this) with DrivesNet

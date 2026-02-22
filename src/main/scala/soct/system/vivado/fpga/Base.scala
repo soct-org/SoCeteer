@@ -61,8 +61,7 @@ object FPGARegistry {
 /**
  * Case class representing a DDR4 port on the FPGA board.
  */
-case class DDR4Port(override val instanceName: String)
-                   (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
+case class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
   override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
 }
 
@@ -70,8 +69,7 @@ case class DDR4Port(override val instanceName: String)
 /**
  * Case class representing a UART port on the FPGA board.
  */
-case class UARTPort(override val instanceName: String)
-                   (implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
+case class UARTPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
   override def partName: String = "xilinx.com:interface:uart_rtl:1.0"
 }
 
@@ -83,13 +81,13 @@ abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) ex
   override def ifType: String = "rst"
 }
 
-case class FPGAResetPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
+case class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.POLARITY" -> "ACTIVE_HIGH"
   )
 }
 
-case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with ResetN {
+case class FPGAResetNPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with ResetN {
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.POLARITY" -> "ACTIVE_LOW"
   )
@@ -98,9 +96,10 @@ case class FPGAResetNPort(override val instanceName: String)(implicit bd: SOCTBd
 /**
  * Case class representing a clock port provided by the FPGA board. This port can be used to drive clock domains within the design.
  *
- * @param instanceName The instance name of the clock port
+ * @param portName The name of the clock port, which should match the name of the corresponding clock pin on the FPGA board.
+ * @param dom A function that returns the clock domain associated with this clock port. This allows for lazy evaluation of the clock domain, which can be useful for handling circular dependencies between the clock port and the clock domain.
  */
-case class FPGAClockPort(override val instanceName: String, dom: () => ClockDomain)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class FPGAClockPort(override val portName: String, dom: () => ClockDomain)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPortSlave with DrivesNet {
 
   override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"

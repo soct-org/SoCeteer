@@ -3,6 +3,8 @@ package soct.system.vivado.abstracts
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 
+import scala.reflect.ClassTag
+
 
 /**
  * Base class for Board Design Components.
@@ -46,9 +48,19 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
    *
    * @return The instance name
    */
-  def instanceName: String = {
-    val name = camelToSnake.replaceAllIn(friendlyName, "$1_$2").toLowerCase
-    s"${name}_$index"
+  lazy val instanceName: String = {
+    customNameOpt.getOrElse(camelToSnake.replaceAllIn(friendlyName, "$1_$2").toLowerCase + s"_$index")
+  }
+
+
+  /**
+   * Return this component with a custom instance name. This allows users to specify a fixed name instead of the default generated one.
+   * @param name The custom instance name to use for this component. Must be unique across the design to avoid naming conflicts (no checks are performed).
+   * @return this with the custom instance name applied
+   */
+  def withInstanceName(name: String): this.type = {
+    customNameOpt = Some(name)
+    this
   }
 
   /**
@@ -72,5 +84,9 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
     }
   }
 
+  // Optional custom instance name provided by the user set via withInstanceName
+  private var customNameOpt: Option[String] = None
+
+  // Regex to convert CamelCase to snake_case for default instance names
   private val camelToSnake = "([a-z])([A-Z])".r
 }
