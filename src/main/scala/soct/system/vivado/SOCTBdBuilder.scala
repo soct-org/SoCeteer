@@ -299,6 +299,9 @@ class SOCTBdBuilder extends SOCTBd {
        |# Connect components
        |${connectTCL.sorted.mkString("\n")}
        |
+       |# Regenerate layout once - usually improves readability significantly
+       |regenerate_bd_layout
+       |
        |""".stripMargin
   }
 

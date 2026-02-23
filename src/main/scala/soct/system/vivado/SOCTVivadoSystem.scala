@@ -5,7 +5,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
 import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
-import soct.system.vivado.components.{AXISmartConnect, AXIUartLite, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConcat, InlineConstant, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
+import soct.system.vivado.components.{AND, AXISmartConnect, AXIUartLite, BSCAN, BSCAN2JTAG, ClkWiz, DDR4, InlineConcat, InlineConstant, OR, ProcSysReset, SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort, SDIOPort, SOCTVivadoSystemTop}
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
@@ -36,14 +36,15 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val ddr4Port = fpga.initDDR4Port()
 
       // Components
-      val sysPsr = ProcSysReset()
-      val ddrPsr = ProcSysReset()
+      val periphPsr = ProcSysReset().withInstanceName("periph_psr")
+      val corePsr = ProcSysReset().withInstanceName("core_psr")
+      val ddrPsr = ProcSysReset().withInstanceName("ddr_psr")
       val clkWiz = ClkWiz()
       val uart = AXIUartLite()
       val ddr4 = DDR4()
-      val memSMC = AXISmartConnect()
-      val mmioSMC = AXISmartConnect()
-      val dmaSMC = AXISmartConnect()
+      val memSMC = AXISmartConnect().withInstanceName("mem_smc")
+      val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
+      val dmaSMC = AXISmartConnect().withInstanceName("dma_smc")
       val interruptConcat = InlineConcat(nExtInterrupts)
 
       // Pins
@@ -56,22 +57,26 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       ddr4Clk1 --> clkWiz.CLK_IN(1)
       uart.UART <-> uartPort
       ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
-      ddr4.C0_DDR4_UI_CLK_SYNC_RST --> ddrPsr.EXT_RESET_IN
+
 
       fpgaClk --> ddr4.C0_SYS_CLK
-      fpgaRst --> Seq(ddr4.SYS_RST, clkWiz.RESET, sysPsr.EXT_RESET_IN)
+      fpgaRst --> Seq(ddr4.SYS_RST, clkWiz.RESET, periphPsr.EXT_RESET_IN, corePsr.EXT_RESET_IN)
 
-      clkWiz.LOCKED --> sysPsr.DCM_LOCKED
+      OR(1, fpgaRst, ddr4.C0_DDR4_UI_CLK_SYNC_RST) --> ddrPsr.EXT_RESET_IN
+
+      clkWiz.LOCKED --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
       // TODO make sure its the slowest clock if we add more clock domains
-      peripheryClock --> Seq(sysPsr.SLOWEST_SYNC_CLK, mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
+      peripheryClock --> Seq(periphPsr.SLOWEST_SYNC_CLK, mmioSMC.ACLK(0), dmaSMC.ACLK(0), uart.S_AXI_ACKL)
 
-      sysPsr.PeripheralReset --> top.RESETS
+      periphPsr.PeripheralReset --> top.RESETS
       coreClock --> top.CLOCKS
-      ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(0)
-      coreClock --> memSMC.ACLK(1)
+      ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(1)
+      coreClock --> Seq(memSMC.ACLK(0), corePsr.SLOWEST_SYNC_CLK)
 
-      sysPsr.PeripheralAResetN --> Seq(memSMC.ARESETN, mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
+      periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
       ddrPsr.PeripheralAResetN --> ddr4.C0_DDR4_ARESETN
+      // The memSMC reset is influenced by both the core and DDR resets since it interfaces between them - it should be held in reset if either domain is in reset, and only released when both are out of reset
+      AND(1, corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN) --> memSMC.ARESETN
 
       interruptConcat.DOUT --> top.INTERRUPTS
       uart.INTERRUPT --> interruptConcat.IN(0)
@@ -100,6 +105,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get)
         val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
         peripheryClock --> sdPmod.CLOCK
+        periphPsr.PeripheralAResetN --> sdPmod.ASYNC_RESETN
         sdPmod <-> ports
         dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
         mmioSMC.M_AXI(0) <-> sdPmod.S_AXI_LITE
