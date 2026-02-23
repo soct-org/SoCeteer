@@ -31,7 +31,7 @@ case class AXIUartLite()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   object UART extends BdIntfPin("UART", AXIUartLite.this)
 
-  object S_AXI_ACKL extends BdPinIn("s_axi_aclk", AXIUartLite.this)
+  object S_AXI_ACLK extends BdPinIn("s_axi_aclk", AXIUartLite.this)
 
   object S_AXI_ARESETN extends BdPinIn("s_axi_aresetn", AXIUartLite.this)
 }
