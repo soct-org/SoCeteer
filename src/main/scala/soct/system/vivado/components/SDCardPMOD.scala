@@ -1,8 +1,9 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
+import soct.system.vivado.misc.DTSInfo
 
 import java.nio.file.{Files, Path}
 
@@ -44,8 +45,12 @@ case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdV
  *
  * @param pmodIdx The PMOD index to use
  */
-case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with IsModule with ConnectOps {
+case class SDCardPMOD(pmodIdx: Int,
+                      override val dtsInfo: DTSInfo,
+                      override val getAxiMasterPin: BdIntfPin,
+                      override val getAxiSlavePins: Seq[(BdIntfPin, String)]
+                     )(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with IsModule with ConnectOps with HasAxiSlave with HasAxiMaster with HasDTSInfo {
 
   override def reference: String = "sdc_controller" // The module name inside the collateral files - DO NOT CHANGE
 
@@ -53,9 +58,9 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
 
   object CLOCK extends BdPinIn("clock", SDCardPMOD.this)
 
-  object S_AXI_LITE extends BdIntfPin("S_AXI_LITE", SDCardPMOD.this)
+  override def S_AXI: BdIntfPin = new BdIntfPin("S_AXI_LITE", SDCardPMOD.this)
 
-  object M_AXI extends BdIntfPin("M_AXI", SDCardPMOD.this)
+  override def M_AXI: BdIntfPin = new BdIntfPin("M_AXI", SDCardPMOD.this)
 
   object INTERRUPT extends BdPinOut("interrupt", SDCardPMOD.this)
 
@@ -87,6 +92,24 @@ case class SDCardPMOD(pmodIdx: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
       Files.write(outFile.toPath, contentOpt.get.getBytes)
     })
     Some(dest)
+  }
+
+  override def assignAddrTcl: TCLCommands = {
+    val regs = dtsInfo.regs
+    if (regs.size != 1) {
+      throw XilinxDesignException(s"SDCardPMOD DTSInfo must have exactly one reg entry, but found ${regs.size}")
+    }
+    val (_, offset, size) = regs.head
+    val slaveConnects = Seq(
+      s"assign_bd_address -offset $offset -range $size -target_address_space [get_bd_addr_spaces ${getAxiMasterPin.ref}] [get_bd_addr_segs ${S_AXI.ref}/reg0]".tcl
+    )
+
+    val masterConnects = getAxiSlavePins.map { case (pin, regName) =>
+      // We use a fixed offset of 0 and a large range to cover the entire address space of the master interface
+      s"assign_bd_address -offset 0x00000000 -range 0x000100000000 -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${pin.ref}/$regName]".tcl
+    }
+
+    masterConnects ++ slaveConnects
   }
 }
 

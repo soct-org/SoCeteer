@@ -164,6 +164,9 @@ class SOCTBdBuilder extends SOCTBd {
       .flatMap { case (from, tos) => BdPinPort.connect(from, tos) }
       .toSeq
 
+    val addrConnects = nodes.collect {
+      case c: HasBdAddr => c.assignAddrTcl
+    }.flatten.toSeq
 
     // Keys for TCL variables used in the script
     val bdKeys = Seq(k.bdName, k.projectName, k.sources)
@@ -298,6 +301,9 @@ class SOCTBdBuilder extends SOCTBd {
        |
        |# Connect components
        |${connectTCL.sorted.mkString("\n")}
+       |
+       |# Assign addresses
+       |${addrConnects.sorted.mkString("\n")}
        |
        |# Regenerate layout once - usually improves readability significantly
        |regenerate_bd_layout

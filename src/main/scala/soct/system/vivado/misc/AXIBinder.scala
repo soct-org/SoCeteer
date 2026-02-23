@@ -2,6 +2,8 @@ package soct.system.vivado.misc
 
 import freechips.rocketchip.diplomacy.AddressSet
 import freechips.rocketchip.resources._
+import soct.system.vivado.TCLCommands
+import soct.system.vivado.abstracts.BdIntfPin
 
 /**
  * Describes a single interrupt line routed to an interrupt controller.
@@ -37,7 +39,7 @@ final case class Irq(parent: Device, index: Int)
  * Additional device-tree properties to attach verbatim. The key is the DTS property name,
  * and the values are the already-typed RocketChip [[ResourceValue]]s.
  */
-final case class AxiSlaveDts(
+final case class DTSInfo(
                               parent: Device,
                               regs: Seq[(String, BigInt, BigInt)],
                               compatibles: Seq[String],
@@ -71,7 +73,7 @@ object AddressSets {
 }
 
 /**
- * Binds [[AxiSlaveDts]] descriptions into RocketChip's resource system.
+ * Binds [[DTSInfo]] descriptions into RocketChip's resource system.
  *
  * The returned [[SimpleDevice]] participates in `HasDTS` / BindingScope device-tree emission.
  */
@@ -107,7 +109,7 @@ object AxiSlaveBinder {
    * @return
    * The created [[SimpleDevice]] handle (useful for references/aliases).
    */
-  def bindSimpleDevice(devname: String, dts: AxiSlaveDts, perms: ResourcePermissions = mmioPerms): SimpleDevice = {
+  def bindSimpleDevice(devname: String, dts: DTSInfo, perms: ResourcePermissions = mmioPerms): SimpleDevice = {
     require(dts.compatibles.nonEmpty, s"$devname: compatibles must be non-empty")
     require(dts.regs.nonEmpty, s"$devname: regs must be non-empty")
 
@@ -125,7 +127,6 @@ object AxiSlaveBinder {
         val sets = AddressSets.fromOffsetRange(offset, rangeBytes)
         Resource(dev, s"reg/$name").bind(ResourceAddress(sets, perms))
       }
-      // 2) IRQs -> interrupts / interrupts-extended (chosen by SimpleDevice.describeInterrupts)
       dts.irqs.foreach { case Irq(intc, idx) =>
         Resource(dev, "int").bind(intc, ResourceInt(idx))
       }

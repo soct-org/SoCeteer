@@ -1,17 +1,16 @@
 package soct.system.vivado
 
 import chisel3._
-import freechips.rocketchip.diplomacy.AddressSet
-import freechips.rocketchip.resources.{Device, Resource, ResourceAddress, ResourceAnchors, ResourceBinding, ResourceInt, ResourcePermissions, ResourceReference, SimpleDevice}
+import freechips.rocketchip.resources.ResourceInt
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
-import soct.{BdBuilderKey, HasDDR4ExtMem, HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey, log}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
-import soct.system.vivado.misc.{AxiSlaveBinder, AxiSlaveDts, Irq}
+import soct.system.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq}
+import soct._
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -28,10 +27,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   // Device tree generation
   // (must be done before module instantiation since some components bind resources during construction)
   //-------------------------------------------------------------------------
-  val uartDTS = AxiSlaveDts(
+  val plicDev = plicOpt.getOrElse(
+    throw new XilinxDesignException("SOCTVivadoSystem requires a PLIC to be present in the system for interrupt wiring.")
+  ).device
+
+  val uartDTS = DTSInfo(
     parent = mmioBusDevice.get,
     regs = Seq(("reg", 0x60010000L, 0x10000L)),
-    irqs = Seq(Irq(plicOpt.get.device, 0)),
+    irqs = Seq(Irq(plicDev, 0)),
     compatibles = Seq("riscv,axi-uart-1.0"),
     extraProps = Map("port-number" -> Seq(ResourceInt(0)))
   )
@@ -42,10 +45,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   )
 
   val sdDTSOpt = p(HasSDCardPMOD).map { idx =>
-    val sdDTS = AxiSlaveDts(
+    val sdDTS = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60000000L, 0x10000L)),
-      irqs = Seq(Irq(plicOpt.get.device, 1)),
+      irqs = Seq(Irq(plicDev, 1)),
       compatibles = Seq("riscv,axi-sd-card-1.0"),
       extraProps = Map(
         "clock" -> Seq(ResourceInt(100000000)),
@@ -75,6 +78,18 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
+
+    val axiMem = Seq(mem_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
+      throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
+    )
+
+    val axiMMIO = Seq(mmio_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
+      throw new XilinxDesignException("No memory-mapped AXI4 port found for MMIO interface in SOCT system.")
+    )
+
+    val axiL2Frontend = Seq(l2_frontend_bus_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
+      throw new XilinxDesignException("No memory-mapped AXI4 port found for L2 frontend interface in SOCT system.")
+    )
 
     // --------------------------------------------------------------------------
     // Clock domains
@@ -107,8 +122,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val corePsr = ProcSysReset().withInstanceName("core_psr")
     val ddrPsr = ProcSysReset().withInstanceName("ddr_psr")
 
-    val uart = AXIUartLite()
-    val ddr4 = DDR4()
+    val uart = AXIUartLite(dtsInfo = uartDTS, getAxiMasterPin = axiMMIO)
+    val ddr4 = DDR4(axiMem)
 
     val memSMC = AXISmartConnect().withInstanceName("mem_smc")
     val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
@@ -198,17 +213,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // AXI wiring (discover the exported AXI4 ports from the SOCT system)
     // --------------------------------------------------------------------------
-    val axiMem = Seq(mem_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
-      throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
-    )
-
-    val axiMMIO = Seq(mmio_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
-      throw new XilinxDesignException("No memory-mapped AXI4 port found for MMIO interface in SOCT system.")
-    )
-
-    val axiL2Frontend = Seq(l2_frontend_bus_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
-      throw new XilinxDesignException("No memory-mapped AXI4 port found for L2 frontend interface in SOCT system.")
-    )
 
     // Memory path: Rocket MEM -> memSMC -> DDR S_AXI
     memSMC.S_AXI(0) <-> axiMem
@@ -225,7 +229,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Optional SDCard PMOD
     // --------------------------------------------------------------------------
     if (p(HasSDCardPMOD).isDefined) {
-      val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get)
+      val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get,
+        dtsInfo = sdDTSOpt.get,
+        getAxiMasterPin = axiMMIO,
+        getAxiSlavePins = Seq((axiL2Frontend, "reg0")))
+
       val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
 
       peripheryClock --> sdPmod.CLOCK
@@ -234,7 +242,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       sdPmod <-> ports
 
       dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
-      mmioSMC.M_AXI(0) <-> sdPmod.S_AXI_LITE
+      mmioSMC.M_AXI(0) <-> sdPmod.S_AXI
 
       sdDTSOpt.foreach { sdDTS =>
         sdDTS.irqs.foreach { irq =>

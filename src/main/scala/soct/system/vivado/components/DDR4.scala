@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockPort, FPGAResetPortSource}
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
 
 import scala.collection.mutable
@@ -11,8 +11,8 @@ import scala.collection.mutable
 /**
  * DDR4 memory controller component for Xilinx FPGAs.
  */
-case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with Xip with ConnectOps with HasIndexedPins {
+case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with Xip with ConnectOps with HasIndexedPins with HasBdAddr {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
@@ -51,6 +51,13 @@ case class DDR4()(implicit bd: SOCTBdBuilder, p: Parameters)
     }
 
     m.toMap
+  }
+
+  override def assignAddrTcl: TCLCommands = {
+    // FIXME Offset 0x00000000, not 0x80000000?
+    Seq(
+      s"assign_bd_address -offset 0x00000000 -range 0x400000000 -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs ${C0_DDR4.ref}/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK] -force".tcl
+    )
   }
 }
 
