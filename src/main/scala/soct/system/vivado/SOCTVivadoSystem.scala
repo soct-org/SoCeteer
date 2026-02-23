@@ -1,6 +1,8 @@
 package soct.system.vivado
 
 import chisel3._
+import freechips.rocketchip.diplomacy.AddressSet
+import freechips.rocketchip.resources.{Device, Resource, ResourceAddress, ResourceAnchors, ResourceBinding, ResourceInt, ResourcePermissions, ResourceReference, SimpleDevice}
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
@@ -9,6 +11,7 @@ import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
+import soct.system.vivado.misc.{AxiSlaveBinder, AxiSlaveDts, Irq}
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -20,6 +23,47 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   )
 
   require(p(HasDDR4ExtMem), "SOCTVivadoSystem currently requires HasDDR4ExtMem to be set in parameters.")
+
+  //-------------------------------------------------------------------------
+  // Device tree generation
+  // (must be done before module instantiation since some components bind resources during construction)
+  //-------------------------------------------------------------------------
+  val uartDTS = AxiSlaveDts(
+    parent = mmioBusDevice.get,
+    regs = Seq(("reg", 0x60010000L, 0x10000L)),
+    irqs = Seq(Irq(plicOpt.get.device, 0)),
+    compatibles = Seq("riscv,axi-uart-1.0"),
+    extraProps = Map("port-number" -> Seq(ResourceInt(0)))
+  )
+  AxiSlaveBinder.bindSimpleDevice(
+    devname = "uart0",
+    dts = uartDTS,
+    perms = AxiSlaveBinder.mmioPerms
+  )
+
+  val sdDTSOpt = p(HasSDCardPMOD).map { idx =>
+    val sdDTS = AxiSlaveDts(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", 0x60000000L, 0x10000L)),
+      irqs = Seq(Irq(plicOpt.get.device, 1)),
+      compatibles = Seq("riscv,axi-sd-card-1.0"),
+      extraProps = Map(
+        "clock" -> Seq(ResourceInt(100000000)),
+        "bus-width" -> Seq(ResourceInt(4)),
+        "fifo-depth" -> Seq(ResourceInt(256)),
+        "max-frequency" -> Seq(ResourceInt(300000000)),
+        "cap-sd-highspeed" -> Nil,
+        "cap-mmc-highspeed" -> Nil,
+        "no-sdio" -> Nil
+      )
+    )
+    AxiSlaveBinder.bindSimpleDevice(
+      devname = "mmc0",
+      dts = sdDTS,
+      perms = AxiSlaveBinder.mmioPerms
+    )
+    sdDTS
+  }
 
   InModuleBody {
 
@@ -147,7 +191,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Interrupt wiring
     // --------------------------------------------------------------------------
     interruptConcat.DOUT --> top.INTERRUPTS
-    uart.INTERRUPT --> interruptConcat.IN(0)
+    uartDTS.irqs.foreach { irq =>
+      uart.INTERRUPT --> interruptConcat.IN(irq.index)
+    }
 
     // --------------------------------------------------------------------------
     // AXI wiring (discover the exported AXI4 ports from the SOCT system)
@@ -190,7 +236,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
       mmioSMC.M_AXI(0) <-> sdPmod.S_AXI_LITE
 
-      sdPmod.INTERRUPT --> interruptConcat.IN(1)
+      sdDTSOpt.foreach { sdDTS =>
+        sdDTS.irqs.foreach { irq =>
+          sdPmod.INTERRUPT --> interruptConcat.IN(irq.index)
+        }
+      }
     }
 
     // --------------------------------------------------------------------------
@@ -208,19 +258,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val jtagXIntf = JTAGIntf(jtag, jtag_tdt)
 
       // Tie off unused fields using inline constants - rename for clarity in block design
-      val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth) {
-        override val friendlyName: String = "jtag_mfr_id_constant"
-      }
+      val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth).withInstanceName("jtag_mfr_id_constant")
       mfrIdConst --> jtagIO.mfr_id
 
-      val partNumConst = new InlineConstant(0.U, jtagIO.part_number.getWidth) {
-        override val friendlyName: String = "jtag_part_number_constant"
-      }
+      val partNumConst = new InlineConstant(0.U, jtagIO.part_number.getWidth).withInstanceName("jtag_part_number_constant")
       partNumConst --> jtagIO.part_number
 
-      val versionConst = new InlineConstant(0.U, jtagIO.version.getWidth) {
-        override val friendlyName: String = "jtag_version_constant"
-      }
+      val versionConst = new InlineConstant(0.U, jtagIO.version.getWidth).withInstanceName("jtag_version_constant")
       versionConst --> jtagIO.version
 
       val bscan = BSCAN()

@@ -1,4 +1,4 @@
-package soct.system.vivado.signal
+package soct.system.vivado.misc
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder

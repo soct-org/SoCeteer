@@ -93,17 +93,6 @@ trait ConnectOps {
   final def <--[T](source: T)(implicit ev: ToSourceConnect[this.type, T], bd: SOCTBdBuilder): Unit =
     ev(this, source, bd)
 
-  /**
-   * Connect this to each element of the source collection. Useful for connecting multiple sources to a single sink.
-   *
-   * @param source Collection of sources to connect from
-   * @param ev     Implicit ToSourceConnect evidence that each element of the source collection can drive this, and that this can be driven by each element of the source collection
-   * @param bd     Implicit board builder for adding connections
-   * @tparam T Type of the source elements
-   */
-  final def <--[T](source: Iterable[T])(implicit ev: ToSourceConnect[this.type, T], bd: SOCTBdBuilder): Unit =
-    source.foreach(s => ev(this, s, bd))
-
 
   /**
    * Bidirectional connect. Use when the connection is directionless (e.g. connecting two interfaces together), or when the directionality is handled by the AutoConnect instance itself (e.g. connecting a master interface to a slave interface, where the AutoConnect instance knows how to connect the appropriate signals in each direction).

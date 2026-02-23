@@ -6,8 +6,8 @@ import soct.HasSOCTConfig
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
-import soct.system.vivado.signal.{ClockSignal, ResetSignal}
-import soct.system.vivado.abstracts.BdPinPort.{portToBdPin}
+import soct.system.vivado.misc.{ClockSignal, ResetSignal}
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 
 import scala.reflect.ClassTag
 
