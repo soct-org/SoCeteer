@@ -54,8 +54,8 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
   def CLOCKS: Seq[BdChiselPin] = getPorts[chisel3.Clock].map(x => portToBdPin(x))
 
   override protected def finalizeBdImpl(): Unit = {
-    ClockSignal("CLOCK", RESETS)
-    ResetSignal("RESET", CLOCKS)
+    ClockSignal("CLOCK", CLOCKS)
+    ResetSignal("RESET", RESETS)
   }
 
   override def reference: String = c.topModuleName

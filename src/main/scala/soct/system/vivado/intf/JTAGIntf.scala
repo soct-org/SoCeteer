@@ -9,7 +9,7 @@ import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
-case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit val bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPin("JTAG", bd.topInstance()) with MapsToPorts with XIntf {
 
   override def partName: String = "xilinx.com:interface:jtag:1.0"

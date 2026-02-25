@@ -56,7 +56,7 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
   override def assignAddrTcl: TCLCommands = {
     // FIXME Offset 0x00000000, not 0x80000000?
     Seq(
-      s"assign_bd_address -offset 0x00000000 -range 0x400000000 -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK] -force".tcl
+      s"assign_bd_address -offset 0x00000000 -range 0x400000000 -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
 }

@@ -6,7 +6,7 @@ import soct.system.vivado.abstracts.{BdChiselPin, BdPinBase, BdPinInOut, MapsToP
 
 
 abstract class SignalPort[T <: chisel3.Data](val signalGroup: String, val ports: Seq[BdChiselPin])
-  (implicit bd: SOCTBdBuilder, p: Parameters) extends MapsToPorts with XSignal {
+  (implicit val bd: SOCTBdBuilder, p: Parameters) extends MapsToPorts with XSignal {
 
   override def portMapping: Map[String, Seq[String]] = {
     ports.foldLeft(Map.empty[String, Seq[String]]) { case (m, cp) =>

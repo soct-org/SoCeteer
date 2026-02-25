@@ -11,7 +11,7 @@ import soct.system.vivado.abstracts.{BdIntfPin, MapsToPorts, XIntf}
 import scala.collection.mutable
 
 case class AXIMM(axiPort: AXI4Bundle)
-                (implicit bd: SOCTBdBuilder, p: Parameters)
+                (implicit val bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPin(portToPortName(axiPort).toUpperCase(), bd.topInstance()) with MapsToPorts with XIntf {
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"

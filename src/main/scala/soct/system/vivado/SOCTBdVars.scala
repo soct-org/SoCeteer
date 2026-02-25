@@ -56,6 +56,7 @@ object SOCTBdVars {
   object k {
     final val aggressive = "$aggressive"
     final val sources = "$sources"
+    final var constraints = "$constraints"
     final val projectName = "$project_name"
     final val bdName = "$bd_name"
     final val xilinxPart = "$xilinx_part"
@@ -63,5 +64,6 @@ object SOCTBdVars {
     final val sourcesDir = "$sources_dir"
     final val vivadoProjectDir = "$vivado_project_dir"
     final val bdLoadFile = "$bd_load_file"
+    final val xdcFile = "$xdc_file"
   }
 }

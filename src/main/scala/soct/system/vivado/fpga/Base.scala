@@ -2,7 +2,7 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
 
 import scala.annotation.unused
@@ -97,7 +97,7 @@ case class FPGAResetNPort(override val portName: String)(implicit bd: SOCTBdBuil
  * Case class representing a clock port provided by the FPGA board. This port can be used to drive clock domains within the design.
  *
  * @param portName The name of the clock port, which should match the name of the corresponding clock pin on the FPGA board.
- * @param dom A function that returns the clock domain associated with this clock port. This allows for lazy evaluation of the clock domain, which can be useful for handling circular dependencies between the clock port and the clock domain.
+ * @param dom      A function that returns the clock domain associated with this clock port. This allows for lazy evaluation of the clock domain, which can be useful for handling circular dependencies between the clock port and the clock domain.
  */
 case class FPGAClockPort(override val portName: String, dom: () => ClockDomain)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPortSlave with DrivesNet {
@@ -163,6 +163,17 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
    * The PMOD ports available on this FPGA board
    */
   val getPMODPorts: Seq[Int] = Seq.empty
+
+
+  /**
+   * Get the PMOD pin corresponding to the given PMOD port and pin index.
+   *
+   * @param pmodPort The PMOD port number (e.g., 0, 1, 2) to which the component is connected in the block design
+   * @param pmodPin  The index of the PMOD pin within the specified PMOD port (e.g., 0-7 for an 8-pin PMOD)
+   * @throws XilinxDesignException if the specified PMOD port or pin index is not defined for this FPGA board
+   * @return The PmodPin object representing the specified PMOD pin
+   */
+  def pmod(pmodPort: Int, pmodPin: RawPMODPin): FPGAPMODPin
 
 
   /**

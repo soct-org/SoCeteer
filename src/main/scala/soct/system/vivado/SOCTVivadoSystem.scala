@@ -229,12 +229,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Optional SDCard PMOD
     // --------------------------------------------------------------------------
     if (p(HasSDCardPMOD).isDefined) {
-      val sdPmod = SDCardPMOD(pmodIdx = p(HasSDCardPMOD).get,
-        dtsInfo = sdDTSOpt.get,
-        getAxiMasterPin = axiMMIO,
+      val sdPMODPort = p(HasSDCardPMOD).get
+      val sdPmod = SDCardPMOD(dtsInfo = sdDTSOpt.get, getAxiMasterPin = axiMMIO,
         getAxiSlavePins = Seq((axiL2Frontend, "reg0")))
 
-      val ports: Seq[SDIOPort] = Seq(SDIOCDPort(), SDIOClkPort(), SDIOCmdPort(), SDIODataPort())
+      val ports = Seq(SDIOCDPort(sdPMODPort), SDIOClkPort(sdPMODPort), SDIOCmdPort(sdPMODPort), SDIODataPort(sdPMODPort))
 
       peripheryClock --> sdPmod.CLOCK
       periphPsr.PeripheralAResetN --> sdPmod.ASYNC_RESETN

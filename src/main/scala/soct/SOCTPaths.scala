@@ -154,6 +154,7 @@ private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPa
   }
 
   val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(fpgaBoardName)
+
   /**
    * Path to the Vivado project directory - where the Vivado project files like the .xpr file will be stored
    */
@@ -168,6 +169,11 @@ private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPa
    * Path to the TCL file that loads the block design for the top module in Vivado
    */
   val bdLoadFile: Path = systemDir.resolve(s"${config.topModuleName}_bd.tcl")
+
+  /**
+   * Path to the XDC constraints file for the top module in Vivado
+   */
+  val xdcFile: Path = systemDir.resolve(s"${config.topModuleName}.xdc")
 }
 
 private class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {

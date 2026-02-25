@@ -113,10 +113,18 @@ abstract class BdIntfPortSlave(override val mode: String = "Slave")(implicit bd:
 
 /**
  * Add extra annotations to ports in the design.
+ * Registers the port mapping for this interface with the builder when mixed in
  */
 trait MapsToPorts {
+
+  implicit val bd: SOCTBdBuilder
+
   /**
    * The port mapping for this interface - maps signal names to sequences of annotation strings
    */
   def portMapping: Map[String, Seq[String]]
+
+
+  // Register the port mapping with the builder when this trait is mixed in
+  bd.addPortMapping(() => portMapping)
 }

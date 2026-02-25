@@ -7,29 +7,36 @@ import soct.system.vivado.misc.DTSInfo
 
 import java.nio.file.{Files, Path}
 
-/**
- * Abstract class for SDIO ports
- * TODO we should enforce only one of these ports existing in the bd - they are virtual ports to PMOD connectors, so multiple would not make sense and likely indicate a user error. We could enforce this in the BdBuilder when adding edges to these ports, or we could add a check in the finalization phase to ensure only one of each type exists.
- */
-trait SDIOPort
 
-
-case class SDIOCDPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with SDIOPort {
+case class SDIOCDPort(override val pmodPort: Int)
+                     (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with WantsPMODPins {
   override def portName: String = "sdio_cd"
+
   override def ifType: String = "data"
+
+  override def pmodPins: Seq[BasePMODPin] = Seq(DigilentPMODPin(9))
 }
 
-case class SDIOClkPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with SDIOPort {
+case class SDIOClkPort(override val pmodPort: Int)
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with WantsPMODPins {
   override def portName: String = "sdio_clk"
+
   override def ifType: String = "clk"
+
+  override def pmodPins: Seq[BasePMODPin] = Seq(DigilentPMODPin(4))
 }
 
-case class SDIOCmdPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDIOPort {
+case class SDIOCmdPort(override val pmodPort: Int)
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with WantsPMODPins {
   override def portName: String = "sdio_cmd"
+
   override def ifType: String = "data"
+
+  override def pmodPins: Seq[BasePMODPin] = Seq(DigilentPMODPin(2))
 }
 
-case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDIOPort {
+case class SDIODataPort(override val pmodPort: Int)
+                       (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with WantsPMODPins {
   override def portName: String = "sdio_data"
 
   override def ifType: String = "data"
@@ -37,18 +44,24 @@ case class SDIODataPort()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdV
   override def from: Option[String] = Some("3")
 
   override def to: Option[String] = Some("0")
+
+  override def pmodPins: Seq[BasePMODPin] = Seq(3, 7, 8, 1).map(DigilentPMODPin)
 }
 
 
 /**
- * SDCard PMOD component for Xilinx FPGAs
+ * SDCard PMOD component for Xilinx FPGAs. This component interfaces with an SD card through a PMOD connector
+ * and provides an AXI4-Lite slave interface for control and an AXI4 master interface for data transfer.
+ * It also includes an interrupt output and a card detect input.
  *
- * @param pmodIdx The PMOD index to use
+ * Reference:
+ * https://digilent.com/reference/pmod/pmodsd/reference-manual
+ *
  */
-case class SDCardPMOD(pmodIdx: Int,
-                      override val dtsInfo: DTSInfo,
-                      override val getAxiMasterPin: BdIntfPin,
-                      override val getAxiSlavePins: Seq[(BdIntfPin, String)]
+case class SDCardPMOD(
+                       override val dtsInfo: DTSInfo,
+                       override val getAxiMasterPin: BdIntfPin,
+                       override val getAxiSlavePins: Seq[(BdIntfPin, String)]
                      )(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with IsModule with ConnectOps with HasAxiSlave with HasAxiMaster with HasDTSInfo {
 
@@ -114,7 +127,7 @@ case class SDCardPMOD(pmodIdx: Int,
 }
 
 object SDCardPMOD {
-  implicit val a: AutoConnect[SDCardPMOD, SDIOPort] = (comp: SDCardPMOD, port: SDIOPort, bd: SOCTBdBuilder) =>
+  implicit val a: AutoConnect[SDCardPMOD, BdVirtualPort] = (comp: SDCardPMOD, port: BdVirtualPort, bd: SOCTBdBuilder) =>
     port match {
       case p: SDIOCDPort => bd.addEdge(p, comp.SDIO_CD) // input
       case p: SDIOCmdPort => bd.addEdge(comp.SDIO_CMD, p) // inout

@@ -134,7 +134,7 @@ object SOCTVivado {
     val topVerilog = Files.readString(topModuleFile)
 
     val portLines = extractPortLines(topVerilog, config.topModuleName)
-    val transformed = patchPortLines(topVerilog, config.topModuleName, bd.addPortMappings(portLines, bd.portModifications()))
+    val transformed = patchPortLines(topVerilog, config.topModuleName, bd.addPortMappings(portLines))
     Files.writeString(topModuleFile, transformed)
 
     val initTCL = bd.generateInitScript()
@@ -142,6 +142,9 @@ object SOCTVivado {
 
     val bdTCL = bd.generateBoardTcl()
     Files.writeString(boardPaths.bdLoadFile, bdTCL)
+
+    val xdc = bd.generateConstraintsTcl()
+    Files.writeString(boardPaths.xdcFile, xdc)
 
     // dump collaterals for all components
     bd.emitCollaterals(boardPaths.verilogSrc)
