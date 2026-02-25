@@ -309,7 +309,8 @@ class SOCTBdBuilder extends SOCTBd {
        |# Regenerate layout once - usually improves readability significantly
        |regenerate_bd_layout
        |
-       |# Save the design
+       |validate_bd_design
+       |
        |save_bd_design
        |""".stripMargin
   }

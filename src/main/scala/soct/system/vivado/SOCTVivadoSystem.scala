@@ -182,7 +182,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Core domain clock drives core reset sync + top clocks + one mem SMC clock
     coreClock --> Seq(
       corePsr.SLOWEST_SYNC_CLK,
-      memSMC.ACLK(0)
+      memSMC.ACLK(0),
+      mmioSMC.ACLK(1),
+      dmaSMC.ACLK(1),
     )
     coreClock --> top.CLOCKS
 
