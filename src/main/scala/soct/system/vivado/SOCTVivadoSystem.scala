@@ -1,7 +1,9 @@
 package soct.system.vivado
 
 import chisel3._
+import freechips.rocketchip.prci.ClockBundle
 import freechips.rocketchip.resources.ResourceInt
+import freechips.rocketchip.tilelink.TLBusWrapper
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
@@ -11,6 +13,7 @@ import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
 import soct.system.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq}
 import soct._
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -68,6 +71,16 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     sdDTS
   }
 
+
+  def clockOfBus(cb: => TLBusWrapper): BdChiselPin = {
+    val c = ioClockForBusLeaf(cb).getOrElse(
+      throw new XilinxDesignException(s"Unable to find clock for bus ${cb.name} in SOCT system. Make sure the bus is properly connected to a clock source in the design.")
+    ).portOpt.getOrElse(
+      throw new XilinxDesignException(s"Clock for bus ${cb.name} does not have an associated port in the SOCT system. Make sure the bus is properly connected to a clock source with an exposed port.")
+    )
+    portToBdPin(c.clock)
+  }
+
   InModuleBody {
 
     // --------------------------------------------------------------------------
@@ -79,15 +92,15 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
 
-    val axiMem = Seq(mem_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
+    val axiMem = Seq(mem_axi4).flatten.map(AXIMM(_, clockOfBus(memAXI4Bus))).headOption.getOrElse(
       throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
     )
 
-    val axiMMIO = Seq(mmio_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
+    val axiMMIO = Seq(mmio_axi4).flatten.map(AXIMM(_, clockOfBus(mmioAXI4Bus))).headOption.getOrElse(
       throw new XilinxDesignException("No memory-mapped AXI4 port found for MMIO interface in SOCT system.")
     )
 
-    val axiL2Frontend = Seq(l2_frontend_bus_axi4).flatten.map(AXIMM(_)).headOption.getOrElse(
+    val axiL2Frontend = Seq(l2_frontend_bus_axi4).flatten.map(AXIMM(_, clockOfBus(l2FrontendAXI4Bus))).headOption.getOrElse(
       throw new XilinxDesignException("No memory-mapped AXI4 port found for L2 frontend interface in SOCT system.")
     )
 

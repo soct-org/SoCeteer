@@ -3,14 +3,15 @@ package soct.system.vivado.intf
 import chisel3.{Bundle, Data}
 import chisel3.reflect.DataMirror
 import freechips.rocketchip.amba.axi4.AXI4Bundle
+import freechips.rocketchip.prci.ClockBundle
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.abstracts.BdPinPort.portToPortName
 import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
-import soct.system.vivado.abstracts.{BdIntfPin, MapsToPorts, XIntf}
+import soct.system.vivado.abstracts.{BdIntfPin, BdPinBase, BdPinPort, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
-case class AXIMM(axiPort: AXI4Bundle)
+case class AXIMM(axiPort: AXI4Bundle, clk: BdPinBase)
                 (implicit val bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPin(portToPortName(axiPort).toUpperCase(), bd.topInstance()) with MapsToPorts with XIntf {
 
@@ -32,7 +33,7 @@ case class AXIMM(axiPort: AXI4Bundle)
           val intfString = s"(* X_INTERFACE_INFO = \"$partName $pin $xilinxName\" *)"
           val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {
             Some(
-              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $pin, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
+              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $pin, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, CLK_DOMAIN ${clk.pin}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
             )
           } else None
 

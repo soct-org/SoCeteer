@@ -1,13 +1,11 @@
 package soct.system.vivado
 
-import chisel3.Data
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
 import soct.{BdBuilderKey, VivadoSOCTPaths}
 
 import java.nio.file.{Files, Path}
-import scala.collection.mutable
 import scala.reflect.io.Path.jfile2path
 import scala.util.matching.Regex
 
