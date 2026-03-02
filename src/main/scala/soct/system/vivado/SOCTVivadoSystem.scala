@@ -1,9 +1,7 @@
 package soct.system.vivado
 
 import chisel3._
-import freechips.rocketchip.prci.ClockBundle
 import freechips.rocketchip.resources.ResourceInt
-import freechips.rocketchip.tilelink.TLBusWrapper
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct.system.soceteer.SOCTSystem
@@ -13,7 +11,6 @@ import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
 import soct.system.vivado.intf.{AXIMM, JTAGIntf}
 import soct.system.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq}
 import soct._
-import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -71,16 +68,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     sdDTS
   }
 
-
-  def clockOfBus(cb: => TLBusWrapper): BdChiselPin = {
-    val c = ioClockForBusLeaf(cb).getOrElse(
-      throw new XilinxDesignException(s"Unable to find clock for bus ${cb.name} in SOCT system. Make sure the bus is properly connected to a clock source in the design.")
-    ).portOpt.getOrElse(
-      throw new XilinxDesignException(s"Clock for bus ${cb.name} does not have an associated port in the SOCT system. Make sure the bus is properly connected to a clock source with an exposed port.")
-    )
-    portToBdPin(c.clock)
-  }
-
   InModuleBody {
 
     // --------------------------------------------------------------------------
@@ -91,18 +78,12 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
+    // The axi ports:
+    val Seq(axiMem, axiMMIO, axiL2Frontend) = top.axi4BusMapping.map(_._2)
 
-    val axiMem = Seq(mem_axi4).flatten.map(AXIMM(_, clockOfBus(memAXI4Bus))).headOption.getOrElse(
-      throw new XilinxDesignException("No memory-mapped AXI4 port found for memory interface in SOCT system.")
-    )
-
-    val axiMMIO = Seq(mmio_axi4).flatten.map(AXIMM(_, clockOfBus(mmioAXI4Bus))).headOption.getOrElse(
-      throw new XilinxDesignException("No memory-mapped AXI4 port found for MMIO interface in SOCT system.")
-    )
-
-    val axiL2Frontend = Seq(l2_frontend_bus_axi4).flatten.map(AXIMM(_, clockOfBus(l2FrontendAXI4Bus))).headOption.getOrElse(
-      throw new XilinxDesignException("No memory-mapped AXI4 port found for L2 frontend interface in SOCT system.")
-    )
+    // The Clock and Reset pins from the top
+    val clocks = top.ioClocksMapping.map(_._2.clkPin).toSeq
+    val resets = top.ioClocksMapping.map(_._2.assocRstPin).toSeq
 
     // --------------------------------------------------------------------------
     // Clock domains
@@ -189,7 +170,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       periphPsr.SLOWEST_SYNC_CLK,
       mmioSMC.ACLK(0),
       dmaSMC.ACLK(0),
-      uart.S_AXI_ACLK // <- was S_AXI_ACKL in your snippet; keep your actual name if different
+      uart.S_AXI_ACLK
     )
 
     // Core domain clock drives core reset sync + top clocks + one mem SMC clock
@@ -199,7 +180,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       mmioSMC.ACLK(1),
       dmaSMC.ACLK(1),
     )
-    coreClock --> top.CLOCKS
+    coreClock --> clocks
 
     // Memory smartconnect is bridging domains:
     //  - aclk0 = core clock
@@ -207,7 +188,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(1)
 
     // Peripheral reset wiring into top aggregators
-    periphPsr.PeripheralReset --> top.RESETS
+    periphPsr.PeripheralReset --> resets
 
     // Reset net distribution (active-low aresetn)
     periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)

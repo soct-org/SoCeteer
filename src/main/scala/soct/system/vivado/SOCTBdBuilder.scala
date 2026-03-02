@@ -8,6 +8,7 @@ import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
 
 import java.nio.file.Path
 import scala.collection.mutable
+import scala.util.matching.Regex
 
 
 class SOCTBdBuilder extends SOCTBd {
@@ -42,21 +43,34 @@ class SOCTBdBuilder extends SOCTBd {
    */
   def addPortMappings(portLines: Seq[String]): Seq[String] = {
     checkFinalized()
+    def isAttributeLine(line: String): Boolean =
+      line.trim.startsWith("(*")
+
+    def portDeclRegex(portName: String): Regex = {
+      // matches "... <portName>," or "... <portName>)" or "... <portName> ;"
+      // allowing whitespace between tokens
+      ("""(?i)\b""" + Regex.quote(portName) + """\b\s*(,|\)|;)\s*$""").r
+    }
+
     val portMappings = portMappingsGens.flatMap(gen => gen())
-    val lines = mutable.Buffer.from(portLines)
-    portMappings.foreach { case (portName, attrStrings) =>
-      val lineIdxOpt = lines.zipWithIndex.find { case (line, _) =>
-        line.toLowerCase.contains(portName.toLowerCase) // FIXME: This will fail for ports like "reset" which match other ports like "reset_n"
-      }.map { case (_, idx) => idx }
-      if (lineIdxOpt.isEmpty) {
-        soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")
-      } else {
-        val lineIdx = lineIdxOpt.get
-        // Insert the annotations before the line - see https://docs.amd.com/r/en-US/ug994-vivado-ip-subsystems/General-Usage
-        attrStrings.reverse.foreach { attrString =>
-          lines.insert(lineIdx, "  " + attrString)
-        }
+    val lines = mutable.ListBuffer(portLines: _*)
+    val targets = portMappings.flatMap { case (portName, attrStrings) =>
+      val idxOpt = lines.zipWithIndex.collectFirst {
+        case (line, idx)
+          if !isAttributeLine(line) && portDeclRegex(portName).findFirstIn(line).nonEmpty =>
+          idx
       }
+      idxOpt match {
+        case Some(idx) => Some((idx, portName, attrStrings))
+        case None =>
+          soct.log.warn(s"Could not find port line for port $portName to add Vivado annotation")
+          None
+      }
+    }
+
+    // apply bottom-to-top so indices don't shift under our feet
+    targets.sortBy(-_._1).foreach { case (lineIdx, portName, attrStrings) =>
+      attrStrings.reverse.foreach { a => lines.insert(lineIdx, "  " + a) }
     }
     lines.toSeq
   }

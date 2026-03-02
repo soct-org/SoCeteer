@@ -11,8 +11,7 @@ import soct.system.vivado.abstracts.{BdIntfPin, BdPinBase, BdPinPort, MapsToPort
 
 import scala.collection.mutable
 
-case class AXIMM(axiPort: AXI4Bundle, clk: BdPinBase)
-                (implicit val bd: SOCTBdBuilder, p: Parameters)
+case class AXIMM(axiPort: AXI4Bundle)(implicit val bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPin(portToPortName(axiPort).toUpperCase(), bd.topInstance()) with MapsToPorts with XIntf {
 
   override def partName: String = "xilinx.com:interface:aximm:1.0"
@@ -33,7 +32,7 @@ case class AXIMM(axiPort: AXI4Bundle, clk: BdPinBase)
           val intfString = s"(* X_INTERFACE_INFO = \"$partName $pin $xilinxName\" *)"
           val paramString = if (channel == axiPort.aw && port == axiPort.aw.bits.addr) {
             Some(
-              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $pin, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, CLK_DOMAIN ${clk.pin}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
+              s"(* X_INTERFACE_PARAMETER = \"XIL_INTERFACENAME $pin, PROTOCOL AXI4, DATA_WIDTH ${axiPort.params.dataBits}, ADDR_WIDTH ${axiPort.params.addrBits}\" *)"
             )
           } else None
 
