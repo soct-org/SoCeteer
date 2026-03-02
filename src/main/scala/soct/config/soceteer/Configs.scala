@@ -51,7 +51,6 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
 
 class RocketBaseConfig extends Config(
   new WithNExtTopInterrupts(8) ++
-    new WithSingleBusClockSpeed(100.0) ++ // 100 MHz clock is the default
     new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
     new WithEdgeDataBits(64) ++
     new WithDefaultMemPort ++
@@ -136,11 +135,15 @@ case object PeripheryClockDomain extends Field[Double](100.0)
 /**
  * Field to specify the system bus clock frequency in MHz.
  */
-class WithCustomPeripheryClockDomain(freqMHz: Double) extends Config((site, here, up) => {
+class WithPeripheryClockSpeed(freqMHz: Double) extends Config((site, here, up) => {
   case PeripheryClockDomain => freqMHz
 })
 
-
+/**
+ * Class to set all clock domains to the same frequency. This is a common case for simpler designs, and is also useful for testing and simulation.
+ *
+ * @param freqMHz the frequency in MHz to set for all clock domains
+ */
 class WithSingleBusClockSpeed(freqMHz: Double) extends Config(
   new WithPeripheryBusFrequency(freqMHz) ++
     new WithSystemBusFrequency(freqMHz) ++
@@ -148,39 +151,6 @@ class WithSingleBusClockSpeed(freqMHz: Double) extends Config(
     new WithFrontBusFrequency(freqMHz) ++
     new WithControlBusFrequency(freqMHz)
 )
-
-class WithHartBootFreqMHz(freqsMHz: Seq[Double]) extends Config((site, here, up) => {
-  case TilesLocated(loc) if loc == InSubsystem =>
-    val prev = up(TilesLocated(loc))
-
-    val bootFreqsMHz = if (freqsMHz.length == 1 && prev.length > 1) {
-      if (!WithHartBootFreqMHz.printed.getAndSet(true)) {
-        log.info(s"Broadcasting single boot frequency ${freqsMHz.head} MHz to all ${prev.length} tiles")
-      }
-      Seq.fill(prev.length)(freqsMHz.head)
-    } else if (freqsMHz.length == prev.length) {
-      freqsMHz
-    } else {
-      throw new Exception(s"WithHartBootFreqMHz: number of frequencies (${freqsMHz.length}) does not match number of tiles (${prev.length})")
-    }
-
-    prev.zip(bootFreqsMHz).map { case (tap: RocketTileAttachParams, mhz) =>
-      val tp = tap.tileParams
-      tap.copy(tileParams = tp.copy(
-        core = tp.core.copy(
-          bootFreqHz = BigInt((mhz * 1e6).round)
-        )
-      ))
-    }
-
-  // Wire hartId -> TileParams lookup for any per-hart fields (including bootFreqHz)
-  case LookupByHartId =>
-    PriorityMuxHartIdFromSeq(site(TilesLocated(InSubsystem)).map(_.tileParams))
-})
-
-object WithHartBootFreqMHz {
-  private[soct] val printed = new AtomicBoolean(false)
-}
 
 /*----------------- FPGA ---------------*/
 

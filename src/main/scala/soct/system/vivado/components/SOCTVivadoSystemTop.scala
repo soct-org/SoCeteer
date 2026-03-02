@@ -1,21 +1,18 @@
 package soct.system.vivado.components
 
-import freechips.rocketchip.amba.axi4.{AXI4Bundle, AXI4MasterNode, AXI4SlaveNode}
+import freechips.rocketchip.amba.axi4.AXI4Bundle
 import freechips.rocketchip.prci.ClockBundle
-import freechips.rocketchip.subsystem.{ControlBusKey, FrontBusKey, InSubsystem, InSystem, MemoryBusKey, PeripheryBusKey, PeripheryBusParams, SBUS, SystemBusKey, TLNetworkTopologyLocated}
-import freechips.rocketchip.tilelink.{TLBusWrapper, TLBusWrapperTopology}
-import freechips.rocketchip.util.Location
-import org.apache.commons.lang3.NotImplementedException
+import freechips.rocketchip.subsystem._
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.ModuleValue
 import org.chipsalliance.diplomacy.nodes.HeterogeneousBag
 import soct.HasSOCTConfig
 import soct.system.soceteer.SOCTSystem
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
-import soct.system.vivado.misc.{AssociatedAXIBus, ClkDesc, MarkIOClocks}
-import soct.system.vivado.abstracts.BdPinPort.{bidirToBidir, portToBdPin}
 import soct.system.vivado.intf.AXIMM
+import soct.system.vivado.misc.{AXI4BusInfo, ClkDesc, MarkIOClocks}
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 
 
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
@@ -33,23 +30,20 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
     }
   }
 
+
   /**
    * Map each TLBusWrapper to its corresponding AXI4Bundle, if it exists.
    * This is used to determine which AXI4 interfaces are associated with which clock domains, so that we can add the appropriate Vivado annotations to the top-level ports.
    * If not overridden, this will default to the mem, mmio, and l2 frontend buses
    */
-  lazy val axi4BusMapping: Seq[(TLBusWrapper, AXIMM, AXI4Bundle, Either[AXI4SlaveNode, AXI4MasterNode])] = Seq(
+  lazy val axi4BusMapping: Seq[AXI4BusInfo] = Seq(
     (s.memAXI4Bus, s.mem_axi4, s.memAXI4Node),
     (s.mmioAXI4Bus, s.mmio_axi4, s.mmioAXI4Node),
     (s.l2FrontendAXI4Bus, s.l2_frontend_bus_axi4, s.l2FrontendAXI4Node)).map {
-    case (bus, axiBundle, node) =>
+    case (bus, axiBundle, _) =>
       val axi = getAXI4(axiBundle)
       val bdPin = AXIMM(axi)
-      node match {
-        case x: AXI4SlaveNode => (bus, bdPin, axi, Left(x))
-        case x: AXI4MasterNode => (bus, bdPin, axi, Right(x))
-      }
-
+      AXI4BusInfo(bus, bdPin, axi)
   }
 
   /**
@@ -67,23 +61,33 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
       soct.log.debug(s"Using explicitly defined frequency ${desc.freqHz.get} for clock bundle $cb")
       return desc.freqHz
     }
-
-    Some(100 * 1000 * 1000) // default to 100 MHz
-
+    val freqs = desc.buses.flatMap(_.dtsFrequency).distinct
+    if (freqs.size > 1) {
+      soct.log.warn(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundle $cb based on associated buses ${desc.buses.map(_.name).mkString(", ")}. This may result in incorrect Vivado annotations. Using the first frequency ${freqs.head} found.")
+    }
+    if (freqs.isEmpty) {
+      soct.log.warn(s"No frequency information found for clock bundle $cb based on associated buses ${desc.buses.map(_.name).mkString(", ")}. This may result in incorrect Vivado annotations.")
+    }
+    freqs.headOption
   }
 
   lazy val ioClocksMapping: Map[ClockBundle, ClkDesc] = {
+    // The AXI4 interfaces associated with each clock bundle, if any. We use this information to add the appropriate Vivado annotations to the top-level ports.
+    val axi4IfByClock = axi4BusMapping.map { assocBusIf =>
+      val cb = s.clockBundleForBus(assocBusIf.bus)
+        .getOrElse(throw new XilinxDesignException(s"Could not find clock bundle for bus ${assocBusIf.bus} associated with AXI4 interface ${assocBusIf.bdPin}"))
+      cb -> assocBusIf
+    }.toMap
 
     s.io_clocks.get.getWrappedValue.data.toSeq.map {
       cb =>
-        val buses = s.busHierarchyByClock(cb)
-        throw new NotImplementedException("This commit is intended to be a proof of concept")
+        val buses = s.busesForClockBundle(cb).getOrElse(Seq.empty).toSeq // The buses driven by this clock bundle, if any
         val desc = ClkDesc(
           clkPin = portToBdPin(cb.clock),
           assocRstPin = portToBdPin(cb.reset),
-          assocBusIfs = Seq.empty, // for now, only AXI4 interfaces are supported, but we could easily extend this to support other types of interfaces as well
-          buses = Seq.empty) // TODO change
-
+          assocAXI4Ifs = axi4IfByClock.get(cb).toSeq,
+          buses = buses
+        )
         cb -> desc.copy(freqHz = freqMapping(cb, desc))
     }.toMap
   }

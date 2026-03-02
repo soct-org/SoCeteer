@@ -79,11 +79,12 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
     // The axi ports:
-    val Seq(axiMem, axiMMIO, axiL2Frontend) = top.axi4BusMapping.map(_._2)
+    val Seq(axiMem, axiMMIO, axiL2Frontend) = top.axi4BusMapping.map(_.bdPin)
 
     // The Clock and Reset pins from the top
-    val clocks = top.ioClocksMapping.map(_._2.clkPin).toSeq
-    val resets = top.ioClocksMapping.map(_._2.assocRstPin).toSeq
+    val clocks = top.ioClocksMapping.values.toSeq
+    val clockPins = top.ioClocksMapping.map(_._2.clkPin).toSeq
+    val resetPins = top.ioClocksMapping.map(_._2.assocRstPin).toSeq
 
     // --------------------------------------------------------------------------
     // Clock domains
@@ -93,8 +94,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       tclVarName = Some("$periphery_clk_freq")
     )
 
+    // TODO Currently, this design only supports a single clock domain for the buses, but we should enable multiple clock domains for different buses in the future.
+    val freqs = clocks.flatMap(_.freqHz).distinct
+    if (freqs.size != 1) {
+      throw new XilinxDesignException(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundles ${clocks.map(_.clkPin).mkString(", ")}. This is not currently supported in SOCTVivadoSystem, which only supports a single clock domain for the buses.")
+    }
     val coreDomain = new ClockDomain(
-      freqMHz = 100.0, // TODO: use parameters
+      freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
       tclVarName = Some("$core_clk_freq")
     )
 
@@ -180,7 +186,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       mmioSMC.ACLK(1),
       dmaSMC.ACLK(1),
     )
-    coreClock --> clocks
+    coreClock --> clockPins
 
     // Memory smartconnect is bridging domains:
     //  - aclk0 = core clock
@@ -188,7 +194,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(1)
 
     // Peripheral reset wiring into top aggregators
-    periphPsr.PeripheralReset --> resets
+    periphPsr.PeripheralReset --> resetPins
 
     // Reset net distribution (active-low aresetn)
     periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
@@ -247,9 +253,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     }
 
     // --------------------------------------------------------------------------
-    // Optional Debug / SystemJTAG integration
+    // Debug / SystemJTAG integration
     // --------------------------------------------------------------------------
     val debugIf = debug.getWrappedValue.get
+
+    coreClock --> debugIf.clock
+    corePsr.PeripheralReset --> debugIf.reset
+
     if (debugIf.systemjtag.isDefined) {
       val jtagIO = debugIf.systemjtag.get
       val jtag = jtagIO.jtag

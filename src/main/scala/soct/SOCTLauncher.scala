@@ -33,11 +33,14 @@ object SOCTLauncher {
   object SOCTConfig {
     def apply(args: SOCTArgs): SOCTConfig = {
       val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
-      val params = new WithHartBootFreqMHz(args.freqsMHz) ++ args.baseConfig
+      var params: Parameters = new WithPeripheryClockSpeed(args.peripheryFreq.doubleValue)
+      if (args.coreFreq.isDefined) {
+        params ++= new WithSingleBusClockSpeed(args.coreFreq.get.doubleValue / 1e6) // Convert from Hz to MHz
+      }
       val topModule = args.userTop.getOrElse(args.target.defaultTop)
       val topModuleName = topModule.fold(_.getSimpleName, _.getSimpleName)
       val configName = s"${args.baseConfig.getClass.getSimpleName}-${args.xlen}"
-      new SOCTConfig(args, mabi, topModule, topModuleName, params, configName)
+      new SOCTConfig(args, mabi, topModule, topModuleName, params ++ args.baseConfig, configName)
     }
   }
 

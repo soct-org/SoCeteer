@@ -10,7 +10,7 @@ import soct.system.sim.SOCTSimSystem
 import soct.system.vivado.SOCTVivadoSystem
 import soct.system.vivado.fpga.{FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
-
+import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
 
 // Define the supported targets
 sealed trait Targets {
@@ -110,7 +110,8 @@ case class SOCTArgs(
                      // Vivado specific options
                      vivado: Option[Path] = None,
                      board: Option[Class[_ <: FPGA]] = None,
-                     freqsMHz: Seq[Double] = Seq(100.0),
+                     coreFreq: Option[BigInt] = Some(100 * 1000 * 1000), // Default to 100 MHz
+                     peripheryFreq: BigInt = 100 * 1000 * 1000, // Default to 100 MHz
                      overrideVivadoProject: Boolean = true,
                      // Terminating options
                      getVersion: Boolean = false, // Print the version of the tool
@@ -199,13 +200,22 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure(s"Invalid FPGA board $x. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
     )
     .text(s"The FPGA board to target for synthesis. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
-  opt[String]("freq-mhz").action((x, c) => c.copy(freqsMHz = Seq(x.split(",").map(_.toDouble): _*)))
-    .validate(x => {
-      val freqs = x.split(",").map(_.toDouble)
-      if (freqs.forall(_ > 0)) success
-      else failure("Frequencies must be positive numbers.")
-    })
-    .text(s"The target frequency in MHz for the design. Either a single frequency for all cores or a comma separated list of frequencies for each core for the config provided. Default is ${defaultSOCTArgs.freqsMHz.head} MHz.")
+  opt[String]("core-freq-Mhz").action((x, c) => c.copy(coreFreq = Some(BigInt((x.toDouble * 1000 * 1000).toInt))))
+    .text(
+      s"""
+         |The frequency to use for the core clock in MHz as a floating point number.
+         |This should only be used for simple designs where it is sufficient to set a single frequency for all bus clocks.
+         |For more complex designs where the core is driven by multiple clocks, set the frequency of the bus clock(s) by adding the configs ${classOf[WithPeripheryBusFrequency].getClass.getName} etc. to the main config.
+         |""".stripMargin
+      )
+  opt[String]("periphery-freq-Mhz").action((x, c) => c.copy(peripheryFreq = BigInt((x.toDouble * 1000 * 1000).toInt)))
+    .text(
+      s"""
+         |The frequency to use for the periphery bus clock in MHz as a floating point number.
+         |This is used for the bus clock(s) that drive the periphery devices like the SDCard controller and UART.
+         |Default is ${defaultSOCTArgs.peripheryFreq / (1000 * 1000)} MHz.
+         |""".stripMargin
+    )
   opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the workspace directory.")
   // Terminating options
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")

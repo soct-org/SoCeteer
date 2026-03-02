@@ -1,10 +1,10 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
-import soct.system.vivado.components.ClkWiz._
-import soct.system.vivado.fpga.FPGAResetPortSource
+import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.abstracts.BdPinPort
 import soct.system.vivado.abstracts.{HasIndexedPins, _}
+import soct.system.vivado.fpga.FPGAResetPortSource
 
 import scala.collection.mutable
 
@@ -59,4 +59,8 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
 }
 
 object ClkWiz {
+  // Allow: clkWiz.CLK_OUT(n, ...) --> someChiselClock
+  implicit val clkOutToChiselClock: ToSinkConnect[ClkWiz#CLK_OUT_I, chisel3.Clock] =
+    (source: ClkWiz#CLK_OUT_I, sink: chisel3.Clock, bd: SOCTBdBuilder) =>
+      bd.addEdge(source, BdPinPort.portToBdPin(sink)(bd))
 }
