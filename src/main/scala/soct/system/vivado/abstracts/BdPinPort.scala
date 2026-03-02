@@ -131,7 +131,7 @@ object BdPinPort {
   }
 
   private def vivadoGetExpr(p: BdPinPort): String = {
-    val x = p.ref
+    val x = p.ref.replaceAll("\\[(\\d+)]", "_$1") // Replace all occurrences of [N] with _N (mainly chisel Vecs)
     p.vivadoKind match {
       case VivadoHandleKind.ScalarPin => s"[get_bd_pins $x]"
       case VivadoHandleKind.ScalarPort => s"[get_bd_ports $x]"

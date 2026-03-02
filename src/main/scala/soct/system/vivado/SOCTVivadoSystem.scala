@@ -185,14 +185,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       dmaSMC.ACLK(1),
     )
     coreClock --> clockPins
+    corePsr.PeripheralReset --> resetPins
+    // Hart in reset is driven by core peripheral reset as well
+    corePsr.PeripheralReset --> resetctrl.getWrappedValue.get.hartIsInReset
 
     // Memory smartconnect is bridging domains:
     //  - aclk0 = core clock
     //  - aclk1 = DDR UI clock
     ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(1)
-
-    // Peripheral reset wiring into top aggregators
-    periphPsr.PeripheralReset --> resetPins
 
     // Reset net distribution (active-low aresetn)
     periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
@@ -258,6 +258,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     coreClock --> debugIf.clock
     corePsr.PeripheralReset --> debugIf.reset
 
+    // Tie off debug active ack to 0 since we are not using it in this design (No clock gating etc.)
+    TieOff().withInstanceName("debug_active_ack_tieoff") --> debugIf.dmactiveAck
+
     if (debugIf.systemjtag.isDefined) {
       val jtagIO = debugIf.systemjtag.get
       val jtag = jtagIO.jtag
@@ -270,13 +273,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val jtagXIntf = JTAGIntf(jtag, jtag_tdt)
 
       // Tie off unused fields using inline constants - rename for clarity in block design
-      val mfrIdConst = new InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth).withInstanceName("jtag_mfr_id_constant")
+      val mfrIdConst = InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth).withInstanceName("jtag_mfr_id_constant")
       mfrIdConst --> jtagIO.mfr_id
 
-      val partNumConst = new InlineConstant(0.U, jtagIO.part_number.getWidth).withInstanceName("jtag_part_number_constant")
+      val partNumConst = InlineConstant(0.U, jtagIO.part_number.getWidth).withInstanceName("jtag_part_number_constant")
       partNumConst --> jtagIO.part_number
 
-      val versionConst = new InlineConstant(0.U, jtagIO.version.getWidth).withInstanceName("jtag_version_constant")
+      val versionConst = InlineConstant(0.U, jtagIO.version.getWidth).withInstanceName("jtag_version_constant")
       versionConst --> jtagIO.version
 
       val bscan = BSCAN()
