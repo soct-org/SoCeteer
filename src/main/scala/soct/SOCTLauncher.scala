@@ -33,7 +33,7 @@ object SOCTLauncher {
   object SOCTConfig {
     def apply(args: SOCTArgs): SOCTConfig = {
       val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
-      var params: Parameters = new WithPeripheryClockSpeed(args.peripheryFreq.doubleValue)
+      var params: Parameters = new WithPeripheryClockSpeed(args.peripheryFreq.doubleValue / 1e6) // Convert from Hz to MHz
       if (args.coreFreq.isDefined) {
         params ++= new WithSingleBusClockSpeed(args.coreFreq.get.doubleValue / 1e6) // Convert from Hz to MHz
       }

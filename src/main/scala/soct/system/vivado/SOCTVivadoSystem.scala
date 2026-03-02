@@ -91,7 +91,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     val peripheryDomain = new ClockDomain(
       freqMHz = p(PeripheryClockDomain),
-      tclVarName = Some("$periphery_clk_freq")
     )
 
     // TODO Currently, this design only supports a single clock domain for the buses, but we should enable multiple clock domains for different buses in the future.
@@ -101,7 +100,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     }
     val coreDomain = new ClockDomain(
       freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
-      tclVarName = Some("$core_clk_freq")
     )
 
     // TODO: currently uses core frequency for DDR4 clock wizard - can/should we drive it faster?
@@ -263,6 +261,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     if (debugIf.systemjtag.isDefined) {
       val jtagIO = debugIf.systemjtag.get
       val jtag = jtagIO.jtag
+      corePsr.PeripheralReset --> jtagIO.reset
 
       // Create TDT signal for Vivado JTAG integration - TDO is driven when TDT is low
       val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")

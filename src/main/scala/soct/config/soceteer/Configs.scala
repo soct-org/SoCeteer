@@ -128,7 +128,7 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
 /*----------------- Clock Speeds ---------------*/
 
 /**
- * Field to specify the periphery clock domain frequency - for parts like the SDCard controller and UART.
+ * Field to specify the periphery clock domain frequency in Mhz - for parts like the SDCard controller and UART.
  */
 case object PeripheryClockDomain extends Field[Double](100.0)
 

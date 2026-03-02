@@ -42,7 +42,7 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
     val clkouts = CLK_OUT.all
     clkouts.foreach {
       case (idx, clkout) =>
-        m += s"CONFIG.CLKOUT${idx}_REQUESTED_OUT_FREQ" -> clkout.dom.tclVarName.getOrElse(clkout.dom.freqMHz.toInt.toString)
+        m += s"CONFIG.CLKOUT${idx}_REQUESTED_OUT_FREQ" -> clkout.dom.freqMHz.toInt.toString // braces are added automatically
         m += s"CONFIG.CLKOUT${idx}_USED" -> "true"
     }
     m += "CONFIG.NUM_OUT_CLKS" -> clkouts.size.toString
