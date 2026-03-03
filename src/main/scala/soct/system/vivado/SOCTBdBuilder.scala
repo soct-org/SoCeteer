@@ -326,6 +326,23 @@ class SOCTBdBuilder extends SOCTBd {
        |validate_bd_design
        |
        |save_bd_design
+       |
+       |# Generate wrapper and set it as top so XDC can see BD ports
+       |set source_fileset [get_filesets ${k.sources}]
+       |
+       |# Wrapper module name is "<bd_name>_wrapper"
+       |set wrapper_name "${k.bdName}"
+       |append wrapper_name "_wrapper"
+       |
+       |# Create/import wrapper if it doesn't exist yet
+       |if { [get_files -quiet -of_objects $$source_fileset [list "*/$${wrapper_name}.v"]] == "" } {
+       |  make_wrapper -files [get_files $$bd_file] -top -import
+       |}
+       |
+       |# Set wrapper as top
+       |set_property top $$wrapper_name $$source_fileset
+       |update_compile_order -fileset ${k.sources}
+       |
        |""".stripMargin
   }
 
