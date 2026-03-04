@@ -54,10 +54,10 @@ object Transpiler {
 
     // Other firtool args
     var otherArgs = if (c.args.singleVerilogFile) {
-      val outFile = paths.verilogSrc.resolve(s"${c.topModuleName}.sv")
+      val outFile = paths.verilogSrcDir.resolve(s"${c.topModuleName}.sv")
       mutable.Seq(s"-o=${outFile.toString}", "--verilog", "--disable-layers=Verification")
     } else {
-      mutable.Seq(s"-o=${paths.verilogSrc.toString}", "--split-verilog")
+      mutable.Seq(s"-o=${paths.verilogSrcDir.toString}", "--split-verilog")
     } ++ Seq("--disable-annotation-unknown", "--format=fir", "-O=release")
 
     if (!c.args.includeLocationInfo) {

@@ -3,13 +3,18 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
-import soct.system.vivado.misc.DTSInfo
+import soct.system.vivado.misc.{BasePMODPin, DTSInfo, DigilentPMODPin, WantsPMODPins}
 
 import java.nio.file.{Files, Path}
 
+trait SDCardConstraints extends WantsPMODPins {
+  this: BdVirtualPort =>
+
+  override def xdcName()(implicit bd: SOCTBdBuilder): String = "SDCardPMOD"
+}
 
 case class SDIOCDPort(override val pmodPort: Int)
-                     (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with WantsPMODPins {
+                     (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with SDCardConstraints {
   override def portName: String = "sdio_cd"
 
   override def ifType: String = "data"
@@ -18,7 +23,7 @@ case class SDIOCDPort(override val pmodPort: Int)
 }
 
 case class SDIOClkPort(override val pmodPort: Int)
-                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with WantsPMODPins {
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with SDCardConstraints {
   override def portName: String = "sdio_clk"
 
   override def ifType: String = "clk"
@@ -27,7 +32,7 @@ case class SDIOClkPort(override val pmodPort: Int)
 }
 
 case class SDIOCmdPort(override val pmodPort: Int)
-                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with WantsPMODPins {
+                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDCardConstraints {
   override def portName: String = "sdio_cmd"
 
   override def ifType: String = "data"
@@ -36,7 +41,7 @@ case class SDIOCmdPort(override val pmodPort: Int)
 }
 
 case class SDIODataPort(override val pmodPort: Int)
-                       (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with WantsPMODPins {
+                       (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDCardConstraints {
   override def portName: String = "sdio_data"
 
   override def ifType: String = "data"

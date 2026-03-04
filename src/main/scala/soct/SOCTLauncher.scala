@@ -70,7 +70,6 @@ object SOCTLauncher {
     if (args.vivado.isEmpty) {
       log.warn("No Vivado path provided, cannot override existing Vivado project.")
     } else if (success) {
-      boardPaths.vivadoProjectDir.toFile.mkdirs()
       SOCTVivado.generateProject(boardPaths.tclInitFile, args.vivado.get, boardPaths.vivadoProjectDir)
     } else {
       log.warn("No Vivado project generated due to errors in design generation.")
@@ -96,9 +95,6 @@ object SOCTLauncher {
 
     if (args.overrideSimFiles) {
       val configsSimDir = SOCTPaths.get("sim-configs")
-      if (!configsSimDir.toFile.exists()) {
-        configsSimDir.toFile.mkdirs()
-      }
       val simConfigDir = configsSimDir.resolve(config.configName)
       if (simConfigDir.toFile.exists()) {
         simConfigDir.toFile.deleteRecursively()
@@ -154,8 +150,7 @@ object SOCTLauncher {
         log.info(s"Removed existing files in ${paths.systemDir}")
       }
 
-      // Create the Verilog source directory - needed for all targets
-      paths.verilogSrc.toFile.mkdirs()
+      paths.createSubdirs()
 
       args.target match {
         case Targets.Verilator =>

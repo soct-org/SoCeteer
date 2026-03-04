@@ -24,13 +24,6 @@ object XilinxDesignException {
 
 object SOCTVivado {
 
-
-  val DEFAULT_MEMORY_ADDR_64: BigInt = BigInt("80000000", 16)
-
-  val DEFAULT_MEMORY_ADDR_32: BigInt = BigInt("40000000", 16)
-
-  val DEFAULT_MMIO_ADDR = "0x60000000"
-
   /**
    * Vivado does not allow a SystemVerilog top-level.
    * We do a highly illegal trick here by just renaming the file extension,
@@ -46,7 +39,7 @@ object SOCTVivado {
     val endings = Seq(".v", ".sv")
 
     // Get all files in the directory recursively
-    val vFiles = Files.walk(boardPaths.verilogSrc)
+    val vFiles = Files.walk(boardPaths.verilogSrcDir)
       .filter(p => Files.isRegularFile(p) && endings.exists(e => p.getFileName.toString.endsWith(e)))
       .toArray
       .map(_.asInstanceOf[Path])
@@ -59,7 +52,7 @@ object SOCTVivado {
     }
 
     if (topModuleFileOpt.isEmpty) {
-      throw XilinxDesignException(s"Could not find top module file for module ${config.topModuleName} in ${boardPaths.verilogSrc}")
+      throw XilinxDesignException(s"Could not find top module file for module ${config.topModuleName} in ${boardPaths.verilogSrcDir}")
     }
 
     val topModuleFile = topModuleFileOpt.get
@@ -141,14 +134,16 @@ object SOCTVivado {
     val bdTCL = bd.generateBoardTcl()
     Files.writeString(boardPaths.bdLoadFile, bdTCL)
 
-    val xdc = bd.generateConstraintsTcl()
-    Files.writeString(boardPaths.xdcFile, xdc)
+    val xdcByPath = bd.generateConstraintsTcls(boardPaths.xdcDir)
+    xdcByPath.foreach { case (path, xdc) =>
+      Files.writeString(path, xdc)
+    }
 
     // dump collaterals for all components
-    bd.emitCollaterals(boardPaths.verilogSrc)
+    bd.emitCollaterals(boardPaths.verilogSrcDir)
 
     if (removeVerification) {
-      val verificationDir = boardPaths.verilogSrc.resolve("verification")
+      val verificationDir = boardPaths.verilogSrcDir.resolve("verification")
       if (verificationDir.toFile.exists()) {
         soct.log.info(s"Removing verification directory at $verificationDir for Vivado synthesis")
         verificationDir.toFile.deleteRecursively()

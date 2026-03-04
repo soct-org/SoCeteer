@@ -3,6 +3,7 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.abstracts._
+import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
 
 
 class ZCU104(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGA {

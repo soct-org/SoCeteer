@@ -92,7 +92,7 @@ object Transpiler {
   def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate verilog")
     val verilogAnnos: Seq[Annotation] = Seq(
-      OutputFileAnnotation(paths.verilogSrc.resolve(s"${c.topModuleName}.v").toString),
+      OutputFileAnnotation(paths.verilogSrcDir.resolve(s"${c.topModuleName}.v").toString),
       FirrtlFileAnnotation(paths.lowFirrtlFile.toString),
     )
     var loweringArgs = mutable.Seq("-E=verilog", "--start-from=low-opt", s"-ll=${toChiselLL(c)}")

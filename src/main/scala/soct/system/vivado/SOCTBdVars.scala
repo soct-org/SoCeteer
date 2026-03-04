@@ -64,6 +64,6 @@ object SOCTBdVars {
     final val sourcesDir = "$sources_dir"
     final val vivadoProjectDir = "$vivado_project_dir"
     final val bdLoadFile = "$bd_load_file"
-    final val xdcFile = "$xdc_file"
+    final val xdcDir = "$xdc_dir"
   }
 }

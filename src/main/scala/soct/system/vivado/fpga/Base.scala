@@ -4,6 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.FPGAResetPolarity
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
+import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
 
 import scala.annotation.unused
 
