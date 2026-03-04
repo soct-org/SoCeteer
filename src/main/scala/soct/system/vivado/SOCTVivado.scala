@@ -132,7 +132,10 @@ object SOCTVivado {
     Files.writeString(boardPaths.tclInitFile, initTCL)
 
     val bdTCL = bd.generateBoardTcl()
-    Files.writeString(boardPaths.bdLoadFile, bdTCL)
+    Files.writeString(boardPaths.defaultBdGenerator, bdTCL)
+
+    val synthTCL = bd.generateSynthesisTcl()
+    Files.writeString(boardPaths.defaultSynthGenerator, synthTCL)
 
     val xdcByPath = bd.generateConstraintsTcls(boardPaths.xdcDir)
     xdcByPath.foreach { case (path, xdc) =>

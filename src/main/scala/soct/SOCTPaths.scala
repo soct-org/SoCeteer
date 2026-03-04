@@ -26,12 +26,12 @@ object SOCTPaths {
   /**
    * Get a predefined path by name
    *
-   * @param name Name of the path to retrieve
+   * @param name   Name of the path to retrieve
    * @param create Whether to create the path if it does not exist (only applicable for dynamic paths)
    * @return Path corresponding to the given name
    * @throws InternalBugException if the name is unknown
    */
-  def get(name: String, create: Boolean = true): Path ={
+  def get(name: String, create: Boolean = true): Path = {
     val p = paths.getOrElse(name, throw new InternalBugException(s"Unknown path name: $name"))
     if (create) {
       p.toFile.mkdirs() // create the directory if it doesn't exist
@@ -97,6 +97,7 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) {
 
   /**
    * Path to the generated verilog/systemverilog files
+   *
    * @return Path to the directory containing sources (SystemVerilog/Verilog/VHDL)
    */
   def verilogSrcDir: Path = systemDir.resolve("vsrcs")
@@ -192,7 +193,19 @@ private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPa
   /**
    * Path to the TCL file that loads the block design for the top module in Vivado
    */
-  val bdLoadFile: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_bd.tcl")
+  val defaultBdGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_bd.tcl")
+
+
+  /**
+   * Path to the TCL file that synthesizes the top module in Vivado
+   */
+  val defaultSynthGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_synth.tcl")
+
+
+  /**
+   * Path to the TCL file that implements the top module in Vivado
+   */
+  val defaultImplGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_impl.tcl")
 
 
   /**
@@ -203,6 +216,7 @@ private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPa
 
   override def createSubdirsImpl(): Unit = {
     vivadoSourceDir.toFile.mkdirs()
+    vivadoProjectDir.toFile.mkdirs()
     xdcDir.toFile.mkdirs()
   }
 }

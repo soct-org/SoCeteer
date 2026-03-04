@@ -95,14 +95,19 @@ class SOCTBdBuilder extends SOCTBd {
       k.aggressive -> TclVar("Whether to aggressively overwrite existing Vivado projects and sources", if (aggressive) "1" else "0"),
       k.sources -> TclVar("The name of the fileset containing the design sources", "sources_1"),
       k.constraints -> TclVar("The name of the fileset containing the constraints files", "constrs_1"),
+      k.synth -> TclVar("The name of the synthesis run to use for synthesis scripts", "synth_1"),
+      k.impl -> TclVar("The name of the implementation run to use for implementation scripts", "impl_1"),
       k.projectName -> TclVar("The name of the Vivado project to create or open", s"${config.topModuleName}"),
       k.bdName -> TclVar("The name of the block design to create", s"${config.topModuleName}_bd"),
       k.xilinxPart -> TclVar("The Xilinx part number of the target FPGA", fpga.xilinxPart),
       k.partName -> TclVar("The Xilinx part name of the target FPGA", fpga.partName),
       k.sourcesDir -> TclVar("The directory containing the design sources", paths.systemDir.toString),
       k.vivadoProjectDir -> TclVar("The directory to use for the Vivado project", paths.vivadoProjectDir.toString),
-      k.bdLoadFile -> TclVar("The TCL file to load the block design", paths.bdLoadFile.toString),
-      k.xdcDir -> TclVar("The directory containing the generated XDC constraint files", paths.xdcDir.toString)
+      k.defaultBdGenerator -> TclVar("The default TCL file to load the block design", paths.defaultBdGenerator.toString),
+      k.defaultSynthGenerator -> TclVar("The default TCL file to launch synthesis", paths.defaultSynthGenerator.toString),
+      k.defaultImplGenerator -> TclVar("The default TCL file to launch implementation", paths.defaultImplGenerator.toString),
+      k.xdcDir -> TclVar("The directory containing the generated XDC constraint files", paths.xdcDir.toString),
+      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", (Runtime.getRuntime.availableProcessors().doubleValue * .5).toInt.toString)
     )
   }
 
@@ -120,6 +125,19 @@ class SOCTBdBuilder extends SOCTBd {
     }
   }
 
+
+  private def openProject: String = {
+    s"""# Check if the current project matches the expected project name
+       |if {[llength [get_projects -quiet]] == 0} {
+       |  error_exit 2000 "No Vivado project is opened. Please open a project before sourcing this script."
+       |} else {
+       |  set current_proj [get_property NAME [current_project]]
+       |  if {$$current_proj ne ${k.projectName}} {
+       |    warn_msg 2001 "This script is intended for project ${k.projectName}, but current project is $$current_proj. If you don't know what you are doing, please create a new project with https://github.com/soct-org/SoCeteer. Continuing may lead to unexpected results."
+       |  }
+       |}""".stripMargin
+
+  }
 
   def addPortMapping(portMapping: () => Map[String, Seq[String]]): Unit = {
     portMappingsGens += portMapping
@@ -151,6 +169,7 @@ class SOCTBdBuilder extends SOCTBd {
       inFinalization = false
     }
   }
+
 
   def generateBoardTcl(): String = {
     checkInit()
@@ -185,14 +204,6 @@ class SOCTBdBuilder extends SOCTBd {
       case c: HasBdAddr => c.assignAddrTcl
     }.flatten.toSeq
 
-    // Keys for TCL variables used in the script
-    val bdKeys = Seq(k.bdName, k.projectName, k.sources)
-
-    // generate header with variable descriptions, using a subset of vals in vars
-    // Add the BD-specific variables which are defined statically in SOCTBdBuilder
-    val bdVars: Map[String, TclVar] =
-      (args.vars.filter { case (v, _) => bdKeys.contains(v) } ++ args.bdVars).toMap
-
     val xips, xinlines = mutable.ListBuffer.empty[IsXilinx]
     val modules = mutable.ListBuffer.empty[IsModule]
     nodes.collect {
@@ -201,7 +212,7 @@ class SOCTBdBuilder extends SOCTBd {
       case m: IsModule => modules += m
     }
 
-    s"""${args.genTCLHeader(bdVars)}
+    s"""${args.genTCLHeader(args.vars.toMap)}
        |
        |######## Helper procedures ########
        |proc error_exit {id msg} {
@@ -236,15 +247,7 @@ class SOCTBdBuilder extends SOCTBd {
        |
        |######## Project & Board design (bd) validation ########
        |
-       |# Check if the current project matches the expected project name
-       |if {[llength [get_projects -quiet]] == 0} {
-       |  error_exit 2000 "No Vivado project is opened. Please open a project before sourcing this script."
-       |} else {
-       |  set current_proj [get_property NAME [current_project]]
-       |  if {$$current_proj ne ${k.projectName}} {
-       |    warn_msg 2001 "This script is intended for project ${k.projectName}, but current project is $$current_proj. If you don't know what you are doing, please create a new project with https://github.com/soct-org/SoCeteer. Continuing may lead to unexpected results."
-       |  }
-       |}
+       |$openProject
        |
        |# Save current BD context (best effort)
        |set cur_design [current_bd_design -quiet]
@@ -329,6 +332,15 @@ class SOCTBdBuilder extends SOCTBd {
        |
        |save_bd_design
        |
+       |# Ensure BD products (HDL, synthesis netlists for IP, etc.) exist and are part of the project
+       |set bd_obj [get_files $$bd_file]
+       |generate_target all $$bd_obj
+       |export_ip_user_files -of_objects $$bd_obj -no_script -sync -force
+       |create_ip_run $$bd_obj
+       |
+       |set_property synth_checkpoint_mode None [get_files $$bd_file]
+       |
+       |
        |# Generate wrapper and set it as top so XDC can see BD ports
        |set source_fileset [get_filesets ${k.sources}]
        |
@@ -344,11 +356,44 @@ class SOCTBdBuilder extends SOCTBd {
        |# Set wrapper as top
        |set_property top $$wrapper_name $$source_fileset
        |update_compile_order -fileset ${k.sources}
+       |""".stripMargin
+  }
+
+  /**
+   * Generate a TCL script to launch synthesis for the block design. Assumes the project is already set up and the block design is already generated.
+   * @return TCL script as string
+   */
+  def generateSynthesisTcl(): String = {
+    checkInit()
+    checkFinalized()
+
+    s"""${args.genTCLHeader(args.vars.toMap)}
        |
+       |# Set max threads
+       |set_param general.maxThreads ${k.nThreads}
+       |
+       |# Open the project
+       |$openProject
+       |
+       |update_compile_order -fileset ${k.sources}
+       |
+       |# Reset previous synthesis runs to ensure a clean synthesis.
+       |reset_run ${k.synth}
+       |
+       |# Launch synthesis with verbose output and the specified number of threads
+       |launch_runs -jobs ${k.nThreads} ${k.synth} -verbose
+       |
+       |# Wait for synthesis to complete before proceeding
+       |wait_on_run ${k.synth}
        |""".stripMargin
   }
 
 
+  /**
+   * Generate XDC constraint files for all components that emit constraints, grouped by the XDC name they specify.
+   * @param basePath The path to the directory where the generated XDC files should be placed.
+   * @return A map from XDC file paths to their contents as strings.
+   */
   def generateConstraintsTcls(basePath: Path): Map[Path, String] = {
     checkInit()
     checkFinalized()
@@ -412,9 +457,12 @@ class SOCTBdBuilder extends SOCTBd {
        |  add_files -fileset $$constr_fileset $$xdc_files
        |}
        |
+       |source ${k.defaultBdGenerator}
        |
-       |source ${k.bdLoadFile}
        |
-       |""".stripMargin
+       |# WARNING, not yet tested - use with caution:
+       |#source ${k.defaultSynthGenerator}
+       |
+       |""".stripMargin  // TODO: Add impl and not always launch synth and impl here
   }
 }
