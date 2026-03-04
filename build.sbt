@@ -1,5 +1,7 @@
-// 7.6.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
-val fallbackChiselVersion = "7.6.0"
+enablePlugins(BuildInfoPlugin)
+
+// 7.7.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
+val fallbackChiselVersion = "7.7.0"
 
 val params = sys.env.get("SOCT_CHISEL_VERSION") match {
   case Some(v) => Seq(v.startsWith("3."), v)
@@ -22,7 +24,7 @@ lazy val chiselSettings = if (useChisel3) {
 } else {
   Seq(
     addCompilerPlugin("org.chipsalliance" % "chisel-plugin" % chiselVersion cross CrossVersion.full),
-    libraryDependencies += "org.chipsalliance" %% "chisel" % chiselVersion,
+    libraryDependencies += "org.chipsalliance" %% "chisel" % chiselVersion
   )
 }
 
@@ -203,7 +205,6 @@ lazy val soceteer = (project in file("."))
     }
   ).settings(name := "SoCeteer")
 
-enablePlugins(BuildInfoPlugin)
 buildInfoPackage := "soct.build"
 // Add SoCeteer name, version and Scala version to BuildInfo
 buildInfoKeys := Seq[BuildInfoKey](
@@ -212,33 +213,3 @@ buildInfoKeys := Seq[BuildInfoKey](
   scalaVersion,
   sbtVersion
 )
-
-// This task generates the Verilog parser using ANTLR. This is required to wrap VHDL around the Verilog from Chisel
-// The files emitted from this task are committed to the repository, so this task is not run by default.
-// To run this task, use the command `sbt generateVerilogParser` to trigger it
-lazy val generateVerilogParser = taskKey[Unit]("Generate Verilog parser using ANTLR")
-generateVerilogParser := {
-  val log = streams.value.log
-  val packageName = "soct.antlr.verilog"
-  val packagePath = packageName.replace('.', '/')
-
-  // Grammar files in resources
-  val lexerGrammar = baseDirectory.value / "src" / "main" / "resources" / "sv2017Lexer.g4"
-  val parserGrammar = baseDirectory.value / "src" / "main" / "resources" / "sv2017Parser.g4"
-
-  // Output directory for generated Java files
-  val outDir = baseDirectory.value / "src" / "main" / "java" / packagePath
-  IO.createDirectory(outDir)
-
-  val args = Array(
-    "-o", outDir.getAbsolutePath,
-    "-package", packageName,
-    "-visitor",
-    "-listener",
-    lexerGrammar.getAbsolutePath,
-    parserGrammar.getAbsolutePath
-  )
-
-  log.info(s"Running ANTLR with arguments: ${args.mkString(" ")}")
-  org.antlr.v4.Tool.main(args)
-}

@@ -40,3 +40,4 @@ build/
 ## SoCeteer ##
 cmake-build-*
 /workspace/
+/vivado-projects/

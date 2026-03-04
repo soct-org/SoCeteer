@@ -3,10 +3,31 @@ import ch.qos.logback.classic.{Level, LoggerContext, Logger => LBLogger}
 import ch.qos.logback.classic.encoder.PatternLayoutEncoder
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.ConsoleAppender
+import chisel3.RawModule
+import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import org.slf4j.LoggerFactory
 import soct.build.BuildInfo
 
 package object soct {
+
+  /**
+   * Type alias for the Chisel top module, which can be either a Module or a LazyModule
+   */
+  type ChiselTop = Either[Class[_ <: RawModule], Class[_ <: LazyModule]]
+
+  /**
+   * Load a resource file from the classpath
+   * @param fullPath The full path to the resource
+   * @return Some content of the resource file, or None if not found
+   */
+  def getResource(fullPath: String): Option[String] = {
+    val stream = getClass.getResourceAsStream(fullPath)
+    if (stream != null) {
+      Some(scala.io.Source.fromInputStream(stream).mkString)
+    } else {
+      None
+    }
+  }
 
   // Default parameters for the launcher
   val logLevels = Seq("debug", "info", "warn", "error")

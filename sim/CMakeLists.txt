@@ -62,10 +62,6 @@ list(APPEND RV_ISA_SIM_SRCS ${FESVR_SRCS} ${DISASM_SRCS})
 #########################
 # Set up Verilator params
 #########################
-if (NOT DEFINED VL_TOP_MODULE)
-    set(VL_TOP_MODULE "SOCTSimTop")
-endif ()
-
 # The name used in the C++ code to include VL_PREFIX.h
 if (NOT DEFINED VL_PREFIX)
     set(VL_PREFIX "SystemTop")
@@ -113,7 +109,7 @@ endif()
 #################################
 foreach (CONFIG IN LISTS CONFIGS)
     set(CONFIG_DIR "${CONFIGS_IN_DIR}/${CONFIG}") # The directory containing the config
-    set(VL_CONFIG_OUT "${CONFIG_DIR}/generated-src") # The directory to output the verilator generated files
+    set(VL_CONFIG_OUT "${CONFIG_DIR}/vsrcs") # The directory to output the verilator generated files
     file(GLOB_RECURSE CONFIG_VERILOG_SOURCES "${CONFIG_DIR}/**/*.v" "${CONFIG_DIR}/*.v" "${CONFIG_DIR}/**/*.sv" "${CONFIG_DIR}/*.sv") # The verilog files for the config
     file(GLOB_RECURSE CANDIDATES LIST_DIRECTORIES true "${CONFIG_DIR}/*")
     foreach(path IN LISTS CANDIDATES)
@@ -158,7 +154,6 @@ foreach (CONFIG IN LISTS CONFIGS)
             SOURCES ${CONFIG_VERILOG_SOURCES} ${CMAKE_CURRENT_LIST_DIR}/verilator_config.vlt
             DIRECTORY ${VL_CONFIG_OUT}
             PREFIX ${VL_PREFIX}
-            TOP_MODULE ${VL_TOP_MODULE}
             INCLUDE_DIRS ${VL_INCLUDE_DIR}
             VERILATOR_ARGS ${VL_ARGS}
     )

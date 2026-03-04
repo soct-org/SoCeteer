@@ -1,51 +1,59 @@
 package soct
 
-import chisel3.RawModule
+import chisel3.{Data, Element}
+import chisel3.reflect.DataMirror
 import chisel3.stage.ChiselGeneratorAnnotation
 import firrtl.AnnotationSeq
 import firrtl.annotations.{Annotation, JsonProtocol}
 import firrtl.stage.{FirrtlFileAnnotation, FirrtlStage, OutputFileAnnotation}
-import freechips.rocketchip.subsystem.WithBootROMFile
-import org.chipsalliance.cde.config.{Config, Parameters}
+import org.chipsalliance.cde.config.Parameters
 
 import java.nio.file.{Files, Path}
 import firrtl.options.TargetDirAnnotation
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 import scala.collection.mutable
-import scala.annotation.unused
 
-abstract case class Transpiler() {
+
+object ChiselCompat {
+  def collectLeafMembers(data: Data): Seq[Data] = {
+    DataMirror.collectMembers(data) {
+        case x: Element => x
+      }
+      .toVector
+  }
 }
 
-object Transpiler  {
+object Transpiler {
 
   val stage = new FirrtlStage
 
-  def evalDesign(top: String, c: SOCTLauncher.Config, paths: SOCTPaths, bootromPath: Path): Set[Path] = {
-    val gen = () => Class
-      .forName(top)
-      .getConstructor(classOf[Parameters])
-      .newInstance(
-        new WithBootROMFile(bootromPath.toString) ++
-          new Config(c.configs.foldRight(Parameters.empty) {
-            case (currentName, config) =>
-              val currentConfig = SOCTUtils.instantiateConfig(currentName)
-              currentConfig ++ config
-          }))
-    match {
-      case m: RawModule => m
-      case lm: LazyModule => LazyModule(lm).module
+  def toChiselLL(c: SOCTLauncher.SOCTConfig): String = {
+    if (c.args.verboseChisel) {
+      "debug"
+    } else {
+      val infoLL = logLevels.indexOf("info")
+      val userLL = logLevels.indexOf(c.args.logLevel.toLowerCase)
+      if (userLL < infoLL) "info" else c.args.logLevel.toLowerCase
     }
+  }
 
-    val artifacts: mutable.HashSet[Path] = mutable.HashSet[Path]()
+  def evalDesign(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
+    // Contains a callable that returns a chisel model and that is used to generate the firrtl
+    val gen = () => c.topModule match {
+      case Left(m) =>
+        // Get the constructor of m that accepts Parameters
+        val constructor = m.getConstructor(classOf[Parameters])
+        constructor.newInstance(c.params)
+      case Right(lm) =>
+        val constructor = lm.getConstructor(classOf[Parameters])
+        LazyModule(constructor.newInstance(c.params)).module
+    }
 
     def store(path: Path, content: String): Unit = {
       Files.write(path, content.getBytes)
-      artifacts += path.toAbsolutePath
     }
 
-    log.info("Using chisel to generate firrtl")
     val annos = Seq(
       new chisel3.stage.phases.Elaborate,
       new chisel3.stage.phases.Convert
@@ -64,12 +72,11 @@ object Transpiler  {
       }
     store(paths.annoFile, firrtl.annotations.JsonProtocol.serialize(annos))
     freechips.rocketchip.util.ElaborationArtefacts.files.foreach {
-      case (ext, contents) => store(paths.systemDir.resolve(s"${c.configs.mkString("_")}.$ext"), contents())
+      case (ext, contents) => store(paths.systemDir.resolve(s"${c.topModuleName}.$ext"), contents())
     }
-    artifacts.toSet
   }
 
-  def emitLowFirrtl(c: SOCTLauncher.Config, paths: SOCTPaths): Unit = {
+  def emitLowFirrtl(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate low-firrtl")
     require(paths.annoFile.toFile.exists(), s"Annotation file ${paths.annoFile} does not exist but is required for chisel3")
     require(paths.firrtlFile.toFile.exists(), s"Firrtl file ${paths.firrtlFile} does not exist but is required.")
@@ -78,15 +85,23 @@ object Transpiler  {
       FirrtlFileAnnotation(paths.firrtlFile.toString),
       OutputFileAnnotation(paths.lowFirrtlFile.toString)
     ) ++ annos
-    stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=low-opt"), firrtlAnnos)
+    val out = stage.execute(Array(s"-ll=${toChiselLL(c)}", "-E=low-opt"), firrtlAnnos)
+    Files.write(paths.annoFile, JsonProtocol.serialize(out).getBytes)
   }
 
-  def emitVerilog(c: SOCTLauncher.Config, paths: SOCTPaths, @unused firtoolPlugins: Seq[String]): Unit = {
+  def emitVerilog(c: SOCTLauncher.SOCTConfig, paths: SOCTPaths): Unit = {
     log.info("Using firrtl to generate verilog")
     val verilogAnnos: Seq[Annotation] = Seq(
-      OutputFileAnnotation(paths.verilogSystem.toString),
-      FirrtlFileAnnotation(paths.lowFirrtlFile.toString)
+      OutputFileAnnotation(paths.verilogSrcDir.resolve(s"${c.topModuleName}.v").toString),
+      FirrtlFileAnnotation(paths.lowFirrtlFile.toString),
     )
-    stage.execute(Array(s"-ll=${c.args.logLevel}", "-E=verilog", "--start-from=low-opt"), verilogAnnos)
+    var loweringArgs = mutable.Seq("-E=verilog", "--start-from=low-opt", s"-ll=${toChiselLL(c)}")
+
+    if (!c.args.includeLocationInfo) {
+      loweringArgs ++= Seq("--info-mode=ignore")
+    }
+
+    loweringArgs ++= c.args.userFirtoolArgs
+    stage.execute(loweringArgs.toArray, verilogAnnos)
   }
 }
