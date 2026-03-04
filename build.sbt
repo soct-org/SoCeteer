@@ -20,9 +20,13 @@ val chiselVersion = sys.env.get("SOCT_CHISEL_VERSION") match {
 
 val useChisel3 = chiselVersion.startsWith("3.")
 
+
+//***************************
+// SETTINGS:
+//***************************
+
 // NOTES:
 // 22.04.2025: Don't add your own firtoolresolver as it will clash with the one used by chisel
-
 lazy val chiselSettings = if (useChisel3) {
   Seq(
     addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion cross CrossVersion.full),
@@ -64,52 +68,78 @@ lazy val commonSettings = Seq(
 lazy val soct_org = Seq(organization := "soct")
 lazy val berkeley_org = Seq(organization := "edu.berkeley.cs")
 
-val rocketChipDir = file("generators/rocket-chip")
+
+
+//***************************
+// PATHS:
+//***************************
+val rootDir = file(".")
+
+val generatorsDir = rootDir / "generators"
+
+val rocketChipDir =generatorsDir / "rocket-chip"
+
+val rocketChipDepsDir = rocketChipDir / "dependencies"
+
+val srcMain = rootDir / "src" / "main"
 
 val diplomacyDir = if (useChisel3) {
-  rocketChipDir / "dependencies/diplomacy-chisel3" // Separate branch for chisel3
+  rocketChipDepsDir / "diplomacy-chisel3" // Separate branch for chisel3
 } else {
-  rocketChipDir / "dependencies/diplomacy"
+  rocketChipDepsDir / "diplomacy"
 }
 
+val unmanagedDir = srcMain / "scala-unmanaged"
 
-// ------------------- Only chisel3/X compatible projects -------------------
+val compatDir = unmanagedDir / "compat"
 
-// You can depend on this, and it will automatically depend on the correct versions of your projects
-lazy val chiselProjects: Seq[ClasspathDep[ProjectReference]] = Seq()
+val shuttleDir = generatorsDir / "shuttle"
 
-// To avoid circular dependencies, you can add projects only the root project should depend on
-lazy val chiselRootProjects: Seq[ClasspathDep[ProjectReference]] = Seq()
+val saturnDir = generatorsDir / "saturn-vectors"
 
-// ------------------- Fully compatible projects -------------------
-lazy val compat = freshProject("compat", file("src/main/scala-unmanaged/compat"))
+val hardfloatDir = rocketChipDepsDir / "hardfloat" / "hardfloat"
+
+val cdeDir = rocketChipDepsDir / "cde"
+
+val macrosDir = rocketChipDir / "macros"
+
+val boomDir = generatorsDir / "riscv-boom"
+
+val gemminiDir = generatorsDir / "gemmini"
+
+val sifiveCacheDir = generatorsDir / "sifive-cache"
+
+//***************************
+// PROJECTS:
+//***************************
+lazy val compat = freshProject("compat", compatDir)
   .settings(soct_org)
   .settings(commonSettings)
   .settings(chiselSettings)
   .settings(
     // Lowering backend depends on the Chisel version
     Compile / unmanagedSourceDirectories ++= {
-      if (useChisel3) Seq(file("src/main/scala-unmanaged/compat/chisel3"))
-      else Seq(file("src/main/scala-unmanaged/compat/chisel"))
+      if (useChisel3) Seq(compatDir / "chisel3")
+      else Seq(compatDir / "chisel")
     }
   )
 
-lazy val shuttle = freshProject("shuttle", file("generators/shuttle"))
+lazy val shuttle = freshProject("shuttle", shuttleDir)
   .settings(berkeley_org)
   .dependsOn(rocketchip)
   .settings(commonSettings)
 
-lazy val saturn = freshProject("saturn-vectors", file("generators/saturn-vectors"))
+lazy val saturn = freshProject("saturn-vectors", saturnDir)
   .settings(berkeley_org)
   .dependsOn(rocketchip, shuttle)
   .settings(commonSettings)
 
-lazy val hardfloat = freshProject("hardfloat", rocketChipDir / "dependencies/hardfloat/hardfloat")
+lazy val hardfloat = freshProject("hardfloat", hardfloatDir)
   .settings(berkeley_org)
   .settings(commonSettings)
   .settings(chiselSettings)
 
-lazy val boom = freshProject("riscv-boom", file("generators/riscv-boom"))
+lazy val boom = freshProject("riscv-boom", boomDir)
   .dependsOn(cde)
   .dependsOn(rocketchip)
   .settings(commonSettings)
@@ -126,7 +156,7 @@ lazy val rocketchip = freshProject("rocket-chip" + (if (useChisel3) "-chisel3" e
   .settings(chiselSettings)
   .settings(libraryDependencies ++= Seq("com.lihaoyi" %% "mainargs" % "0.7.7"))
 
-lazy val gemmini = freshProject("gemmini", file("generators/gemmini"))
+lazy val gemmini = freshProject("gemmini", gemminiDir)
   .settings(berkeley_org)
   .dependsOn(cde)
   .dependsOn(compat)
@@ -134,13 +164,13 @@ lazy val gemmini = freshProject("gemmini", file("generators/gemmini"))
   .settings(commonSettings)
   .settings(chiselSettings)
 
-lazy val rocketMacros = freshProject("rocket-macros", rocketChipDir / "macros")
+lazy val rocketMacros = freshProject("rocket-macros", macrosDir)
   .settings(berkeley_org)
   .settings(commonSettings)
   .settings(chiselSettings)
 
 // The CDE project is ill-formed, so we can't use freshProject here
-lazy val cde = Project(id = "cde", base = rocketChipDir / "dependencies/cde")
+lazy val cde = Project(id = "cde", base = cdeDir)
   .settings(
     Compile / scalaSource := baseDirectory.value / "cde/src/chipsalliance/rocketchip",
     Test / scalaSource := baseDirectory.value / "cde/tests/src",
@@ -161,7 +191,7 @@ lazy val diplomacy = Project(id = "diplomacy", base = diplomacyDir)
   .settings(Compile / scalaSource := baseDirectory.value / "diplomacy")
 
 // The SiFive Rocket project is ill-formed, so we can't use freshProject here
-lazy val sifiveCache = Project("sifive-cache", base = file("generators/sifive-cache"))
+lazy val sifiveCache = Project("sifive-cache", base = sifiveCacheDir)
   .settings(
     Compile / scalaSource := baseDirectory.value / "design/craft/inclusivecache/src",
   )
@@ -172,7 +202,7 @@ lazy val sifiveCache = Project("sifive-cache", base = file("generators/sifive-ca
   .settings(Compile / scalaSource := baseDirectory.value / "design/craft")
 
 // ------------------- Root project -------------------
-lazy val soceteer = (project in file("."))
+lazy val soceteer = (project in rootDir)
   .settings(
     version := {
       val versionFile = baseDirectory.value / "VERSION"
@@ -209,8 +239,8 @@ lazy val soceteer = (project in file("."))
   ).settings(
     // Lowering backend depends on the Chisel version
     Compile / unmanagedSourceDirectories ++= {
-      if (useChisel3) Seq(baseDirectory.value / "src/main/scala-unmanaged/chisel3")
-      else Seq(baseDirectory.value / "src/main/scala-unmanaged/chisel")
+      if (useChisel3) Seq(unmanagedDir / "chisel3")
+      else Seq(unmanagedDir / "chisel")
     }
   ).settings(name := "SoCeteer")
 
@@ -224,5 +254,9 @@ buildInfoKeys := Seq[BuildInfoKey](
   version,
   scalaVersion,
   sbtVersion,
-  "supportedChiselVersions" -> supportedChiselVersions.mkString(", ")
+  // Single source of truth for all paths and versions, so we can use it in the README builder and elsewhere:
+  "supportedChiselVersions" -> supportedChiselVersions.mkString(", "),
+  "rocketChipDir" -> rocketChipDir.toString,
+  "boomDir" -> boomDir.toString,
+  "gemminiDir" -> gemminiDir.toString
 )
