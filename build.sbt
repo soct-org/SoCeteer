@@ -1,15 +1,24 @@
 enablePlugins(BuildInfoPlugin)
 
-// 7.7.0 for CIRCT Chisel or "3.6.1" for Berkeley Chisel3, other versions are not supported
-val fallbackChiselVersion = "7.7.0"
+//***************************
+// CHANGE CHISEL VERSION HERE
+//***************************
+val fallbackChiselVersion = "7.9.0"
+val supportedChiselVersions = Seq("7.9.0", "3.6.1")
 
-val params = sys.env.get("SOCT_CHISEL_VERSION") match {
-  case Some(v) => Seq(v.startsWith("3."), v)
-  case None => Seq(fallbackChiselVersion.startsWith("3."), fallbackChiselVersion)
+
+val chiselVersion = sys.env.get("SOCT_CHISEL_VERSION") match {
+  case Some(v) =>
+    if (!supportedChiselVersions.contains(v)) {
+      println(s"Warning: Unsupported Chisel version '$v'. Falling back to '$fallbackChiselVersion'. Supported versions are: ${supportedChiselVersions.mkString(", ")}.")
+      fallbackChiselVersion
+    } else {
+      v
+    }
+  case None => fallbackChiselVersion
 }
 
-val useChisel3 = params.head.asInstanceOf[Boolean]
-val chiselVersion = params(1).asInstanceOf[String]
+val useChisel3 = chiselVersion.startsWith("3.")
 
 // NOTES:
 // 22.04.2025: Don't add your own firtoolresolver as it will clash with the one used by chisel
@@ -205,11 +214,15 @@ lazy val soceteer = (project in file("."))
     }
   ).settings(name := "SoCeteer")
 
+
+// Add build info settings to the root project
 buildInfoPackage := "soct.build"
+
 // Add SoCeteer name, version and Scala version to BuildInfo
 buildInfoKeys := Seq[BuildInfoKey](
   name,
   version,
   scalaVersion,
-  sbtVersion
+  sbtVersion,
+  "supportedChiselVersions" -> supportedChiselVersions.mkString(", ")
 )
