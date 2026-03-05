@@ -59,10 +59,12 @@ object SOCTPaths {
     "binaries" -> root.resolve("binaries"),
     "shared" -> root.resolve("shared"),
     "generators" -> root.resolve("generators"),
+    "dockerfile" -> root.resolve("Dockerfile")
   )
 
   private val derived: Map[String, Path] = Map(
     "FindVERILATOR.cmake" -> base("shared").resolve("cmake").resolve("FindVERILATOR.cmake"),
+    "verilator" -> base("shared").resolve("verilator")
   )
 
   private val baseDyn: Map[String, Path] = Map(

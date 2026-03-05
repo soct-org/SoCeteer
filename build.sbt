@@ -83,6 +83,8 @@ val rocketChipDepsDir = rocketChipDir / "dependencies"
 
 val srcMain = rootDir / "src" / "main"
 
+val scalaMain = srcMain / "scala"
+
 val diplomacyDir = if (useChisel3) {
   rocketChipDepsDir / "diplomacy-chisel3" // Separate branch for chisel3
 } else {
@@ -256,6 +258,8 @@ buildInfoKeys := Seq[BuildInfoKey](
   sbtVersion,
   // Single source of truth for all paths and versions, so we can use it in the README builder and elsewhere:
   "supportedChiselVersions" -> supportedChiselVersions.mkString(", "),
+  "scalaMain" -> scalaMain.toString,
+  "generatorsDir" -> generatorsDir.toString,
   "rocketChipDir" -> rocketChipDir.toString,
   "boomDir" -> boomDir.toString,
   "gemminiDir" -> gemminiDir.toString
