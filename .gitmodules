@@ -23,7 +23,6 @@
 	path = generators/rocket-chip
 	url = https://github.com/soct-org/rocket-chip.git
 	branch = master
-	ignore = all
 [submodule "shared/verilator"]
 	path = shared/verilator
 	url = https://github.com/verilator/verilator.git
