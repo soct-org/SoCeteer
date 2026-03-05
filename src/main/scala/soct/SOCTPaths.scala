@@ -227,5 +227,5 @@ private class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths
   // For example: workspace/RocketB1-64/sim
   val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve("sim")
 
-  override def createSubdirsImpl(): Unit = ???
+  override def createSubdirsImpl(): Unit = {}
 }
