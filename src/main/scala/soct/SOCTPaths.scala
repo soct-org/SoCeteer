@@ -1,9 +1,16 @@
 package soct
 
 import soct.SOCTLauncher.SOCTConfig
+import soct.SOCTNames._
 import soct.system.vivado.fpga.FPGARegistry
 
 import java.nio.file.{Files, Path, Paths}
+
+
+object SOCTNames {
+  val SOCETEER_ROOT_ENV_VAR: String = "SOCETEER_ROOT"
+  val SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem.cmake"
+}
 
 
 /**
@@ -15,7 +22,7 @@ object SOCTPaths {
    * Can be overridden by setting the SOCETEER_ROOT environment variable
    */
   def projectRoot: Path = {
-    val envVar = System.getenv("SOCETEER_ROOT")
+    val envVar = System.getenv(SOCETEER_ROOT_ENV_VAR)
     if (envVar != null) {
       val path = Paths.get(envVar)
       if (Files.exists(path)) return path
@@ -137,7 +144,7 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) {
   /**
    * Path to the generated SOCTSystem.cmake file
    */
-  def soctSystemCMakeFile: Path = systemDir.resolve("SOCTSystem.cmake")
+  def soctSystemCMakeFile: Path = systemDir.resolve(SOCT_SYSTEM_CMAKE_FILE)
 
 
   /**

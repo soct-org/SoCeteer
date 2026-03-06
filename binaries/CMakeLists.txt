@@ -4,6 +4,8 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # The SOCT System provides many variables used throughout the build process.
 if (DEFINED SOCT_SYSTEM AND EXISTS "${SOCT_SYSTEM}")
+    # Make absolute path:
+    get_filename_component(SOCT_SYSTEM "${SOCT_SYSTEM}" ABSOLUTE)
     message(STATUS "Using SOCT system file from SOCT_SYSTEM variable: ${SOCT_SYSTEM}")
 else ()
     cmake_path(GET CMAKE_CURRENT_LIST_DIR PARENT_PATH _soceteer_root)

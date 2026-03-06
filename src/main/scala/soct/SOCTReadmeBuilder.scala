@@ -2,6 +2,7 @@ package soct
 
 // Import the generated BuildInfo as info (short alias for convenience):
 
+import soct.SOCTNames.SOCT_SYSTEM_CMAKE_FILE
 import soct.build.{BuildInfo => info}
 
 import java.nio.charset.StandardCharsets
@@ -23,10 +24,20 @@ object SOCTReadmeBuilder {
   val otherChisels = chiselVersions.filterNot(_.startsWith("3"))
 
   val sl = SOCTLauncher.getClass.getSimpleName.stripSuffix("$")
-  val slPath = info.scalaMain + "/" + SOCTLauncher.getClass.getCanonicalName.stripSuffix("$").replace(".", "/") + ".scala"
+  val slPath = SOCTLauncher.getClass.getCanonicalName.stripSuffix("$")
+  val slFilePath = info.scalaMain + "/" + SOCTLauncher.getClass.getCanonicalName.stripSuffix("$").replace(".", "/") + ".scala"
+
+  val defaultArgs = SOCTArgs()
+  val defaultConfigPath = defaultArgs.baseConfig.getClass.getCanonicalName
+  val defaultConfig = s"${defaultArgs.baseConfig}-${defaultArgs.xlen}"
+  val soctCmakePath = s"${rel(defaultArgs.workspaceDir)}/$defaultConfig/sim/${SOCT_SYSTEM_CMAKE_FILE}"
+
+  def rel(path: Path): String = {
+    root + "/" + SOCTPaths.projectRoot.relativize(path).toString
+  }
 
   def path(s: String): String = {
-    root + "/" + SOCTPaths.projectRoot.relativize(SOCTPaths.get(s)).toString
+    rel(SOCTPaths.get(s))
   }
 
   def emit(): String = {
@@ -61,8 +72,11 @@ object SOCTReadmeBuilder {
        |
        |* Cross-platform support for Linux, macOS(ARM / x86_64), and Windows (even native!)
        |
+       |---
        |
-       |### Getting Started
+       |## Setup and Dependencies
+       |
+       |---
        |
        |The recommended way to use $sct is via IntelliJ IDEA with the Scala plugin, which provides excellent support for sbt projects.
        |However, you can also use it via the command line (CLI) with sbt (either in a docker container or natively).
@@ -175,22 +189,72 @@ object SOCTReadmeBuilder {
        |
        |---
        |
-       |## Quick Start (IDE)
+       |## Quick Start
        |
-       |1. Ensure all dependencies are installed.
-       |2. Open $sct (the root directory) in IntelliJ IDEA with the Scala plugin.
-       |3. Navigate to the [$sl](${slPath})
-       |4. Press on the green play button next to the `main` method to run the project.
+       |Here's a quick start guide to get you up and running with $sct.
+       |By default, running the launcher without any args will emit a RocketChip SoC with the default configuration ($defaultConfigPath) - a single RocketChip core for simulation (by default with 64-bit XLEN)
+       |After running the launcher, you can find the emitted files (like the FIRRTL and Verilog description, regmaps and the device tree) in the `workspace/$defaultConfig/sim` directory.
+       |We then use the CMake project in ${path("binaries")}") to emit a simple program that runs on the generated design in simulation.
+       |For this, the CMake project in ${path("sim")} will build a Verilator-based simulator for the generated design, and you can run the emitted program on the simulator to see it in action.
+       |
+       |> [!NOTE]
+       |> $sct emits a CMake file for each emitted design named ${SOCT_SYSTEM_CMAKE_FILE} which contains information about the emitted design, such as the CPU architecture, the number of cores etc.
+       |> This simplifies the process of building binaries as commonly used variables are already defined for you and don't need to be extracted from the device tree blob.
+       |> For our example, the emitted ${SOCT_SYSTEM_CMAKE_FILE} file is located at `$soctCmakePath`.
+       |---
+       |
+       |#### Emit a Design (IntelliJ IDEA)
+       |1. Open $sct (the root directory) in IntelliJ IDEA with the Scala plugin.
+       |2. Navigate to the launcher class $sl [$slFilePath]($slFilePath)
+       |3. Press on the green play button next to the `main` method to run the project.
        |    * In the case the play button is not visible, reload the SBT project (`Help -> Find Action -> sbt` and click
        |    `Sync all SBT projects`).
-       |5. After building the project and downloading the RISC-V toolchain, $sct will emit a set of Verilog files, device tree
-       |   sources, and regmap in the `workspace` directory (RocketB1-64)
-       |    * Select and edit the Configuration in the top right corner and add `--help` to see all available options. Press the
-       |    play button again to re-run with the new configuration.
+       |    * To change the arguments passed to $sct, edit the Configuration in the top right corner (or `Help -> Find Action -> Edit Configurations`).
+       |
+       |---
+       |
+       |#### Emit a Design (CLI)
+       |0. (Docker only) Pull the latest image with `docker pull ghcr.io/soct-org/soceteer:latest` or build it locally from the [Dockerfile](${path("dockerfile")}).
+       |    Then create a container with the repository mounted and a terminal attached:
+       |    ```bash
+       |    docker run --rm -it \\
+       |      -v "<path-to-repo>":/mnt \\
+       |      -w /mnt \\
+       |      ghcr.io/soct-org/soceteer:latest \\
+       |      bash
+       |    ```
+       |    * `-it` gives you a TTY + interactive prompt.
+       |    * Adding `-u $$(id -u):$$(id -g)` makes file ownership inside the container match your host user
+       |     (optional, but prevents permission issues with generated files).
+       |    * `<path-to-repo>` should be the absolute path to the cloned repository on your host machine.
+       |    * NOTE: If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
+       |
+       |1. Run the main method of the $sl
+       |    1. (Using sbt) Run `sbt "runMain $slPath"` in the terminal from the root directory.
+       |    Additional arguments for the main method can be passed after the class path, for example: `sbt "runMain $slPath --help"` to see all available options.
+       |    2. (Using a JAR) Build the project with `sbt assembly` and run the generated JAR with `java -jar <path-to-jar> $slPath`.
+       |        The `path-to-jar` is set in the `assemblyOutputPath` setting in `build.sbt`, and defaults to `target/assembly/chisel-<chiselVersion>/soceteer-<version>.jar`.
+       |
+       |---
+       |
+       |#### Building Binaries (CLion or VSCode)
+       |
+       |
+       |
+       |
+       |
+       |
+       |
+       |---
+       |
+       |#### Building Binaries (CLI)
+       |
+       |1. Create a ´build´ directory: `mkdir -p ${path("binaries")}/build`
+       |   To initialize the CMake project for our example, run `cmake -S ${path("binaries")} -B ${path("binaries")}/build -DSOCT_SYSTEM=${soctCmakePath}` from the project root directory.
+       |
        |6. Open the [sim](sim) directory as a separate project in CLion or VSCode. Build the simulator using CMake.
        |    * Make sure to select the Release build type for **significantly better performance** (left of the configuration
        |      selector in CLion, Debug by default).
-       |    * [Here](#building-the-simulator) is a list of available CMake options for building the simulator.
        |7. Open the [examples](binaries) directory as a separate project in CLion or VSCode. Build one of the example programs
        |   using CMake.
        |8. Run the simulator and pass the compiled ELF binary as an argument.

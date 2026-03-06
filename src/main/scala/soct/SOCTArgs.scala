@@ -200,7 +200,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure(s"Invalid FPGA board $x. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
     )
     .text(s"The FPGA board to target for synthesis. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
-  opt[String]("core-freq-Mhz").action((x, c) => c.copy(coreFreq = Some(BigInt((x.toDouble * 1000 * 1000).toInt))))
+  opt[String]("core-freq-mhz").action((x, c) => c.copy(coreFreq = Some(BigInt((x.toDouble * 1000 * 1000).toInt))))
     .text(
       s"""
          |The frequency to use for the core clock in MHz as a floating point number.
@@ -208,7 +208,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |For more complex designs where the core is driven by multiple clocks, set the frequency of the bus clock(s) by adding the configs ${classOf[WithPeripheryBusFrequency].getClass.getName} etc. to the main config.
          |""".stripMargin
       )
-  opt[String]("periphery-freq-Mhz").action((x, c) => c.copy(peripheryFreq = BigInt((x.toDouble * 1000 * 1000).toInt)))
+  opt[String]("periphery-freq-mhz").action((x, c) => c.copy(peripheryFreq = BigInt((x.toDouble * 1000 * 1000).toInt)))
     .text(
       s"""
          |The frequency to use for the periphery bus clock in MHz as a floating point number.
