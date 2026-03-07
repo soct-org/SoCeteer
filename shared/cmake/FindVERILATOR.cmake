@@ -34,7 +34,10 @@ elseif (DEFINED ENV{VERILATOR_ROOT})
 # 3.
 elseif (NOT EXISTS "${VERILATOR_SUBMODULE}")
     message(FATAL_ERROR "VERILATOR_ROOT not defined and no project-relative verilator submodule found at ${VERILATOR_SUBMODULE}.")
-endif ()
+else()
+    message(STATUS "Using project-relative Verilator submodule at ${VERILATOR_SUBMODULE}")
+    set(VERILATOR_ROOT "${VERILATOR_INSTALL}")
+endif()
 
 #####################################
 # Function to check Verilator version
