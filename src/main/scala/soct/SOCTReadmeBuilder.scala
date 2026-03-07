@@ -17,7 +17,8 @@ object SOCTReadmeBuilder {
   val sct = s"**$name**"
   val url = "https://github.com/soct-org/SoCeteer"
   val gitUrl = url + ".git"
-  val root = "."
+  val root = "<soceteer-root>"
+  val rootDocker = "/soceteer"
 
   val chiselVersions = info.supportedChiselVersions.split(",").map(_.trim).toList
   val chisel3s = chiselVersions.filter(_.startsWith("3"))
@@ -30,12 +31,20 @@ object SOCTReadmeBuilder {
   val defaultArgs = SOCTArgs()
   val defaultConfigPath = defaultArgs.baseConfig.getClass.getCanonicalName
   val defaultConfig = s"${defaultArgs.baseConfig}-${defaultArgs.xlen}"
-  val soctCmakePath = s"${rel(defaultArgs.workspaceDir)}/$defaultConfig/sim/${SOCT_SYSTEM_CMAKE_FILE}"
+  val exampleOutDir = s"${rel(defaultArgs.workspaceDir)}/$defaultConfig/sim"
+  val soctCmakePath = s"$exampleOutDir/${SOCT_SYSTEM_CMAKE_FILE}"
+
+  val defaultBin = "hello-cpp"
+  val defaultTargetSim = s"${defaultBin}-sim"
+  val defaultTargetBoard = s"${defaultBin}-board"
+
+  val elfDir = path("binaries") + "/elfs"
+  val defaultElfSim = s"$elfDir/programs/$defaultBin/boot-sim.elf"
+  val defaultElfBoard = s"$elfDir/programs/$defaultBin/boot-board.elf"
 
   def rel(path: Path): String = {
-    root + "/" + SOCTPaths.projectRoot.relativize(path).toString
+    SOCTPaths.projectRoot.relativize(path).toString
   }
-
   def path(s: String): String = {
     rel(SOCTPaths.get(s))
   }
@@ -192,15 +201,16 @@ object SOCTReadmeBuilder {
        |## Quick Start
        |
        |Here's a quick start guide to get you up and running with $sct.
-       |By default, running the launcher without any args will emit a RocketChip SoC with the default configuration ($defaultConfigPath) - a single RocketChip core for simulation (by default with 64-bit XLEN)
-       |After running the launcher, you can find the emitted files (like the FIRRTL and Verilog description, regmaps and the device tree) in the `workspace/$defaultConfig/sim` directory.
+       |By default, running the launcher without any args will emit a RocketChip SoC with the default configuration ($defaultConfigPath) - a single RocketChip core for simulation (by default with 64-bit XLEN).
+       |
+       |After running the launcher, you can find the emitted files (like the FIRRTL and Verilog description, regmaps and the device tree) in the `$exampleOutDir` directory.
        |We then use the CMake project in ${path("binaries")}") to emit a simple program that runs on the generated design in simulation.
        |For this, the CMake project in ${path("sim")} will build a Verilator-based simulator for the generated design, and you can run the emitted program on the simulator to see it in action.
        |
        |> [!NOTE]
        |> $sct emits a CMake file for each emitted design named ${SOCT_SYSTEM_CMAKE_FILE} which contains information about the emitted design, such as the CPU architecture, the number of cores etc.
        |> This simplifies the process of building binaries as commonly used variables are already defined for you and don't need to be extracted from the device tree blob.
-       |> For our example, the emitted ${SOCT_SYSTEM_CMAKE_FILE} file is located at `$soctCmakePath`.
+       |> For our example, the emitted $SOCT_SYSTEM_CMAKE_FILE file is located at `$soctCmakePath`.
        |---
        |
        |#### Emit a Design (IntelliJ IDEA)
@@ -209,7 +219,7 @@ object SOCTReadmeBuilder {
        |3. Press on the green play button next to the `main` method to run the project.
        |    * In the case the play button is not visible, reload the SBT project (`Help -> Find Action -> sbt` and click
        |    `Sync all SBT projects`).
-       |    * To change the arguments passed to $sct, edit the Configuration in the top right corner (or `Help -> Find Action -> Edit Configurations`).
+       |    * To change the arguments passed to $sct, edit the Configuration in the top right corner (or `Help -> Find Action -> Edit Configurations -> Program Arguments`).
        |
        |---
        |
@@ -218,16 +228,15 @@ object SOCTReadmeBuilder {
        |    Then create a container with the repository mounted and a terminal attached:
        |    ```bash
        |    docker run --rm -it \\
-       |      -v "<path-to-repo>":/mnt \\
-       |      -w /mnt \\
+       |      -v "$root":$rootDocker \\
+       |      -w $rootDocker \\
        |      ghcr.io/soct-org/soceteer:latest \\
        |      bash
        |    ```
-       |    * `-it` gives you a TTY + interactive prompt.
        |    * Adding `-u $$(id -u):$$(id -g)` makes file ownership inside the container match your host user
        |     (optional, but prevents permission issues with generated files).
-       |    * `<path-to-repo>` should be the absolute path to the cloned repository on your host machine.
-       |    * NOTE: If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
+       |    * `$root` should be the absolute path to the cloned repository on your host machine.
+       |    * For the subsequent commands $rootDocker is the path to the repository inside the container
        |
        |1. Run the main method of the $sl
        |    1. (Using sbt) Run `sbt "runMain $slPath"` in the terminal from the root directory.
@@ -237,34 +246,44 @@ object SOCTReadmeBuilder {
        |
        |---
        |
-       |#### Building Binaries (CLion or VSCode)
+       |#### Building Binaries (CLion)
        |
-       |
-       |
-       |
-       |
-       |
+       |1. Open the [${path("binaries")}](${path("binaries")}) directory as a project in CLion.
+       |2. Configure the CMake project for the example: `Help -> Find Action -> CMake Settings -> CMake options -> add -DSOCT_SYSTEM=$root/$soctCmakePath`
+       |3. In the top right corner, select the example binary `$defaultBin` and click the hammer icon to build it.
        |
        |---
        |
        |#### Building Binaries (CLI)
        |
-       |1. Create a ´build´ directory: `mkdir -p ${path("binaries")}/build`
-       |   To initialize the CMake project for our example, run `cmake -S ${path("binaries")} -B ${path("binaries")}/build -DSOCT_SYSTEM=${soctCmakePath}` from the project root directory.
+       |1. Create a `build` directory: `mkdir -p ${path("binaries")}/build`.
+       |2. Initialize the CMake project for the example: `cmake -S ${path("binaries")} -B ${path("binaries")}/build -DSOCT_SYSTEM=$root/$soctCmakePath`
+       |3. Build the example binary: `cmake --build ${path("binaries")}/build --target $defaultTargetSim`
        |
-       |6. Open the [sim](sim) directory as a separate project in CLion or VSCode. Build the simulator using CMake.
-       |    * Make sure to select the Release build type for **significantly better performance** (left of the configuration
-       |      selector in CLion, Debug by default).
-       |7. Open the [examples](binaries) directory as a separate project in CLion or VSCode. Build one of the example programs
-       |   using CMake.
-       |8. Run the simulator and pass the compiled ELF binary as an argument.
+       |---
        |
+       |#### Running the Simulator (CLion)
        |
+       |1. Open the [${path("sim")}](${path("sim")}) directory as a project in CLion.
+       |2. Create a release build configuration for the simulator: `Help -> Find Action -> CMake Settings -> Press "+" above the list of configurations`
+       |   Now you can select the new configuration in the top right corner
+       |3. Pass the binary you want to run as an argument to the simulator configuration: `Help -> Find Action -> Edit Configurations -> select the simulator configuration -> Program Arguments` and add `${defaultElfSim}`
+       |4. Click the green play button to build and run the simulator with the example binary.
        |
+       |---
+       |
+       |#### Running the Simulator (CLI)
+       |
+       |1. Create a `build` directory: `mkdir -p ${path("sim")}/build`.
+       |2. Initialize the CMake project for the example: `cmake -S ${path("sim")} -B ${path("sim")}/build -DCMAKE_BUILD_TYPE=Release`
+       |3. Build the simulator (builds all targets in `${path("sim")}/configs`: `cmake --build ${path("sim")}/build --parallel $$(nproc)`
+       |4. Run the example binary on the simulator: `${path("sim")}/build/$defaultConfig $defaultElfSim`
+       |
+       |---
        |
        |## Known Issues and Limitations
-       |
-       |
+       |* If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
+       |* Currently we cannot build Verilator on Apple Silicon (ARM64) hosts due to a flex/bison issue. We are working on a solution for this.
        |
        |""".stripMargin
   }
@@ -272,7 +291,7 @@ object SOCTReadmeBuilder {
   def main(args: Array[String]): Unit = {
     val readmeContent = emit()
 
-    val outPath = SOCTPaths.projectRoot.resolve("README-NEW.md")
+    val outPath = SOCTPaths.projectRoot.resolve("README.md")
 
     // Overwrite the file with the generated content.
     Files.write(outPath, readmeContent.getBytes(StandardCharsets.UTF_16))

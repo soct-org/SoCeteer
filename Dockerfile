@@ -51,7 +51,7 @@ COPY --chown=soct:soct /shared/cmake/install-verilator.cmake ${SCRIPTS_DIR}/inst
 
 RUN git clone --branch ${VERILATOR_TAG} --depth=1 https://github.com/verilator/verilator.git ${VERILATOR_ROOT} \
     && cmake -DVERILATOR_SOURCE=${VERILATOR_ROOT}  \
-    -DVERILATOR_INSTALL=${VERILATOR_ROOT}/artifact \
+    -DVERILATOR_INSTALL=${VERILATOR_ROOT} \
     -P ${SCRIPTS_DIR}/install-verilator.cmake
 
 # CIRCT Build Stage
