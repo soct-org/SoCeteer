@@ -63,7 +63,7 @@ class SimulationSpec extends AnyFlatSpec {
   //***********
   // QUICK TEST
   //***********
-  val defaultTest: Test = Test(classOf[soct.RocketB1], XLEN_64)
+  val defaultTest: Test = Test(classOf[soct.RocketB4], XLEN_64)
   "Fast test" should "run without errors" in {
     val xlen = defaultTest.xlens.head
     val outDir = testWorkspace.resolve(SOCTUtils.configName(defaultTest.config, xlen))

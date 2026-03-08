@@ -299,14 +299,14 @@ size_t dtm_t::chunk_max_size() const {
 
 std::shared_ptr<chunked_memif_t> dtm_t::init_chunked_memif() {
     auto cmemif = std::make_shared<chunked_memif_t>();
-    cmemif->read = [this]<typename... T>(T&&... args) { return timefn(read(std::forward<T>(args)...)); };
-    cmemif->write = [this]<typename... T>(T&&... args){ return timefn(write(std::forward<T>(args)...)); };
+    cmemif->read = [this]<typename... T>(T&&... args) { return read(std::forward<T>(args)...); };
+    cmemif->write = [this]<typename... T>(T&&... args){ return write(std::forward<T>(args)...); };
     cmemif->log_rw_progress = [this]<typename... T>(T&&... args) {return log_rw_progress(std::forward<T>(args)...);};
-    cmemif->read_chunk = [this]<typename... T>(T&&... args) { return timefn(read_chunk(std::forward<T>(args)...)); };
-    cmemif->write_chunk = [this]<typename... T>(T&&... args) { return timefn(write_chunk(std::forward<T>(args)...)); };
-    cmemif->clear_chunk = [this]<typename... T>(T&&... args) { return timefn(clear_chunk(std::forward<T>(args)...)); };
-    cmemif->chunk_align = [this] { return timefn(chunk_align()); };
-    cmemif->chunk_max_size = [this] { return timefn(chunk_max_size()); };
+    cmemif->read_chunk = [this]<typename... T>(T&&... args) { return read_chunk(std::forward<T>(args)...); };
+    cmemif->write_chunk = [this]<typename... T>(T&&... args) { return write_chunk(std::forward<T>(args)...); };
+    cmemif->clear_chunk = [this]<typename... T>(T&&... args) { return clear_chunk(std::forward<T>(args)...); };
+    cmemif->chunk_align = [this] { return chunk_align(); };
+    cmemif->chunk_max_size = [this] { return chunk_max_size(); };
 
     return cmemif;
 }

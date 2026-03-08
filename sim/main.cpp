@@ -66,7 +66,7 @@ int main(const int argc, char* argv[]) {
     contextp->commandArgs(argc, argv);
     const std::unique_ptr<SystemType> topp{new SystemType{contextp.get()}};
 
-    timepush("Simulation loop");
+    timepush("Total simulation time");
 #ifdef VL_TRACE
     // Initialize VCD tracing
     const std::string vcd_filename = "dump.vcd";

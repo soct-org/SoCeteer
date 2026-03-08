@@ -229,7 +229,7 @@ object SOCTReadmeBuilder {
        |---
        |
        |#### Emit a Design (CLI)
-       |0. (Docker only) Pull the latest image with `docker pull ghcr.io/soct-org/soceteer:latest` or build it locally from the [Dockerfile](${path("dockerfile")}).
+       |1. (Docker only) Pull the latest image with `docker pull ghcr.io/soct-org/soceteer:latest` or build it locally from the [Dockerfile](${path("dockerfile")}).
        |    Then create a container with the repository mounted and a terminal attached:
        |    ```bash
        |    docker run --rm -it \\
@@ -243,7 +243,7 @@ object SOCTReadmeBuilder {
        |    * `$root` should be the absolute path to the cloned repository on your host machine.
        |    * For the subsequent commands $rootDocker is the path to the repository inside the container
        |
-       |1. Run the main method of the $sl
+       |2. Run the main method of the $sl
        |    1. (Using sbt) Run `sbt "runMain $slPath"` in the terminal from the root directory.
        |    Additional arguments for the main method can be passed after the class path, for example: `sbt "runMain $slPath --help"` to see all available options.
        |    2. (Using a JAR) Build the project with `sbt assembly` and run the generated JAR with `java -jar <path-to-jar> $slPath`.

@@ -15,7 +15,7 @@ object SOCTNames {
   val BOOTROM_MODE_KEY: String = "BOOTROM_MODE"
   val LATEST_SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem-latest.cmake"
   val SOCT_SIMULATOR_EXE = "simulator"
-  val DEFAULT_EXAMPLE_BINARY = "hello-cpp" // Default example binary to build for tests and in README
+  val DEFAULT_EXAMPLE_BINARY = "hello-hart" // Default example binary to build for tests and in README
 }
 
 

@@ -71,7 +71,8 @@ set(VL_ARGS "--vpi" "--O3" "-timing")
 
 # The number of threads to use in verilator
 if (NOT DEFINED VL_THREADS)
-    set(VL_THREADS 2)
+    # For now, set it to SOCT_NCPUS + 1 but at we should find a sensible upper limit
+    math(EXPR VL_THREADS "${SOCT_NCPUS} + 1")
     message(STATUS "Using ${VL_THREADS} threads in verilator")
 endif ()
 list(APPEND VL_ARGS "--threads" "${VL_THREADS}")

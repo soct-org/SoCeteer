@@ -86,7 +86,7 @@ public:
                 times.push_back(duration);
             }
 
-            auto to_ms = [this]<typename T>(T time) {
+            auto to_ms = []<typename T>(T time) {
                 return static_cast<double>(time) / 1'000'000.0;
             };
 
@@ -101,16 +101,24 @@ public:
             const auto min = to_ms(*std::ranges::min_element(times));
             const auto max = to_ms(*std::ranges::max_element(times));
 
-            std::cout << "What: " << func_name << "\n";
-            std::cout << "Where: " << file << ":" << line << "\n";
-            std::cout << "Mean: " << mean << "ms\n";
-            std::cout << "Median: " << median << "ms\n";
-            std::cout << "Min: " << min << "ms\n";
-            std::cout << "Max: " << max << "ms\n";
-            std::cout << "Ticks per sec (mean): " << format_hz(mean > 0 ? 1000 / mean : 0) << "\n";
-            std::cout << "Total: " << to_ms(sum) << "ms\n";
-            std::cout << "Number of runs: " << times.size() << "\n";
-            std::cout << "-----------------------------------\n";
+            if (times.size() == 1) {
+                std::cout << "What: " << func_name << "\n";
+                std::cout << "Where: " << file << ":" << line << "\n";
+                std::cout << "Time: " << mean << "ms\n";
+                std::cout << "Ticks per sec: " << format_hz(mean > 0 ? 1000 / mean : 0) << "\n";
+                std::cout << "-----------------------------------\n";
+            } else {
+                std::cout << "What: " << func_name << "\n";
+                std::cout << "Where: " << file << ":" << line << "\n";
+                std::cout << "Mean: " << mean << "ms\n";
+                std::cout << "Median: " << median << "ms\n";
+                std::cout << "Min: " << min << "ms\n";
+                std::cout << "Max: " << max << "ms\n";
+                std::cout << "Ticks per sec (mean): " << format_hz(mean > 0 ? 1000 / mean : 0) << "\n";
+                std::cout << "Total: " << to_ms(sum) << "ms\n";
+                std::cout << "Number of runs: " << times.size() << "\n";
+                std::cout << "-----------------------------------\n";
+            }
         }
     }
 

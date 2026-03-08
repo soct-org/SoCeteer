@@ -28,6 +28,10 @@ class RocketB2 extends Config(
   new WithNBigCores(2)
 )
 
+class RocketB4 extends Config(
+  new WithNBigCores(4)
+)
+
 class RocketH1 extends Config(
   new WithNHugeCores(1)
 )
