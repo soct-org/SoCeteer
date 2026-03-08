@@ -11,6 +11,7 @@ import soct.system.vivado.SOCTVivadoSystem
 import soct.system.vivado.fpga.{FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
+import soct.SOCTPaths.projectRoot
 
 // Define the supported targets
 sealed trait Targets {
@@ -79,8 +80,8 @@ object Targets {
 
 case class SOCTArgs(
                      // General options
-                     workspaceDir: Path = SOCTPaths.get("workspace"),
-                     vivadoProjectDir: Path = SOCTPaths.get("vivado-projects"),
+                     workspaceDir: Path = projectRoot.resolve("workspace"),
+                     vivadoProjectDir: Path = projectRoot.resolve("vivado-projects"),
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
@@ -105,8 +106,6 @@ case class SOCTArgs(
                      }.getOrElse("1.75.0"), // Default to the version
                      userFirtoolArgs: Seq[String] = Seq.empty,
 
-                     // Simulation options
-                     overrideSimFiles: Boolean = true,
                      // Vivado specific options
                      vivado: Option[Path] = None,
                      board: Option[Class[_ <: FPGA]] = None,
@@ -150,7 +149,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   // General options
   opt[String]('o', "out-dir").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated files. Default is ${defaultSOCTArgs.workspaceDir}.")
   opt[String]("vivado-project-dir").action((x, c) => c.copy(vivadoProjectDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated vivado projects. Default is ${defaultSOCTArgs.vivadoProjectDir}.")
-  opt[String]('c', "configs")
+  opt[String]('c', "config")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
   opt[Int]("xlen").action((x, c) => c.copy(xlen = x)).text(s"The xlen to use. Default is ${defaultSOCTArgs.xlen}. Allowed values are 32 and 64 - 32 adds ${classOf[freechips.rocketchip.rocket.WithRV32].getName} to the config.")
@@ -188,9 +187,6 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[String]("firtool-version").action((x, c) => c.copy(firtoolVersion = x)).text(s"The version of firtool to use. Only change if you encounter issues. Default is ${defaultSOCTArgs.firtoolVersion}.")
   opt[String]('a', "firtool-arg").unbounded().action((x, c) => c.copy(userFirtoolArgs = c.userFirtoolArgs :+ x)).text(s"Additional arguments to pass to firtool. Is only applied in the last lowering stage. Can be used multiple times.")
 
-  // Simulation options
-  opt[Unit]("no-override-sim-files").action((_, c) => c.copy(overrideSimFiles = false)).text(s"When generating a design to be used with simulation, DO NOT copy, and potentially overwrite the files to the simulation directory - Only keep them in the workspace directory.")
-
   // Vivado specific options
   opt[String]("vivado").action((x, c) => c.copy(vivado = Some(Paths.get(x)))).text(s"The vivado executable script to use. Default is ${defaultSOCTArgs.vivado}.")
   opt[String]('b', "board")
@@ -216,7 +212,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |Default is ${defaultSOCTArgs.peripheryFreq / (1000 * 1000)} MHz.
          |""".stripMargin
     )
-  opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the workspace directory.")
+  opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the out-dir directory.")
   // Terminating options
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")
   opt[Unit]("wtf").action((_, c) => c.copy(wtf = true)).text("What the firtool -- Prints the firtool help.")

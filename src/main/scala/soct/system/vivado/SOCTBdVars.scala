@@ -56,9 +56,9 @@ object SOCTBdVars {
   object k {
     final val aggressive = "$aggressive"
     final val sources = "$sources"
-    final var constraints = "$constraints"
-    final var synth = "$synth"
-    final var impl = "$impl"
+    final val constraints = "$constraints"
+    final val synth = "$synth"
+    final val impl = "$impl"
     final val projectName = "$project_name"
     final val bdName = "$bd_name"
     final val xilinxPart = "$xilinx_part"

@@ -13,9 +13,10 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule, LazyRawModuleImp}
 import soct.SOCTUtils.runCMakeCommand
-import soct.{DTSCMakeGenerator, HasSOCTConfig, HasSOCTPaths, SOCTPaths, log}
+import soct.{HasSOCTConfig, HasSOCTPaths, SOCTPaths, SOCTSystemGenerator, SOCTUtils, log}
 
 import java.nio.file.Files
+import scala.reflect.io.Directory
 
 /**
  * Singleton object to hold the last instantiated RocketSystem for access by other components
@@ -151,21 +152,20 @@ object SOCTBootROM {
       Files.write(paths.dtsFile, subsystem.dts.getBytes())
 
       // Write a CMake file with important information from the DTS - simplifies building binaries for the system
-      val soctCmake = DTSCMakeGenerator.generate(paths, config)
+      val soctCmake = SOCTSystemGenerator.generate(paths, config)
       Files.write(paths.soctSystemCMakeFile, soctCmake.getBytes)
 
       // Compile bootrom using CMake
       val defs = Map(
-        "SOCT_SYSTEM_CMAKE" -> paths.soctSystemCMakeFile.toString,
+        "SOCT_SYSTEM" -> paths.soctSystemCMakeFile.toString,
         // And configure for bootrom build
         "BOOTROM_MODE" -> "ON",
       )
 
       val sourceDir = SOCTPaths.get("binaries")
-      val buildDir = SOCTPaths.get("bootrom-build")
-      // Delete the cache to force reconfiguration
-      val cacheFile = buildDir.resolve("CMakeCache.txt")
-      cacheFile.toFile.delete()
+      val buildDir = paths.newTmpDir()
+      soct.log.debug(s"Building bootrom with CMake. Source dir: $sourceDir, Build dir (deleted after build): $buildDir")
+
       val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
 
       runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
@@ -173,7 +173,7 @@ object SOCTBootROM {
 
       assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
 
-      log.info("Building bootrom using CMake")
+      Directory(buildDir.toFile).deleteRecursively()
 
       val contents = Files.readAllBytes(paths.bootromImgFile)
       contents

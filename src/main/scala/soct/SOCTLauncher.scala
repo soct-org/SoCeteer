@@ -2,6 +2,7 @@ package soct
 
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
+import soct.SOCTUtils.configName
 import soct.system.vivado.SOCTVivado
 
 import scala.reflect.io.Path.jfile2path
@@ -39,8 +40,7 @@ object SOCTLauncher {
       }
       val topModule = args.userTop.getOrElse(args.target.defaultTop)
       val topModuleName = topModule.fold(_.getSimpleName, _.getSimpleName)
-      val configName = s"${args.baseConfig.getClass.getSimpleName}-${args.xlen}"
-      new SOCTConfig(args, mabi, topModule, topModuleName, params ++ args.baseConfig, configName)
+      new SOCTConfig(args, mabi, topModule, topModuleName, params ++ args.baseConfig, configName(args.baseConfig, args.xlen))
     }
   }
 
@@ -92,18 +92,6 @@ object SOCTLauncher {
     Transpiler.emitLowFirrtl(config, simPaths)
 
     Transpiler.emitVerilog(config, simPaths)
-
-    if (args.overrideSimFiles) {
-      val configsSimDir = SOCTPaths.get("sim-configs")
-      val simConfigDir = configsSimDir.resolve(config.configName)
-      if (simConfigDir.toFile.exists()) {
-        simConfigDir.toFile.deleteRecursively()
-        log.info(s"Removed existing files in $simConfigDir")
-      }
-      // Copy systemDir to simConfigDir recursively using Scala api:
-      SOCTUtils.recCopy(simPaths.systemDir, simConfigDir)
-      log.info(s"Copied files to $simConfigDir")
-    }
   }
 
   def main(raw: Array[String]): Unit = SOCTParser.parse(raw, SOCTArgs()) match {

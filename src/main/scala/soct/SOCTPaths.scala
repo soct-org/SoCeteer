@@ -2,6 +2,7 @@ package soct
 
 import soct.SOCTLauncher.SOCTConfig
 import soct.SOCTNames._
+import soct.SOCTPaths.paths
 import soct.system.vivado.fpga.FPGARegistry
 
 import java.nio.file.{Files, Path, Paths}
@@ -66,23 +67,22 @@ object SOCTPaths {
     "binaries" -> root.resolve("binaries"),
     "shared" -> root.resolve("shared"),
     "generators" -> root.resolve("generators"),
-    "dockerfile" -> root.resolve("Dockerfile")
+    "dockerfile" -> root.resolve("Dockerfile"),
   )
 
   private val derived: Map[String, Path] = Map(
     "FindVERILATOR.cmake" -> base("shared").resolve("cmake").resolve("FindVERILATOR.cmake"),
+    "default-toolchain" -> base("shared").resolve("cmake").resolve("toolchain-riscv.cmake"),
     "verilator" -> base("shared").resolve("verilator")
   )
 
+  // Dynamic paths that are created during the execution of the program - these cannot be validated at startup since they may not exist yet
   private val baseDyn: Map[String, Path] = Map(
-    "workspace" -> root.resolve("workspace"),
-    "vivado-projects" -> root.resolve("vivado-projects"),
-    "sim-configs" -> base("sim").resolve("configs") // may not exist
+    "test-run-dir" -> root.resolve("test_run_dir")
   )
 
   private val derivedDyn: Map[String, Path] = Map(
-    "bootrom-build" -> base("binaries").resolve("cmake-build-bootrom"),
-    "programs-build" -> base("binaries").resolve("cmake-build-programs")
+    "test-workspace" -> baseDyn("test-run-dir").resolve("workspace")
   )
 
   private lazy val paths: Map[String, Path] = base ++ derived ++ baseDyn ++ derivedDyn
@@ -142,10 +142,27 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) {
   def bootromImgFile: Path = systemDir.resolve("bootrom.img")
 
   /**
+   * Path to the directory where generated ELF files for this system will be stored
+   */
+  def elfsDir: Path = systemDir.resolve("elfs")
+
+  /**
    * Path to the generated SOCTSystem.cmake file
    */
   def soctSystemCMakeFile: Path = systemDir.resolve(SOCT_SYSTEM_CMAKE_FILE)
 
+  /**
+   * Create a new temporary directory with the given prefix under the specified prefix path. The directory will be automatically deleted when the JVM exits.
+   * @param prefixPath The path under which to create the temporary directory (default is workspace/tmp)
+   * @param prefix The prefix for the temporary directory name (default is the config name followed by an underscore)
+   * @return Path to the newly created temporary directory
+   */
+  def newTmpDir(prefixPath: Path = args.workspaceDir.resolve("tmp"), prefix: String = s"${config.configName}_"): Path = {
+    // Create the prefix path if it doesn't exist
+    prefixPath.toFile.mkdirs()
+    val tmpDir = Files.createTempDirectory(prefixPath, prefix)
+    tmpDir
+  }
 
   /**
    * Create any necessary subdirectories for this synthesis flow.

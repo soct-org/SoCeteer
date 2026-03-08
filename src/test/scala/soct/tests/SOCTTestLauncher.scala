@@ -2,6 +2,7 @@ package soct.tests
 
 import org.chipsalliance.cde.config.Config
 import org.scalatest.flatspec.AnyFlatSpec
+import soct.{SOCTLauncher, SOCTPaths, SOCTUtils}
 
 class SOCTTestLauncher extends AnyFlatSpec {
   val ELF_NAME_64 = "boot-sim.elf"
@@ -11,11 +12,13 @@ class SOCTTestLauncher extends AnyFlatSpec {
   val XLEN_64 = Seq(64)
   val XLEN_ALL = Seq(32, 64)
 
+  val testWorkspace = SOCTPaths.get("test-workspace")
+
   case class Test(
-      config: Class[_ <: Config],
-      xlens: Seq[Int],
-      nCores: Int,
-  )
+                   config: Class[_ <: Config],
+                   xlens: Seq[Int],
+                   nCores: Int,
+                 )
 
   val boom3Tests: Seq[Test] = Seq(
     Test(classOf[soct.SmallBoomV3], XLEN_ALL, 1),
@@ -57,6 +60,32 @@ class SOCTTestLauncher extends AnyFlatSpec {
 
 
   val allTests: Seq[Test] = boom3Tests ++ boom4Tests ++ rocketTests ++ gemminiTests
+
+  val fastTests: Seq[Test] = Seq(Test(classOf[soct.RocketB1], XLEN_64, 1))
+
+
+
+  // Fast tests only
+  // TODO Full: sbt "testOnly soct.tests.SOCTTestLauncher"
+  // TODO sbt "testOnly soct.tests.SOCTTestLauncher -- -z \"Fast tests should run without errors\""
+  // TODO sbt "testOnly soct.tests.SOCTTestLauncher -- -z \"Fast tests\""
+  // TODO sbt "testOnly soct.tests.SOCTTestLauncher -- -z \"run without errors\""
+  "Fast tests" should "run without errors" in {
+    // use generator expression
+    for {
+      test <- fastTests
+      xlen <- test.xlens
+    } {
+      val args = Seq(
+        "--config", test.config.getCanonicalName,
+        "--xlen", xlen.toString,
+        "--out-dir", testWorkspace.toString,
+        "-t", "verilator",
+      )
+      SOCTLauncher.main(args.toArray)
+
+    }
+  }
 
 
 }

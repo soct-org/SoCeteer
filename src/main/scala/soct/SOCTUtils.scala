@@ -1,7 +1,7 @@
 package soct
 
 import firtoolresolver.FirtoolBinary
-import org.chipsalliance.cde.config.Config
+import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
 
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
@@ -11,17 +11,19 @@ import scala.util.Try
 
 
 // JSON4S serializer for java.nio.file.Path
-object PathSerializer extends CustomSerializer[Path](_ => (
-  { case JString(s) => Paths.get(s) },
-  { case p: Path => JString(p.toString)}
+object PathSerializer extends CustomSerializer[Path](_ => ( {
+  case JString(s) => Paths.get(s)
+}, {
+  case p: Path => JString(p.toString)
+}
 ))
 
-object TargetsSerializer extends CustomSerializer[Targets]( _ => (
-  { case JString(s) => Targets.parse(s)
-    case JNull      => Targets.Verilator},
-  {
-    case t: Targets => JString(t.name)
-  }
+object TargetsSerializer extends CustomSerializer[Targets](_ => ( {
+  case JString(s) => Targets.parse(s)
+  case JNull => Targets.Verilator
+}, {
+  case t: Targets => JString(t.name)
+}
 ))
 
 // Internal Bug exception with stacktrace and message
@@ -34,6 +36,7 @@ object SOCTUtils {
 
   /**
    * Instantiate a Config subclass given its name
+   *
    * @param configName The fully qualified name of the Config subclass
    * @return The instantiated Config
    * @throws RuntimeException if the config cannot be instantiated, with a suggestion for the closest matching config name
@@ -78,11 +81,31 @@ object SOCTUtils {
     dp(a.length)(b.length)
   }
 
+  /**
+   * Generate a config name string based on the config class name and xlen, used for output directories
+   */
+  def configName[T <: org.chipsalliance.cde.config.Config](config: T, xLen: Int): String = {
+    s"${config.getClass.getSimpleName.stripSuffix("$")}-${xLen}"
+  }
+
+  /**
+   * Generate a config name string based on the config class name and xlen, used for output directories
+   */
+  def configName(config: Parameters, xLen: Int): String = {
+    s"${config.getClass.getSimpleName.stripSuffix("$")}-${xLen}"
+  }
+
+  /**
+   * Generate a config name string based on the config class name and xlen, used for output directories
+   */
+  def configName(configClass: Class[_ <: Config], xLen: Int): String = {
+    s"${configClass.getSimpleName.stripSuffix("$")}-${xLen}"
+  }
 
   def runCMakeCommand(command: Seq[String],
-                              definesMap: Map[String, String],
-                              workingDir: Path = SOCTPaths.projectRoot
-                             ): (String, String) = {
+                      definesMap: Map[String, String],
+                      workingDir: Path = SOCTPaths.projectRoot
+                     ): (String, String) = {
     val defines = definesMap.flatMap { case (k, v) => Seq("-D", s"$k=$v") }.toSeq
     val fullCommand = Seq("cmake") ++ defines ++ command
     log.debug(s"Running CMake command: ${fullCommand.mkString(" ")} in directory: $workingDir")
@@ -136,6 +159,7 @@ object SOCTUtils {
 
   /**
    * Check if using Berkeley Chisel 3 API (versions 3.x)
+   *
    * @return True if using Chisel 3.x, false otherwise
    */
   def isOldChiselAPI: Boolean = {
@@ -144,6 +168,7 @@ object SOCTUtils {
 
   /**
    * Find the firtool binary for the given version using firtoolresolver
+   *
    * @param firtoolVersion The version of firtool to find
    * @return Path to the firtool binary
    * @throws RuntimeException if firtool cannot be found
@@ -177,6 +202,7 @@ object SOCTUtils {
 
   /**
    * Find the Verilator installation using the FindVERILATOR.cmake script
+   *
    * @return Option containing the path to the Verilator binary and root directory, or None if not found
    */
   def findVerilator(): Option[(Path, Path)] = {

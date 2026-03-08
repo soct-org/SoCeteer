@@ -1,14 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 
-##############
-# Debug prints
-##############
-if (NOT DEFINED SOCETEER_ROOT)
-    cmake_path(GET CMAKE_CURRENT_LIST_DIR PARENT_PATH SOCETEER_ROOT)
+############################################################################
+# SOCT_CMAKE_PATH is the path to the shared cmake files in the SoCeteer repo
+############################################################################
+if (NOT DEFINED SOCT_CMAKE_PATH)
+    cmake_path(GET CMAKE_CURRENT_LIST_DIR PARENT_PATH _soceteer_root)
+    cmake_path(APPEND _soceteer_root "shared/cmake" SOCT_CMAKE_PATH)
+    message(STATUS "SOCT_CMAKE_PATH: ${SOCT_CMAKE_PATH}")
 endif ()
+list(PREPEND CMAKE_MODULE_PATH ${SOCT_CMAKE_PATH})
 
-
-message(STATUS "SOCETEER_ROOT: ${SOCETEER_ROOT}")
 
 # Set the project name
 project(Verilate CXX C)
@@ -25,7 +26,6 @@ message(STATUS "LD: ${CMAKE_LINKER}")
 ########################################
 # Find project installation of Verilator
 ########################################
-list(PREPEND CMAKE_MODULE_PATH "${SOCETEER_ROOT}/shared/cmake")
 find_package(VERILATOR MODULE REQUIRED) # Installs/locates Verilator & provides VERILATOR_ROOT
 find_package(VERILATOR REQUIRED HINTS ${VERILATOR_ROOT}) # Provides verilate() function (includes verilator-config.cmake)
 

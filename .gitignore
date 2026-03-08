@@ -41,3 +41,4 @@ build/
 cmake-build-*
 /workspace/
 /vivado-projects/
+/test_run_dir/

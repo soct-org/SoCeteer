@@ -2,10 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 # This file can be included from each program's CMakeLists.txt file to set up. Feel free to just copy-paste and modify
 # Input sources: CMAKE_CXX_SRCS, CMAKE_C_SRCS, CMAKE_ASM_SRCS
-# Input flags: LFLAGS, CFLAGS - additional flags to pass to the linker and compiler
-# ELF_DIR - directory to place output ELF files
 # Targets: device_tree - target that builds the device tree blob
-# Other input flags: SOCT_ARCH, SOCT_ABI, SOCT_XLEN, SOCT_BOOTROM_IMG
+# Requires SOCT_SYSTEM
 
 get_filename_component(BOOTROM_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 
@@ -31,9 +29,9 @@ target_include_directories(${BOOTROM_ELF} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(${BOOTROM_ELF} PRIVATE ${ALL_CFLAGS})
 target_link_options(${BOOTROM_ELF} PRIVATE ${ALL_LFLAGS})
 
-set_target_properties(${BOOTROM_ELF} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${ELF_DIR}/bootroms/${BOOTROM_NAME}
-        OUTPUT_NAME bootrom.elf
+set_target_properties(${BOOTROM_ELF} PROPERTIES OUTPUT_NAME ${BOOTROM_NAME}.elf
+        RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR}/bootroms/
+
 )
 
 # Build the bootrom image
@@ -46,6 +44,4 @@ add_custom_target(${BOOTROM_IMG} ALL
 )
 
 # Final target to build both ELF and IMG
-add_custom_target(${BOOTROM_NAME} ALL
-        DEPENDS ${BOOTROM_ELF} ${BOOTROM_IMG}
-)
+add_custom_target(${BOOTROM_NAME} ALL DEPENDS ${BOOTROM_ELF} ${BOOTROM_IMG})

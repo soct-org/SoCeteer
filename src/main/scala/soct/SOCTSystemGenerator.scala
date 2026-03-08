@@ -34,7 +34,7 @@ object DTSExtractor {
   }
 }
 
-object DTSCMakeGenerator {
+object SOCTSystemGenerator {
 
   /**
    * Generate a CMake file that includes important information from the DTS file for building binaries.
@@ -48,18 +48,58 @@ object DTSCMakeGenerator {
     val dtsContent = Files.readString(paths.dtsFile)
     val march = DTSExtractor.extractMarch(dtsContent)
 
+    def rel(path: Path): String = {
+      // Make relative to CMAKE_CURRENT_LIST_DIR so the directory structure can be moved without breaking the paths in the CMake file
+      val currentListDir = paths.soctSystemCMakeFile.getParent
+      val suffix = currentListDir.relativize(path).toString.replace("\\", "/") // Use forward slashes for CMake paths, even on Windows
+      s"""${"$"}{CMAKE_CURRENT_LIST_DIR}/$suffix""".stripSuffix("/") // Remove trailing slash if the path is a directory
+    }
+
     s"""# Auto-generated CMake file for SOCT
        |cmake_minimum_required(VERSION 3.20)
        |
+       |# The root of the soceteer project
        |set(SOCETEER_ROOT "${SOCTPaths.projectRoot.toAbsolutePath.toString}")
+       |
+       |# The version of soceteer used to generate this system
+       |set(SOCETEER_VERSION "$version")
+       |
+       |# The name of the system configuration
+       |set(SOCT_CONFIG_NAME "${config.configName}")
+       |
+       |# Whether this system was build for an FPGA board, Verilator simulation etc.
+       |set(SOCT_TARGET "${config.args.target.name}")
+       |
+       |# The RISC-V architecture string extracted from the DTS
        |set(SOCT_ARCH "$march")
+       |
+       |# The RISC-V ABI to use for compiling binaries for this system
        |set(SOCT_ABI "${config.mabi}")
+       |
+       |# The XLEN of the system
        |set(SOCT_XLEN "${config.args.xlen}")
+       |
+       |# The number of CPU cores in the system, extracted from the DTS
        |set(SOCT_NCPUS "${DTSExtractor.countCPUs(dtsContent)}")
-       |set(SOCT_SYSTEM_ROOT "${paths.systemDir.toAbsolutePath.toString}")
-       |set(SOCT_DTS "${paths.dtsFile.toAbsolutePath.toString}")
-       |set(SOCT_DTB "${paths.dtbFile.toAbsolutePath.toString}")
-       |set(SOCT_BOOTROM_IMG "${paths.bootromImgFile.toAbsolutePath.toString}") # Is used in bootrom mode to determine where to output the image
+       |
+       |# The root directory for this system - all relevant files for this system are located under this directory
+       |set(SOCT_SYSTEM_ROOT "${rel(paths.systemDir)}")
+       |
+       |# The Verilog source files for this system
+       |set(SOCT_VSRCS "${rel(paths.verilogSrcDir)}")
+       |
+       |# The device tree file for this system
+       |set(SOCT_DTS "${rel(paths.dtsFile)}")
+       |
+       |# The compiled device tree blob for this system
+       |set(SOCT_DTB "${rel(paths.dtbFile)}")
+       |
+       |# The bootrom image for this system
+       |set(SOCT_BOOTROM_IMG "${rel(paths.bootromImgFile)}")
+       |
+       |# The directory where compiled ELF files for this system are stored
+       |set(SOCT_ELFS_DIR "${rel(paths.elfsDir)}")
+       |
        |""".stripMargin
   }
 }
