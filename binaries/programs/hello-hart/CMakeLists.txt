@@ -7,6 +7,5 @@ include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
 ######################################################################
 # Apply Project specific flags - Modify this section to add more flags
 ######################################################################
-foreach(target ${PROGRAM_SIM_NAMES} ${PROGRAM_BOARD_NAMES})
-    target_compile_options(${target} PRIVATE -std=gnu11 -O3 -Os)
-endforeach()
+target_compile_options(${PROGRAM_NAME} PRIVATE -std=gnu11 -O3 -Os)
+target_compile_definitions(${PROGRAM_NAME} PRIVATE N_CORES=${SOCT_NCPUS})

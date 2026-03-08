@@ -7,9 +7,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
 ######################################################################
 # Apply Project specific flags - Modify this section to add more flags
 ######################################################################
-foreach (PROG ${PROGRAM_SIM_NAMES} ${PROGRAM_BOARD_NAMES})
-    target_compile_options(${PROG} PRIVATE -std=gnu11)
-    target_include_directories(${PROG} PRIVATE
-            ${SYSTEM_DIR}/gemmini-rocc-tests
-    )
-endforeach ()
+target_compile_options(${PROGRAM_NAME} PRIVATE -std=gnu11)
+target_include_directories(${PROGRAM_NAME} PRIVATE
+        ${SOCT_SYSTEM_ROOT}/gemmini-rocc-tests
+)
