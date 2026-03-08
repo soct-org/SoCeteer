@@ -11,6 +11,7 @@ import java.nio.file.{Files, Path, Paths}
 object SOCTNames {
   val SOCETEER_ROOT_ENV_VAR: String = "SOCETEER_ROOT"
   val SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem.cmake"
+  val LATEST_SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem-latest.cmake"
 }
 
 
@@ -147,22 +148,21 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) {
   def elfsDir: Path = systemDir.resolve("elfs")
 
   /**
-   * Path to the generated SOCTSystem.cmake file
+   * Path to the generated SOCTSystem.cmake file.
    */
   def soctSystemCMakeFile: Path = systemDir.resolve(SOCT_SYSTEM_CMAKE_FILE)
 
   /**
-   * Create a new temporary directory with the given prefix under the specified prefix path. The directory will be automatically deleted when the JVM exits.
-   * @param prefixPath The path under which to create the temporary directory (default is workspace/tmp)
-   * @param prefix The prefix for the temporary directory name (default is the config name followed by an underscore)
-   * @return Path to the newly created temporary directory
+   * Path to a symlink (or copy) of the latest generated SOCTSystem.cmake file.
+   * This is useful for downstream users who want to use the generated CMake file without needing to know the exact system directory
    */
-  def newTmpDir(prefixPath: Path = args.workspaceDir.resolve("tmp"), prefix: String = s"${config.configName}_"): Path = {
-    // Create the prefix path if it doesn't exist
-    prefixPath.toFile.mkdirs()
-    val tmpDir = Files.createTempDirectory(prefixPath, prefix)
-    tmpDir
-  }
+  def latestSoctSystemCMakeFile: Path = SOCTPaths.projectRoot.resolve(LATEST_SOCT_SYSTEM_CMAKE_FILE)
+
+  /**
+   * Path to a build directory that can be used for temporary files during the build process (e.g., when building the bootrom with CMake).
+   * This directory is also added to the SOCTSystem.cmake file as SOCT_BUILD_DIR so it can be used for verilator builds, etc.
+   */
+  def buildDir: Path = systemDir.resolve("build")
 
   /**
    * Create any necessary subdirectories for this synthesis flow.

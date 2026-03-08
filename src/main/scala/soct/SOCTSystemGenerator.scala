@@ -47,19 +47,25 @@ object SOCTSystemGenerator {
 
     val dtsContent = Files.readString(paths.dtsFile)
     val march = DTSExtractor.extractMarch(dtsContent)
+    val thisDir = "SOCT_SYSTEM_ROOT"
+
 
     def rel(path: Path): String = {
       // Make relative to CMAKE_CURRENT_LIST_DIR so the directory structure can be moved without breaking the paths in the CMake file
       val currentListDir = paths.soctSystemCMakeFile.getParent
       val suffix = currentListDir.relativize(path).toString.replace("\\", "/") // Use forward slashes for CMake paths, even on Windows
-      s"""${"$"}{CMAKE_CURRENT_LIST_DIR}/$suffix""".stripSuffix("/") // Remove trailing slash if the path is a directory
+      s"$${$thisDir}/$suffix".stripSuffix("/") // Remove trailing slash if the path is a directory
     }
 
     s"""# Auto-generated CMake file for SOCT
        |cmake_minimum_required(VERSION 3.20)
        |
-       |# The root of the soceteer project
-       |set(SOCETEER_ROOT "${SOCTPaths.projectRoot.toAbsolutePath.toString}")
+       |# The actual path to this CMake file - works even through symlinks
+       |file(REAL_PATH "$${CMAKE_CURRENT_LIST_FILE}" _real_file)
+       |get_filename_component($thisDir "$${_real_file}" DIRECTORY)
+       |
+       |# The root directory of the SoCeteer project - all static files are located under this directory
+       |set(SOCETEER_ROOT "${rel(SOCTPaths.projectRoot)}")
        |
        |# The version of soceteer used to generate this system
        |set(SOCETEER_VERSION "$version")
@@ -99,6 +105,9 @@ object SOCTSystemGenerator {
        |
        |# The directory where compiled ELF files for this system are stored
        |set(SOCT_ELFS_DIR "${rel(paths.elfsDir)}")
+       |
+       |# A build directory that can be used for temporary files during the build process (e.g., when building the bootrom with CMake).
+       |set(SOCT_BUILD_DIR "${rel(paths.buildDir)}")
        |
        |""".stripMargin
   }

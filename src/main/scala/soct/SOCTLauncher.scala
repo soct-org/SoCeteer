@@ -5,7 +5,9 @@ import org.json4s.{DefaultFormats, Formats}
 import soct.SOCTUtils.configName
 import soct.system.vivado.SOCTVivado
 
+import java.nio.file.Files
 import scala.reflect.io.Path.jfile2path
+import scala.util.control.NonFatal
 
 object SOCTLauncher {
 
@@ -152,6 +154,15 @@ object SOCTLauncher {
           generateYosysDesign(args, paths.asInstanceOf[YosysSOCTPaths], config)
       }
 
+      soct.log.info(s"Design generation complete. Output files can be found in ${paths.systemDir}")
+
+      paths.latestSoctSystemCMakeFile.toFile.delete()
+      try {
+        Files.createSymbolicLink(paths.latestSoctSystemCMakeFile, paths.soctSystemCMakeFile)
+      } catch {
+        case NonFatal(e) =>
+          log.warn(s"Failed to create symbolic link for latest SOCTSystem.cmake file: ${e.getMessage}. This is likely because the operating system does not support symbolic links or the process does not have permission to create them. You can still find the generated SOCTSystem.cmake file at ${paths.soctSystemCMakeFile}")
+      }
     case None => // arguments are bad, error message will have been displayed
   }
 }

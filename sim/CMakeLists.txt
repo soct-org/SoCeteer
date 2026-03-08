@@ -5,11 +5,14 @@ cmake_minimum_required(VERSION 3.20)
 ############################################################################
 if (NOT DEFINED SOCT_CMAKE_PATH)
     cmake_path(GET CMAKE_CURRENT_LIST_DIR PARENT_PATH _soceteer_root)
-    cmake_path(APPEND _soceteer_root "shared/cmake" SOCT_CMAKE_PATH)
+    file(REAL_PATH "${_soceteer_root}/shared/cmake" SOCT_CMAKE_PATH)
     message(STATUS "SOCT_CMAKE_PATH: ${SOCT_CMAKE_PATH}")
 endif ()
 list(PREPEND CMAKE_MODULE_PATH ${SOCT_CMAKE_PATH})
 
+find_package(SOCTSystem REQUIRED) # Provides SOCT_SYSTEM variable pointing to the system file with important variables for the project
+message(STATUS "SOCT_SYSTEM: ${SOCT_SYSTEM}")
+include(${SOCT_SYSTEM}) # Include the system file to get important variables for the project
 
 # Set the project name
 project(Verilate CXX C)
@@ -34,14 +37,6 @@ message(STATUS "VERILATOR_ROOT: ${VERILATOR_ROOT}")
 ##################################################
 # Find the configurations and include sub-projects
 ##################################################
-# Where to find the verilog files for the different configurations
-if (NOT DEFINED CONFIGS_IN_DIR)
-    set(CONFIGS_IN_DIR "${CMAKE_CURRENT_LIST_DIR}/configs")
-endif ()
-
-# Find all the configurations in the CONFIGS_IN_DIR
-file(GLOB CONFIGS RELATIVE "${CONFIGS_IN_DIR}" "${CONFIGS_IN_DIR}/*")
-
 # Risc-v ISA simulator files
 if(NOT DEFINED RV_ISA_SIM_DIR)
     set(RV_ISA_SIM_DIR ${SOCETEER_ROOT}/shared/risc-v-isa-sim)
@@ -107,96 +102,96 @@ endif()
 #################################
 # Create targets from each config
 #################################
-foreach (CONFIG IN LISTS CONFIGS)
-    set(CONFIG_DIR "${CONFIGS_IN_DIR}/${CONFIG}") # The directory containing the config
-    set(VL_CONFIG_OUT "${CONFIG_DIR}/vsrcs") # The directory to output the verilator generated files
-    file(GLOB_RECURSE CONFIG_VERILOG_SOURCES "${CONFIG_DIR}/**/*.v" "${CONFIG_DIR}/*.v" "${CONFIG_DIR}/**/*.sv" "${CONFIG_DIR}/*.sv") # The verilog files for the config
-    file(GLOB_RECURSE CANDIDATES LIST_DIRECTORIES true "${CONFIG_DIR}/*")
-    foreach(path IN LISTS CANDIDATES)
-        if(IS_DIRECTORY "${path}")
-            list(APPEND VL_INCLUDE_DIR "${path}")
-        endif()
-    endforeach()
-    file(GLOB CONFIG_CXX_SOURCES "${CONFIG_DIR}/*.cc" "${CONFIG_DIR}/*.cpp") # The C++ files for the config
+file(GLOB_RECURSE VERILOG_SOURCES "${SOCT_VSRCS}/**/*.v" "${SOCT_VSRCS}/*.v" "${SOCT_VSRCS}/**/*.sv" "${SOCT_VSRCS}/*.sv")
+cmake_path(APPEND SOCT_BUILD_DIR "verilated" OUTPUT_VARIABLE VERILATED_OUT_DIR)
 
-    # The C++ sources for the config
-    set(COMMON_CXX_SRCS
-            ${CMAKE_CURRENT_LIST_DIR}/dpi-c.cpp
-            ${RV_ISA_SIM_SRCS}
-            ${CONFIG_CXX_SOURCES}
-            ${CMAKE_CURRENT_LIST_DIR}/main.cpp
-            ${CMAKE_CURRENT_LIST_DIR}/remote/bitbang.cpp
-    )
-    message(STATUS "Verilog files for ${CONFIG}: ${CONFIG_VERILOG_SOURCES}")
-    message(STATUS "C++ files for ${CONFIG}: ${COMMON_CXX_SRCS}")
-    message(STATUS "Verilator output directory: ${VL_CONFIG_OUT}")
+file(GLOB_RECURSE CANDIDATES LIST_DIRECTORIES true "${SOCT_VSRCS}/*")
+foreach(path IN LISTS CANDIDATES)
+    if(IS_DIRECTORY "${path}")
+        list(APPEND VL_INCLUDE_DIR "${path}")
+    endif()
+endforeach()
+file(GLOB COLLATERAL_CXX_SRCS "${SOCT_VSRCS}/*.cc" "${SOCT_VSRCS}/*.cpp")
 
-    add_executable(${CONFIG} ${COMMON_CXX_SRCS})
+# The C++ sources for the config
+set(COMMON_CXX_SRCS
+        ${CMAKE_CURRENT_LIST_DIR}/dpi-c.cpp
+        ${RV_ISA_SIM_SRCS}
+        ${COLLATERAL_CXX_SRCS}
+        ${CMAKE_CURRENT_LIST_DIR}/main.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/remote/bitbang.cpp
+)
+message(DEBUG "Verilog files for ${SOCT_CONFIG_NAME}: ${CONFIG_VERILOG_SOURCES}")
+message(DEBUG "C++ files for ${SOCT_CONFIG_NAME}: ${COMMON_CXX_SRCS}")
+message(DEBUG "Verilator output directory: ${VERILATED_OUT_DIR}")
+message(STATUS "SOCT_SYSTEM_ROOT= ${SOCT_SYSTEM_ROOT}")
 
-    # Set the C++ standard and optimization flags
-    if (MSVC) # 🤡
-        if (CMAKE_BUILD_TYPE STREQUAL "Release")
-            target_compile_options(${CONFIG} PRIVATE /O2)
-        else ()
-            target_compile_options(${CONFIG} PRIVATE /Od /RTC1)
-        endif ()
-        target_compile_options(${CONFIG} PRIVATE /std:c++20)
+add_executable(${SOCT_CONFIG_NAME} ${COMMON_CXX_SRCS})
+
+# Set the C++ standard and optimization flags
+if (MSVC) # 🤡
+    if (CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE /O2)
     else ()
-        if (CMAKE_BUILD_TYPE STREQUAL "Release")
-            target_compile_options(${CONFIG} PRIVATE -O3 -static -std=c++20 -march=native)
-        else ()
-            target_compile_options(${CONFIG} PRIVATE -O0 -static -std=c++20 -march=native)
-        endif ()
+        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE /Od /RTC1)
     endif ()
-
-    # Execute the verilator command
-    verilate(${CONFIG}
-            SOURCES ${CONFIG_VERILOG_SOURCES} ${CMAKE_CURRENT_LIST_DIR}/verilator_config.vlt
-            DIRECTORY ${VL_CONFIG_OUT}
-            PREFIX ${VL_PREFIX}
-            INCLUDE_DIRS ${VL_INCLUDE_DIR}
-            VERILATOR_ARGS ${VL_ARGS}
-    )
-    include(${VL_CONFIG_OUT}/${VL_PREFIX}.cmake) # Include the generated cmake file
-
-    # Which include directories are available to the target
-    target_include_directories(${CONFIG} PRIVATE
-            ${RV_ISA_SIM_INCLUDE_DIRS}
-            ${CMAKE_CURRENT_LIST_DIR}
-    )
-
-    target_compile_definitions(${CONFIG} PRIVATE
-            VL_VERILATED_INCLUDE="custom-verilated.h" # Overrides the default verilated.h
-            VL_PREFIX=${VL_PREFIX} # So we can include VL_PREFIX.h
-    )
-
-    if (WIN32)
-        target_link_libraries(${CONFIG} PRIVATE ws2_32) # For windows sockets
-        target_compile_definitions(${CONFIG} PRIVATE VL_TIME_CONTEXT) # According to the verilator manual.
+    target_compile_options(${SOCT_CONFIG_NAME} PRIVATE /std:c++20)
+else ()
+    if (CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE -O3 -static -std=c++20 -march=native)
+    else ()
+        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE -O0 -static -std=c++20 -march=native)
     endif ()
+endif ()
 
-    # Expose VL constants to the C++ code
-    if (VL_TRACE)
-        target_compile_definitions(${CONFIG} PRIVATE VL_TRACE)
-    endif ()
+message(STATUS "Building target ${SOCT_CONFIG_NAME} with Verilator. This may take a while...")
+# Execute the verilator command
+verilate(${SOCT_CONFIG_NAME}
+        SOURCES ${VERILOG_SOURCES} ${CMAKE_CURRENT_LIST_DIR}/verilator_config.vlt
+        DIRECTORY ${VERILATED_OUT_DIR}
+        PREFIX ${VL_PREFIX}
+        INCLUDE_DIRS ${VL_INCLUDE_DIR}
+        VERILATOR_ARGS ${VL_ARGS}
+)
+include(${VERILATED_OUT_DIR}/${VL_PREFIX}.cmake) # Include the generated cmake file
 
-    # Set the trace depth
-    if (VL_TRACE_DEPTH)
-        target_compile_definitions(${CONFIG} PRIVATE VL_TRACE_DEPTH=${VL_TRACE_DEPTH})
-    endif ()
+# Which include directories are available to the target
+target_include_directories(${SOCT_CONFIG_NAME} PRIVATE
+        ${RV_ISA_SIM_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_LIST_DIR}
+)
 
-    # Pass unknown syscalls directly to OS
-    if (PASS_UNKNOWN_SYSCALLS)
-        target_compile_definitions(${CONFIG} PRIVATE PASS_UNKNOWN_SYSCALLS)
-    endif ()
+target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE
+        VL_VERILATED_INCLUDE="custom-verilated.h" # Overrides the default verilated.h
+        VL_PREFIX=${VL_PREFIX} # So we can include VL_PREFIX.h
+)
 
-    # Enable logging level trace
-    if (ENABLE_TRACE)
-        target_compile_definitions(${CONFIG} PRIVATE ENABLE_TRACE)
-    endif ()
+if (WIN32)
+    target_link_libraries(${SOCT_CONFIG_NAME} PRIVATE ws2_32) # For windows sockets
+    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE VL_TIME_CONTEXT) # According to the verilator manual.
+endif ()
 
-    # Force assertions
-    if (FORCE_ASSERTS)
-        target_compile_definitions(${CONFIG} PRIVATE FORCE_ASSERTS)
-    endif ()
-endforeach ()
+# Expose VL constants to the C++ code
+if (VL_TRACE)
+    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE VL_TRACE)
+endif ()
+
+# Set the trace depth
+if (VL_TRACE_DEPTH)
+    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE VL_TRACE_DEPTH=${VL_TRACE_DEPTH})
+endif ()
+
+# Pass unknown syscalls directly to OS
+if (PASS_UNKNOWN_SYSCALLS)
+    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE PASS_UNKNOWN_SYSCALLS)
+endif ()
+
+# Enable logging level trace
+if (ENABLE_TRACE)
+    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE ENABLE_TRACE)
+endif ()
+
+# Force assertions
+if (FORCE_ASSERTS)
+    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE FORCE_ASSERTS)
+endif ()

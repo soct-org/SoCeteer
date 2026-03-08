@@ -5,8 +5,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import soct.{SOCTLauncher, SOCTPaths, SOCTUtils}
 
 class SOCTTestLauncher extends AnyFlatSpec {
-  val ELF_NAME_64 = "boot-sim.elf"
-  val ELF_NAME_32 = "boot-sim-32.elf"
 
   val XLEN_32 = Seq(32)
   val XLEN_64 = Seq(64)

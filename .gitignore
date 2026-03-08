@@ -42,3 +42,4 @@ cmake-build-*
 /workspace/
 /vivado-projects/
 /test_run_dir/
+SOCTSystem-latest.cmake

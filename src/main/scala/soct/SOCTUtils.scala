@@ -4,10 +4,11 @@ import firtoolresolver.FirtoolBinary
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
 
-import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.nio.file.{Files, LinkOption, Path, Paths, StandardCopyOption}
 import java.util.Comparator
 import scala.jdk.CollectionConverters.IteratorHasAsScala
 import scala.util.Try
+import scala.util.control.NonFatal
 
 
 // JSON4S serializer for java.nio.file.Path
@@ -33,26 +34,6 @@ class InternalBugException(message: String) extends Exception(message) {
 
 
 object SOCTUtils {
-
-  /**
-   * Instantiate a Config subclass given its name
-   *
-   * @param configName The fully qualified name of the Config subclass
-   * @return The instantiated Config
-   * @throws RuntimeException if the config cannot be instantiated, with a suggestion for the closest matching config name
-   */
-  def instantiateConfig(configName: String): Config = {
-    try {
-      Class.forName(configName).getDeclaredConstructor().newInstance().asInstanceOf[Config]
-    } catch {
-      case _: Exception =>
-        val configs = findConfigSubclasses()
-        val names = configs.map(_.getName)
-        val closest = names.minBy(n => editDistance(n, configName))
-        throw new RuntimeException(s"Failed to instantiate config: $configName. Did you mean: $closest?")
-    }
-  }
-
   private def findConfigSubclasses(pkg: String = "soct"): Seq[Class[_]] = {
     import scala.jdk.CollectionConverters._
     val loader = Thread.currentThread().getContextClassLoader
@@ -81,6 +62,26 @@ object SOCTUtils {
     dp(a.length)(b.length)
   }
 
+
+  /**
+   * Instantiate a Config subclass given its name
+   *
+   * @param configName The fully qualified name of the Config subclass
+   * @return The instantiated Config
+   * @throws RuntimeException if the config cannot be instantiated, with a suggestion for the closest matching config name
+   */
+  def instantiateConfig(configName: String): Config = {
+    try {
+      Class.forName(configName).getDeclaredConstructor().newInstance().asInstanceOf[Config]
+    } catch {
+      case _: Exception =>
+        val configs = findConfigSubclasses()
+        val names = configs.map(_.getName)
+        val closest = names.minBy(n => editDistance(n, configName))
+        throw new RuntimeException(s"Failed to instantiate config: $configName. Did you mean: $closest?")
+    }
+  }
+
   /**
    * Generate a config name string based on the config class name and xlen, used for output directories
    */
@@ -102,6 +103,13 @@ object SOCTUtils {
     s"${configClass.getSimpleName.stripSuffix("$")}-${xLen}"
   }
 
+  /**
+   * Run a CMake command with the given defines and working directory, returning the stdout and stderr as strings. Throws an exception if the command fails (non-zero exit code), including the stderr in the exception message.
+   * @param command The CMake command to run, as a sequence of strings (e.g. Seq("--build", "buildDir", "--target", "bootrom"))
+   * @param definesMap A map of CMake defines to pass to the command (e.g. Map("SOCT_SYSTEM" -> "path/to/SOCTSystem.cmake")). These will be converted to -D flags (e.g. -DSOCT_SYSTEM=path/to/SOCTSystem.cmake)
+   * @param workingDir The working directory to run the command in (default: project root)
+   * @return A tuple of (stdout, stderr) from the command
+   */
   def runCMakeCommand(command: Seq[String],
                       definesMap: Map[String, String],
                       workingDir: Path = SOCTPaths.projectRoot
@@ -183,6 +191,10 @@ object SOCTUtils {
     }
   }
 
+  /**
+   * Print the help message of the firtool binary at the given path and exit with the same code as the firtool process.
+   * @param firtoolBinaryPath The path to the firtool binary to invoke with --help
+   */
   def printFirtoolHelp(firtoolBinaryPath: String): Unit = {
     log.info(s"Using firtool binary: $firtoolBinaryPath")
     val code = new ProcessBuilder(firtoolBinaryPath, "--help")
@@ -190,37 +202,5 @@ object SOCTUtils {
       .start()
       .waitFor()
     sys.exit(code)
-  }
-
-  def recCopy(src: Path, dst: Path): Unit = {
-    Files.walk(src).iterator().asScala.foreach { p =>
-      val target = dst.resolve(src.relativize(p).toString)
-      if (Files.isDirectory(p)) Files.createDirectories(target)
-      else Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
-    }
-  }
-
-  /**
-   * Find the Verilator installation using the FindVERILATOR.cmake script
-   *
-   * @return Option containing the path to the Verilator binary and root directory, or None if not found
-   */
-  def findVerilator(): Option[(Path, Path)] = {
-    // We use Cmake in scripting mode to find the Verilator installation - no need to do the work twice and have multiple copies of filepaths
-    val (stdout, _) = runCMakeCommand(Seq("-P", SOCTPaths.get("FindVERILATOR.cmake").toString), Map.empty)
-    val lines = stdout.split("\n")
-    val exeString = "VERILATOR_EXE: "
-    val rootString = "VERILATOR_ROOT: "
-    val exeOpt = lines.find(_.contains(exeString))
-    val rootOpt = lines.find(_.contains(rootString))
-    if (exeOpt.isDefined && rootOpt.isDefined) {
-      val exeLine = exeOpt.get
-      val rootLine = rootOpt.get
-      val exe = exeLine.substring(exeOpt.get.indexOf(exeString) + exeString.length).trim
-      val root = rootLine.substring(rootOpt.get.indexOf(rootString) + rootString.length).trim
-      Some(Paths.get(exe), Paths.get(root))
-    } else {
-      None
-    }
   }
 }

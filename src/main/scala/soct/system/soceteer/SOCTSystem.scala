@@ -163,7 +163,7 @@ object SOCTBootROM {
       )
 
       val sourceDir = SOCTPaths.get("binaries")
-      val buildDir = paths.newTmpDir()
+      val buildDir = paths.buildDir.resolve("bootrom")
       soct.log.debug(s"Building bootrom with CMake. Source dir: $sourceDir, Build dir (deleted after build): $buildDir")
 
       val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
@@ -172,8 +172,6 @@ object SOCTBootROM {
       runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
 
       assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
-
-      Directory(buildDir.toFile).deleteRecursively()
 
       val contents = Files.readAllBytes(paths.bootromImgFile)
       contents
