@@ -66,7 +66,7 @@ object SOCTSystemGenerator {
          |get_filename_component($thisDir "$${_real_file}" DIRECTORY)
          |
          |# The root directory of the SoCeteer project - all static files are located under this directory
-         |set(SOCETEER_ROOT "${rel(SOCTPaths.projectRoot)}")
+         |file(REAL_PATH "${rel(SOCTPaths.projectRoot)}" SOCETEER_ROOT)
          |
          |# The version of soceteer used to generate this system
          |set(SOCETEER_VERSION "$version")
@@ -144,7 +144,6 @@ object SOCTSystemGenerator {
     s"""$common
        |
        |$targetSpecific
-       |
        |""".stripMargin
   }
 }

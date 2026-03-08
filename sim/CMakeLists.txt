@@ -36,8 +36,6 @@ message(STATUS "LD: ${CMAKE_LINKER}")
 find_package(VERILATOR MODULE REQUIRED) # Installs/locates Verilator & provides VERILATOR_ROOT
 find_package(VERILATOR REQUIRED HINTS ${VERILATOR_ROOT}) # Provides verilate() function (includes verilator-config.cmake)
 
-message(STATUS "VERILATOR_ROOT: ${VERILATOR_ROOT}")
-
 ##################################################
 # Find the configurations and include sub-projects
 ##################################################
