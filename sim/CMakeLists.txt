@@ -14,6 +14,10 @@ find_package(SOCTSystem REQUIRED) # Provides SOCT_SYSTEM variable pointing to th
 message(STATUS "SOCT_SYSTEM: ${SOCT_SYSTEM}")
 include(${SOCT_SYSTEM}) # Include the system file to get important variables for the project
 
+if (NOT SOCT_TARGET STREQUAL "verilator")
+    message(FATAL_ERROR "This CMakeLists.txt is only intended to be used for the verilator target. Current SOCT_TARGET: ${SOCT_TARGET}")
+endif ()
+
 # Set the project name
 project(Verilate CXX C)
 
@@ -121,32 +125,31 @@ set(COMMON_CXX_SRCS
         ${CMAKE_CURRENT_LIST_DIR}/main.cpp
         ${CMAKE_CURRENT_LIST_DIR}/remote/bitbang.cpp
 )
-message(DEBUG "Verilog files for ${SOCT_CONFIG_NAME}: ${CONFIG_VERILOG_SOURCES}")
-message(DEBUG "C++ files for ${SOCT_CONFIG_NAME}: ${COMMON_CXX_SRCS}")
+message(DEBUG "Verilog files for ${SOCT_SIM_EXE}: ${CONFIG_VERILOG_SOURCES}")
+message(DEBUG "C++ files for ${SOCT_SIM_EXE}: ${COMMON_CXX_SRCS}")
 message(DEBUG "Verilator output directory: ${VERILATED_OUT_DIR}")
-message(STATUS "SOCT_SYSTEM_ROOT= ${SOCT_SYSTEM_ROOT}")
 
-add_executable(${SOCT_CONFIG_NAME} ${COMMON_CXX_SRCS})
+add_executable(${SOCT_SIM_EXE} ${COMMON_CXX_SRCS})
 
 # Set the C++ standard and optimization flags
 if (MSVC) # 🤡
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE /O2)
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE /O2)
     else ()
-        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE /Od /RTC1)
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE /Od /RTC1)
     endif ()
-    target_compile_options(${SOCT_CONFIG_NAME} PRIVATE /std:c++20)
+    target_compile_options(${SOCT_SIM_EXE} PRIVATE /std:c++20)
 else ()
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE -O3 -static -std=c++20 -march=native)
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -std=c++20 -march=native)
     else ()
-        target_compile_options(${SOCT_CONFIG_NAME} PRIVATE -O0 -static -std=c++20 -march=native)
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -std=c++20 -march=native)
     endif ()
 endif ()
 
-message(STATUS "Building target ${SOCT_CONFIG_NAME} with Verilator. This may take a while...")
+message(STATUS "Building target ${SOCT_SIM_EXE} with Verilator. This may take a while...")
 # Execute the verilator command
-verilate(${SOCT_CONFIG_NAME}
+verilate(${SOCT_SIM_EXE}
         SOURCES ${VERILOG_SOURCES} ${CMAKE_CURRENT_LIST_DIR}/verilator_config.vlt
         DIRECTORY ${VERILATED_OUT_DIR}
         PREFIX ${VL_PREFIX}
@@ -156,42 +159,42 @@ verilate(${SOCT_CONFIG_NAME}
 include(${VERILATED_OUT_DIR}/${VL_PREFIX}.cmake) # Include the generated cmake file
 
 # Which include directories are available to the target
-target_include_directories(${SOCT_CONFIG_NAME} PRIVATE
+target_include_directories(${SOCT_SIM_EXE} PRIVATE
         ${RV_ISA_SIM_INCLUDE_DIRS}
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
-target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE
+target_compile_definitions(${SOCT_SIM_EXE} PRIVATE
         VL_VERILATED_INCLUDE="custom-verilated.h" # Overrides the default verilated.h
         VL_PREFIX=${VL_PREFIX} # So we can include VL_PREFIX.h
 )
 
 if (WIN32)
-    target_link_libraries(${SOCT_CONFIG_NAME} PRIVATE ws2_32) # For windows sockets
-    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE VL_TIME_CONTEXT) # According to the verilator manual.
+    target_link_libraries(${SOCT_SIM_EXE} PRIVATE ws2_32) # For windows sockets
+    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE VL_TIME_CONTEXT) # According to the verilator manual.
 endif ()
 
 # Expose VL constants to the C++ code
 if (VL_TRACE)
-    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE VL_TRACE)
+    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE VL_TRACE)
 endif ()
 
 # Set the trace depth
 if (VL_TRACE_DEPTH)
-    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE VL_TRACE_DEPTH=${VL_TRACE_DEPTH})
+    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE VL_TRACE_DEPTH=${VL_TRACE_DEPTH})
 endif ()
 
 # Pass unknown syscalls directly to OS
 if (PASS_UNKNOWN_SYSCALLS)
-    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE PASS_UNKNOWN_SYSCALLS)
+    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE PASS_UNKNOWN_SYSCALLS)
 endif ()
 
 # Enable logging level trace
 if (ENABLE_TRACE)
-    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE ENABLE_TRACE)
+    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE ENABLE_TRACE)
 endif ()
 
 # Force assertions
 if (FORCE_ASSERTS)
-    target_compile_definitions(${SOCT_CONFIG_NAME} PRIVATE FORCE_ASSERTS)
+    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE FORCE_ASSERTS)
 endif ()

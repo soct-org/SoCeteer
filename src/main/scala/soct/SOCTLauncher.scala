@@ -2,6 +2,7 @@ package soct
 
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
+import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
 import soct.SOCTUtils.configName
 import soct.system.vivado.SOCTVivado
 
@@ -156,13 +157,18 @@ object SOCTLauncher {
 
       soct.log.info(s"Design generation complete. Output files can be found in ${paths.systemDir}")
 
-      paths.latestSoctSystemCMakeFile.toFile.delete()
-      try {
-        Files.createSymbolicLink(paths.latestSoctSystemCMakeFile, paths.soctSystemCMakeFile)
-      } catch {
-        case NonFatal(e) =>
-          log.warn(s"Failed to create symbolic link for latest SOCTSystem.cmake file: ${e.getMessage}. This is likely because the operating system does not support symbolic links or the process does not have permission to create them. You can still find the generated SOCTSystem.cmake file at ${paths.soctSystemCMakeFile}")
+      if (args.emitLatestSOCTSystem) {
+        paths.latestSoctSystemCMakeFile.toFile.delete()
+        try {
+          Files.createSymbolicLink(paths.latestSoctSystemCMakeFile, paths.soctSystemCMakeFile)
+        } catch {
+          case NonFatal(e) =>
+            log.warn(s"Failed to create symbolic link for latest SOCTSystem.cmake file: ${e.getMessage}. This is likely because the operating system does not support symbolic links or the process does not have permission to create them. You can still find the generated SOCTSystem.cmake file at ${paths.soctSystemCMakeFile}")
+        }
       }
+
+      soct.log.info(s"${SOCT_SYSTEM_CMAKE_KEY}=${paths.soctSystemCMakeFile}")
+
     case None => // arguments are bad, error message will have been displayed
   }
 }

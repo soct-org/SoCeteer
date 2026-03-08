@@ -1,8 +1,8 @@
 package soct
 
+import soct.SOCTNames.SOCT_SIMULATOR_EXE
+
 import java.nio.file.{Files, Path}
-import scala.util.matching.Regex
-import scala.util.chaining.scalaUtilChainingOps
 
 object DTSExtractor {
   /**
@@ -57,57 +57,93 @@ object SOCTSystemGenerator {
       s"$${$thisDir}/$suffix".stripSuffix("/") // Remove trailing slash if the path is a directory
     }
 
-    s"""# Auto-generated CMake file for SOCT
-       |cmake_minimum_required(VERSION 3.20)
+    val common =
+      s"""# Auto-generated CMake file for SOCT
+         |cmake_minimum_required(VERSION 3.20)
+         |
+         |# The actual path to this CMake file - works even through symlinks
+         |file(REAL_PATH "$${CMAKE_CURRENT_LIST_FILE}" _real_file)
+         |get_filename_component($thisDir "$${_real_file}" DIRECTORY)
+         |
+         |# The root directory of the SoCeteer project - all static files are located under this directory
+         |set(SOCETEER_ROOT "${rel(SOCTPaths.projectRoot)}")
+         |
+         |# The version of soceteer used to generate this system
+         |set(SOCETEER_VERSION "$version")
+         |
+         |# The name of the system configuration
+         |set(SOCT_CONFIG_NAME "${config.configName}")
+         |
+         |# Whether this system was build for an FPGA board, Verilator simulation etc.
+         |set(SOCT_TARGET "${config.args.target.name}")
+         |
+         |# The RISC-V architecture string extracted from the DTS
+         |set(SOCT_ARCH "$march")
+         |
+         |# The RISC-V ABI to use for compiling binaries for this system
+         |set(SOCT_ABI "${config.mabi}")
+         |
+         |# The XLEN of the system
+         |set(SOCT_XLEN "${config.args.xlen}")
+         |
+         |# The number of CPU cores in the system, extracted from the DTS
+         |set(SOCT_NCPUS "${DTSExtractor.countCPUs(dtsContent)}")
+         |
+         |# The root directory for this system - all relevant files for this system are located under this directory
+         |set(SOCT_SYSTEM_ROOT "${rel(paths.systemDir)}")
+         |
+         |# The Verilog source files for this system
+         |set(SOCT_VSRCS "${rel(paths.verilogSrcDir)}")
+         |
+         |# The device tree file for this system
+         |set(SOCT_DTS "${rel(paths.dtsFile)}")
+         |
+         |# The compiled device tree blob for this system
+         |set(SOCT_DTB "${rel(paths.dtbFile)}")
+         |
+         |# The bootrom image for this system
+         |set(SOCT_BOOTROM_IMG "${rel(paths.bootromImgFile)}")
+         |
+         |# The directory where compiled ELF files for this system are stored
+         |set(SOCT_ELFS_DIR "${rel(paths.elfsDir)}")
+         |
+         |# A build directory that can be used for temporary files during the build process (e.g., when building the bootrom with CMake).
+         |set(SOCT_BUILD_DIR "${rel(paths.buildDir)}")
+         |""".stripMargin
+
+    // Additional information for targets
+    val targetSpecific = config.args.target match {
+      case Targets.Verilator =>
+        s"""########################################################
+           |# Additional information for Verilator simulation target
+           |########################################################
+           |
+           |# The top-level module name for the Verilog design - can be passed to Verilator to specify the top module to simulate
+           |set(SOCT_VERILATOR_TOP_MODULE "${config.topModule.fold(_.getSimpleName, _.getSimpleName)}")
+           |
+           |# The name of the executable to build for simulating this system - can be used as the target name in a CMake build command
+           |set(SOCT_SIM_EXE "$SOCT_SIMULATOR_EXE")
+           |""".stripMargin
+      case Targets.Vivado =>
+        s"""####################################################
+           |# Additional information for Vivado synthesis target
+           |####################################################
+           |
+           |# The name of the FPGA board this system is designed for
+           |set(SOCT_VIVADO_BOARD "${config.args.board.getOrElse("unknown")}")
+           |""".stripMargin
+      case Targets.Yosys =>
+        s"""###################################################
+           |# Additional information for Yosys synthesis target
+           |###################################################
+           |
+           |# (none for now)
+           |""".stripMargin
+    }
+
+    s"""$common
        |
-       |# The actual path to this CMake file - works even through symlinks
-       |file(REAL_PATH "$${CMAKE_CURRENT_LIST_FILE}" _real_file)
-       |get_filename_component($thisDir "$${_real_file}" DIRECTORY)
-       |
-       |# The root directory of the SoCeteer project - all static files are located under this directory
-       |set(SOCETEER_ROOT "${rel(SOCTPaths.projectRoot)}")
-       |
-       |# The version of soceteer used to generate this system
-       |set(SOCETEER_VERSION "$version")
-       |
-       |# The name of the system configuration
-       |set(SOCT_CONFIG_NAME "${config.configName}")
-       |
-       |# Whether this system was build for an FPGA board, Verilator simulation etc.
-       |set(SOCT_TARGET "${config.args.target.name}")
-       |
-       |# The RISC-V architecture string extracted from the DTS
-       |set(SOCT_ARCH "$march")
-       |
-       |# The RISC-V ABI to use for compiling binaries for this system
-       |set(SOCT_ABI "${config.mabi}")
-       |
-       |# The XLEN of the system
-       |set(SOCT_XLEN "${config.args.xlen}")
-       |
-       |# The number of CPU cores in the system, extracted from the DTS
-       |set(SOCT_NCPUS "${DTSExtractor.countCPUs(dtsContent)}")
-       |
-       |# The root directory for this system - all relevant files for this system are located under this directory
-       |set(SOCT_SYSTEM_ROOT "${rel(paths.systemDir)}")
-       |
-       |# The Verilog source files for this system
-       |set(SOCT_VSRCS "${rel(paths.verilogSrcDir)}")
-       |
-       |# The device tree file for this system
-       |set(SOCT_DTS "${rel(paths.dtsFile)}")
-       |
-       |# The compiled device tree blob for this system
-       |set(SOCT_DTB "${rel(paths.dtbFile)}")
-       |
-       |# The bootrom image for this system
-       |set(SOCT_BOOTROM_IMG "${rel(paths.bootromImgFile)}")
-       |
-       |# The directory where compiled ELF files for this system are stored
-       |set(SOCT_ELFS_DIR "${rel(paths.elfsDir)}")
-       |
-       |# A build directory that can be used for temporary files during the build process (e.g., when building the bootrom with CMake).
-       |set(SOCT_BUILD_DIR "${rel(paths.buildDir)}")
+       |$targetSpecific
        |
        |""".stripMargin
   }

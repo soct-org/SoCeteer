@@ -11,7 +11,11 @@ import java.nio.file.{Files, Path, Paths}
 object SOCTNames {
   val SOCETEER_ROOT_ENV_VAR: String = "SOCETEER_ROOT"
   val SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem.cmake"
+  val SOCT_SYSTEM_CMAKE_KEY: String = "SOCT_SYSTEM"
+  val BOOTROM_MODE_KEY: String = "BOOTROM_MODE"
   val LATEST_SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem-latest.cmake"
+  val SOCT_SIMULATOR_EXE = "simulator"
+  val DEFAULT_EXAMPLE_BINARY = "hello-cpp" // Default example binary to build for tests and in README
 }
 
 
@@ -89,53 +93,29 @@ object SOCTPaths {
   private lazy val paths: Map[String, Path] = base ++ derived ++ baseDyn ++ derivedDyn
 }
 
+
 /**
- * Abstract class containing all the important paths used during the SOCT flow
- *
- * @param args SOCTArgs containing user-provided arguments
+ * Base class for SOCTPaths - contains any common logic or utility methods that don't depend on runtime arguments.
  */
-abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) {
+abstract class SOCTPathsBase {
+  /**
+   * Implementation of the systemDir path. Superseded by the systemDir val to allow for additional logic in the implementation
+   */
+  protected def systemDirImpl(prefixPath: Path): Path
+
   /**
    * Path to the system directory where all generated files will be stored
-   */
-  val systemDir: Path
-
-  /**
-   * Path to the firtool binary
-   */
-  def firtoolBinary: Path = args.firtoolPath.getOrElse(throw new InternalBugException("Firtool path not set in LauncherArgs"))
-
-  /**
-   * Path to the generated verilog/systemverilog files
+   * If the user provided an output directory via the --out-dir argument, that will be used as the system directory. Otherwise, the system directory will be determined based on the workspace directory and the config name (and FPGA board name for Vivado).
+   * The system directory will be created if it does not exist, and an exception will be thrown if the provided output directory is not a directory or is not writable.
    *
-   * @return Path to the directory containing sources (SystemVerilog/Verilog/VHDL)
+   * @return Path to the system directory where all generated files will be stored
    */
-  def verilogSrcDir: Path = systemDir.resolve("vsrcs")
+  def systemDir: Path
 
   /**
-   * Path to the generated low firrtl file (only when using Berkeley chisel)
+   * Initialize any subdirectories needed for this synthesis flow (e.g., for Vivado, we need a vivado-srcs subdirectory for the generated TCL scripts and sources).
    */
-  def lowFirrtlFile: Path = systemDir.resolve(s"${config.topModuleName}.opt.lo.fir")
-
-  /**
-   * Path to the generated firrtl file
-   */
-  def firrtlFile: Path = systemDir.resolve(s"${config.topModuleName}.fir")
-
-  /**
-   * Path to the generated firrtl annotations file - mainly used when using Berkeley chisel
-   */
-  def annoFile: Path = systemDir.resolve(s"${config.topModuleName}.anno.json")
-
-  /**
-   * Path to the generated device tree source file
-   */
-  def dtsFile: Path = systemDir.resolve(s"${config.topModuleName}.dts")
-
-  /**
-   * Path to the generated device tree blob file
-   */
-  def dtbFile: Path = systemDir.resolve(s"${config.topModuleName}.dtb")
+  def createSubdirsImpl(): Unit
 
   /**
    * Path to the generated bootrom image file (contains the plain instructions to be loaded at boot)
@@ -172,34 +152,102 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) {
     systemDir.toFile.mkdirs()
     createSubdirsImpl()
   }
-
-  /**
-   * Initialize any subdirectories needed for this synthesis flow (e.g., for Vivado, we need a vivado-srcs subdirectory for the generated TCL scripts and sources).
-   */
-  def createSubdirsImpl(): Unit
-
 }
 
+
 /**
- * SOCTPaths for Yosys synthesis flow
+ * Companion object for SOCTPaths for fixed out dir - behaves like SOCTPaths where args.userOutDir is set. Mainly used for tests.
+ */
+object SOCTPathsBase {
+  def apply(outDir: Path): SOCTPathsBase = {
+    new SOCTPathsBase() {
+      override def systemDir: Path = outDir
+      override protected def systemDirImpl(prefixPath: Path): Path = outDir
+      override def createSubdirsImpl(): Unit = {
+        outDir.toFile.mkdirs()
+      }
+    }
+  }
+}
+
+
+
+/**
+ * Abstract class containing all the important paths used during the SOCT flow
  *
- * @param args   SOCTArgs containing user-provided arguments
+ * @param args SOCTArgs containing user-provided arguments
  * @param config Config used for this synthesis
  */
-private class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
-  // For example: workspace/RocketB1-64/system-yosys
-  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve("system-yosys")
+abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPathsBase {
+
+  override def systemDir: Path = {
+    if (args.userOutDir.isDefined) {
+      args.userOutDir.get.toFile.mkdirs()
+      if (!Files.isDirectory(args.userOutDir.get)) {
+        throw new IllegalArgumentException(s"Provided output directory ${args.userOutDir.get} is not a directory")
+      }
+      if (!Files.isWritable(args.userOutDir.get)) {
+        throw new IllegalArgumentException(s"Provided output directory ${args.userOutDir.get} is not writable")
+      }
+      args.userOutDir.get
+    } else {
+      systemDirImpl(args.workspaceDir)
+    }
+  }
+
+  /**
+   * Path to the firtool binary
+   */
+  def firtoolBinary: Path = args.firtoolPath.getOrElse(throw new InternalBugException("Firtool path not set in LauncherArgs"))
+
+  /**
+   * Path to the generated verilog/systemverilog files
+   */
+  def verilogSrcDir: Path = systemDir.resolve("vsrcs")
+
+  /**
+   * Path to the generated low firrtl file (only when using Berkeley chisel)
+   */
+  def lowFirrtlFile: Path = systemDir.resolve(s"${config.topModuleName}.opt.lo.fir")
+
+  /**
+   * Path to the generated firrtl file
+   */
+  def firrtlFile: Path = systemDir.resolve(s"${config.topModuleName}.fir")
+
+  /**
+   * Path to the generated firrtl annotations file - mainly used when using Berkeley chisel
+   */
+  def annoFile: Path = systemDir.resolve(s"${config.topModuleName}.anno.json")
+
+  /**
+   * Path to the generated device tree source file
+   */
+  def dtsFile: Path = systemDir.resolve(s"${config.topModuleName}.dts")
+
+  /**
+   * Path to the generated device tree blob file
+   */
+  def dtbFile: Path = systemDir.resolve(s"${config.topModuleName}.dtb")
+}
+
+
+
+class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
+  protected def systemDirImpl(prefixPath: Path): Path = prefixPath.resolve(config.configName).resolve("system-yosys")
 
   override def createSubdirsImpl(): Unit = {}
 }
 
-private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
+
+
+class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
   private val fpgaBoardName: String = args.board match {
     case Some(boardClass) => FPGARegistry.b2n(boardClass)
     case None => throw new InternalBugException("FPGA board not set in SOCTArgs for VivadoSOCTPaths")
   }
 
-  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve(fpgaBoardName)
+  protected def systemDirImpl(prefixPath: Path): Path = prefixPath.resolve(config.configName).resolve(fpgaBoardName)
 
   /**
    * Path to the directory containing the generated source files for Vivado (e.g., the init.tcl file, the block design tcl file, constraints, etc.)
@@ -209,7 +257,7 @@ private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPa
   /**
    * Path to the Vivado project directory - where the Vivado project files like the .xpr file will be stored
    */
-  val vivadoProjectDir: Path = args.vivadoProjectDir.resolve(config.configName).resolve(fpgaBoardName)
+  val vivadoProjectDir: Path = args.vivadoWorkspace.resolve(config.configName).resolve(fpgaBoardName)
 
   /**
    * Path to the TCL file that initializes the Vivado project (loading sources, constraints, etc.)
@@ -247,9 +295,10 @@ private class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPa
   }
 }
 
-private class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
-  // For example: workspace/RocketB1-64/sim
-  val systemDir: Path = args.workspaceDir.resolve(config.configName).resolve("sim")
+
+
+class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
+  protected def systemDirImpl(prefixPath: Path): Path = prefixPath.resolve(config.configName).resolve("sim")
 
   override def createSubdirsImpl(): Unit = {}
 }

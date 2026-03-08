@@ -2,7 +2,8 @@ package soct
 
 // Import the generated BuildInfo as info (short alias for convenience):
 
-import soct.SOCTNames.SOCT_SYSTEM_CMAKE_FILE
+import soct.SOCTLauncher.SOCTConfig
+import soct.SOCTNames.{DEFAULT_EXAMPLE_BINARY, SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.build.{BuildInfo => info}
 
 import java.nio.charset.StandardCharsets
@@ -30,17 +31,21 @@ object SOCTReadmeBuilder {
 
   val defaultArgs = SOCTArgs()
   val defaultConfigPath = defaultArgs.baseConfig.getClass.getCanonicalName
-  val defaultConfig = s"${defaultArgs.baseConfig}-${defaultArgs.xlen}"
-  val exampleOutDir = s"${rel(defaultArgs.workspaceDir)}/$defaultConfig/sim"
+  val defaultConfig = SOCTUtils.configName(defaultArgs.baseConfig, defaultArgs.xlen)
+
+
+  val paths = new SimSOCTPaths(defaultArgs, SOCTConfig(defaultArgs))
+
+  val exampleOutDir = rel(paths.systemDir)
   val soctCmakePath = s"$exampleOutDir/${SOCT_SYSTEM_CMAKE_FILE}"
 
-  val defaultBin = "hello-cpp"
-  val defaultTargetSim = s"${defaultBin}-sim"
-  val defaultTargetBoard = s"${defaultBin}-board"
+  val defaultBin = DEFAULT_EXAMPLE_BINARY
+  val defaultBinPath = rel(paths.elfsDir.resolve(s"$defaultBin.elf"))
 
-  val elfDir = path("binaries") + "/elfs"
-  val defaultElfSim = s"$elfDir/programs/$defaultBin/boot-sim.elf"
-  val defaultElfBoard = s"$elfDir/programs/$defaultBin/boot-board.elf"
+  val simBuildDir = rel(paths.buildDir.resolve("sim-build"))
+  val progBuildDir = rel(paths.buildDir.resolve("prog-build"))
+  val cmakeSoctSystemDef = s"-DSOCT_SYSTEM=${rel(paths.soctSystemCMakeFile)}"
+
 
   def rel(path: Path): String = {
     SOCTPaths.projectRoot.relativize(path).toString
@@ -208,7 +213,7 @@ object SOCTReadmeBuilder {
        |For this, the CMake project in ${path("sim")} will build a Verilator-based simulator for the generated design, and you can run the emitted program on the simulator to see it in action.
        |
        |> [!NOTE]
-       |> $sct emits a CMake file for each emitted design named ${SOCT_SYSTEM_CMAKE_FILE} which contains information about the emitted design, such as the CPU architecture, the number of cores etc.
+       |> $sct emits a CMake file for each emitted design named $SOCT_SYSTEM_CMAKE_FILE which contains information about the emitted design, such as the CPU architecture, the number of cores etc.
        |> This simplifies the process of building binaries as commonly used variables are already defined for you and don't need to be extracted from the device tree blob.
        |> For our example, the emitted $SOCT_SYSTEM_CMAKE_FILE file is located at `$soctCmakePath`.
        |---
@@ -249,16 +254,16 @@ object SOCTReadmeBuilder {
        |#### Building Binaries (CLion)
        |
        |1. Open the [${path("binaries")}](${path("binaries")}) directory as a project in CLion.
-       |2. Configure the CMake project for the example: `Help -> Find Action -> CMake Settings -> CMake options -> add -DSOCT_SYSTEM=$root/$soctCmakePath`
+       |2. Configure the CMake project for the example: `Help -> Find Action -> CMake Settings -> CMake options -> add $cmakeSoctSystemDef`
        |3. In the top right corner, select the example binary `$defaultBin` and click the hammer icon to build it.
        |
        |---
        |
        |#### Building Binaries (CLI)
        |
-       |1. Create a `build` directory: `mkdir -p ${path("binaries")}/build`.
-       |2. Initialize the CMake project for the example: `cmake -S ${path("binaries")} -B ${path("binaries")}/build -DSOCT_SYSTEM=$root/$soctCmakePath`
-       |3. Build the example binary: `cmake --build ${path("binaries")}/build --target $defaultTargetSim`
+       |1. Create a `build` directory: `mkdir -p $progBuildDir`. This path is recommended to be inside the emitted system directory to keep generated files organized.
+       |2. Initialize the CMake project for the example: `cmake -S ${path("binaries")} -B $progBuildDir $cmakeSoctSystemDef`
+       |3. Build the example binary: `cmake --build $progBuildDir --target $defaultBin`
        |
        |---
        |
@@ -267,17 +272,17 @@ object SOCTReadmeBuilder {
        |1. Open the [${path("sim")}](${path("sim")}) directory as a project in CLion.
        |2. Create a release build configuration for the simulator: `Help -> Find Action -> CMake Settings -> Press "+" above the list of configurations`
        |   Now you can select the new configuration in the top right corner
-       |3. Pass the binary you want to run as an argument to the simulator configuration: `Help -> Find Action -> Edit Configurations -> select the simulator configuration -> Program Arguments` and add `${defaultElfSim}`
+       |3. Pass the binary you want to run as an argument to the simulator configuration: `Help -> Find Action -> Edit Configurations -> select the simulator configuration -> Program Arguments` and add `${defaultBinPath}`
        |4. Click the green play button to build and run the simulator with the example binary.
        |
        |---
        |
        |#### Running the Simulator (CLI)
        |
-       |1. Create a `build` directory: `mkdir -p ${path("sim")}/build`.
-       |2. Initialize the CMake project for the example: `cmake -S ${path("sim")} -B ${path("sim")}/build -DCMAKE_BUILD_TYPE=Release`
-       |3. Build the simulator (builds all targets in `${path("sim")}/configs`: `cmake --build ${path("sim")}/build --parallel $$(nproc)`
-       |4. Run the example binary on the simulator: `${path("sim")}/build/$defaultConfig $defaultElfSim`
+       |1. Create a `build` directory: `mkdir -p $simBuildDir`. Again, we recommend keeping this inside the emitted system directory for better organization of generated files.
+       |2. Initialize the CMake project for the example: `cmake -S ${path("sim")} -B $simBuildDir -DCMAKE_BUILD_TYPE=Release $cmakeSoctSystemDef`
+       |3. Build the simulator: `cmake --build $simBuildDir --parallel $$(nproc)`
+       |4. Run the example binary on the simulator: `$simBuildDir/$SOCT_SIMULATOR_EXE $defaultBinPath`
        |
        |---
        |

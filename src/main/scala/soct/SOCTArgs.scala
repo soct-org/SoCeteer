@@ -11,6 +11,7 @@ import soct.system.vivado.SOCTVivadoSystem
 import soct.system.vivado.fpga.{FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
+import soct.SOCTNames.{LATEST_SOCT_SYSTEM_CMAKE_FILE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.SOCTPaths.projectRoot
 
 // Define the supported targets
@@ -81,7 +82,8 @@ object Targets {
 case class SOCTArgs(
                      // General options
                      workspaceDir: Path = projectRoot.resolve("workspace"),
-                     vivadoProjectDir: Path = projectRoot.resolve("vivado-projects"),
+                     vivadoWorkspace: Path = projectRoot.resolve("vivado-projects"),
+                     userOutDir: Option[Path] = None,
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
@@ -89,6 +91,7 @@ case class SOCTArgs(
                      singleVerilogFile: Boolean = false,
                      includeLocationInfo: Boolean = false,
                      target: Targets = Targets.Verilator,
+                     emitLatestSOCTSystem: Boolean = true,
                      userBootrom: Option[String] = None,
                      userTop: Option[ChiselTop] = None,
                      userMabi: Option[String] = None,
@@ -147,8 +150,9 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
 
   help("help").text("Prints this usage text")
   // General options
-  opt[String]('o', "out-dir").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated files. Default is ${defaultSOCTArgs.workspaceDir}.")
-  opt[String]("vivado-project-dir").action((x, c) => c.copy(vivadoProjectDir = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated vivado projects. Default is ${defaultSOCTArgs.vivadoProjectDir}.")
+  opt[String]('w', "workspace").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"A custom workspace directory to use instead of the default ${defaultSOCTArgs.workspaceDir}. The generated files will be stored in a subdirectory of this directory based on the config and target. Superseded by --out-dir if both are provided.")
+  opt[String]('o', "out-dir").action((x, c) => c.copy(userOutDir = Some(Paths.get(x).toAbsolutePath))).text("The output directory to use for all generated files. If set, this overrides the default workspace directory and the --workspace option.")
+  opt[String]("vivado-workspace").action((x, c) => c.copy(vivadoWorkspace = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated vivado projects. The generated Vivado project for a config will be stored in a subdirectory of this directory based on the config and the target board. Default is ${defaultSOCTArgs.vivadoWorkspace}.")
   opt[String]('c', "config")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
@@ -164,6 +168,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[Unit]("single-verilog-file").action((_, c) => c.copy(singleVerilogFile = true)).text(s"(Ignored for Chisel 3 compiler - it always outputs a single file) Generate a single verilog file instead of splitting it up into modules. Due to the way firtool handles things, this flag DISABLES ANY FORM OF VERIFICATION INCLUDING PRINTF.")
   opt[Unit]("include-location-info").action((_, c) => c.copy(includeLocationInfo = true)).text(s"Include location information (file and line number) as comments in the generated verilog/systemverilog file.")
   opt[String]('t', "target").action((x, c) => c.copy(target = Targets.parse(x))).text(s"Whether to simulate or synthesize the design using various backends. Available options: ${Targets.values.map(_.name).mkString(", ")}. Default is ${defaultSOCTArgs.target}.")
+  opt[Unit]("no-latest-soct-system").action((_, c) => c.copy(emitLatestSOCTSystem = false)).text(s"Do NOT emit a link to latest emitted $SOCT_SYSTEM_CMAKE_FILE ($LATEST_SOCT_SYSTEM_CMAKE_FILE).")
   opt[String]("bootrom").action((x, c) => c.copy(userBootrom = Some(x))).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
     s" ${Targets.values.map(t => s"${t.name} -> ${t.defaultBootrom}").mkString(", ")}.")
   opt[String]("top")

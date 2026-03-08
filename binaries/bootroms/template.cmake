@@ -30,7 +30,7 @@ target_compile_options(${BOOTROM_ELF} PRIVATE ${ALL_CFLAGS})
 target_link_options(${BOOTROM_ELF} PRIVATE ${ALL_LFLAGS})
 
 set_target_properties(${BOOTROM_ELF} PROPERTIES OUTPUT_NAME ${BOOTROM_NAME}.elf
-        RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR}/bootroms/
+        RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR}
 
 )
 

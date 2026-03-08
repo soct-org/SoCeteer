@@ -3,7 +3,7 @@ package soct.system.soceteer
 import chisel3._
 import chisel3.util.log2Ceil
 import freechips.rocketchip.devices.debug.HasPeripheryDebug
-import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, CanHavePeripheryCLINT, CanHavePeripheryPLIC, TLROM}
+import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy.AddressRange
 import freechips.rocketchip.resources.{AddressMapEntry, DTSCompat, DTSModel, DTSTimebase, Resource, ResourceAnchors, ResourceBinding, ResourceInt, ResourceString}
 import freechips.rocketchip.subsystem._
@@ -12,11 +12,11 @@ import freechips.rocketchip.util.{DontTouch, ElaborationArtefacts, HasCoreMonito
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule, LazyRawModuleImp}
+import soct.SOCTNames.{BOOTROM_MODE_KEY, SOCT_SYSTEM_CMAKE_KEY}
 import soct.SOCTUtils.runCMakeCommand
-import soct.{HasSOCTConfig, HasSOCTPaths, SOCTPaths, SOCTSystemGenerator, SOCTUtils, log}
+import soct.{HasSOCTConfig, HasSOCTPaths, SOCTPaths, SOCTSystemGenerator}
 
 import java.nio.file.Files
-import scala.reflect.io.Directory
 
 /**
  * Singleton object to hold the last instantiated RocketSystem for access by other components
@@ -157,14 +157,14 @@ object SOCTBootROM {
 
       // Compile bootrom using CMake
       val defs = Map(
-        "SOCT_SYSTEM" -> paths.soctSystemCMakeFile.toString,
+        SOCT_SYSTEM_CMAKE_KEY -> paths.soctSystemCMakeFile.toString,
         // And configure for bootrom build
-        "BOOTROM_MODE" -> "ON",
+        BOOTROM_MODE_KEY -> "ON",
       )
 
       val sourceDir = SOCTPaths.get("binaries")
-      val buildDir = paths.buildDir.resolve("bootrom")
-      soct.log.debug(s"Building bootrom with CMake. Source dir: $sourceDir, Build dir (deleted after build): $buildDir")
+      val buildDir = paths.buildDir.resolve("bootrom-build")
+      soct.log.debug(s"Building bootrom with CMake. Source dir: $sourceDir, Build dir: $buildDir")
 
       val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
 
