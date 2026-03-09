@@ -36,9 +36,10 @@ jobs:
       - name: Install sbt
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            curl -fL "https://github.com/coursier/coursier/releases/download/v2.1.24/cs-x86_64-pc-linux.gz" | gzip -d > cs;
-            chmod +x cs;
-            yes | ./cs setup
+            curl -fLsS "https://github.com/coursier/coursier/releases/download/v2.1.24/cs-x86_64-pc-linux.gz" -o cs.gz \
+            && gzip -d cs.gz \
+            && chmod +x `cs` \
+            && yes | ./`cs` setup
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install sbt
           else
