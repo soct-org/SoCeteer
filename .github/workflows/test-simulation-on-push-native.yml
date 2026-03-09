@@ -39,7 +39,7 @@ jobs:
             curl -fLsS "https://github.com/coursier/coursier/releases/download/v2.1.24/cs-x86_64-pc-linux.gz" -o cs.gz \
             && gzip -d cs.gz \
             && chmod +x cs \
-            && ./cs setup
+            && ./cs setup -y
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install sbt
           else
