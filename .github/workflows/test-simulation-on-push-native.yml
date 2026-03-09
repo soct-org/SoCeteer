@@ -1,0 +1,74 @@
+name: Test Simulation
+
+on:
+  push:
+    branches:
+      - main
+      - "cicd-*"
+  pull_request:
+    branches:
+      - main
+      - "cicd-*"
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+
+    steps:
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up JDK 22+
+        uses: actions/setup-java@v5
+        with:
+          java-version: '22'
+          distribution: 'temurin'
+
+      - name: Install sbt
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y sbt
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install sbt
+          else
+            choco install sbt
+          fi
+
+      - name: Install cmake
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y cmake
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install cmake
+          else
+            choco install cmake
+          fi
+
+      - name: Install device tree compiler (DTC)
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y device-tree-compiler
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install dtc
+          else
+            choco install dtc-msys2
+          fi
+
+      - name: Install flex and bison
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y flex bison
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install flex bison
+          else
+            choco install winflexbison3
+          fi
+
+      - name: Run tests
+        run: sbt 'testOnly soct.tests.SimulationSpec -- - "Fast test should run without errors"'
