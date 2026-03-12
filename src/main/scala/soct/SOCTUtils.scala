@@ -114,10 +114,9 @@ object SOCTUtils {
   def runCMakeCommand(command: Seq[String],
                       definesMap: Map[String, String],
                       workingDir: Path = SOCTPaths.projectRoot,
-                      generator: String = "Ninja"
                      ): (String, String) = {
     val defines = definesMap.flatMap { case (k, v) => Seq("-D", s"$k=$v") }.toSeq
-    val fullCommand = Seq("cmake") ++ defines ++ command ++ Seq("-G", generator)
+    val fullCommand = Seq("cmake") ++ defines ++ command
     log.debug(s"Running CMake command: ${fullCommand.mkString(" ")} in directory: $workingDir")
     val processBuilder = new ProcessBuilder(fullCommand: _*)
       .directory(workingDir.toFile)

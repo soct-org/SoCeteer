@@ -92,7 +92,7 @@ class SimulationSpec extends AnyFlatSpec {
 
     // Configure and build the simulator in the test build directory, using the generated SOCTSystem.cmake file
     val (simCfgStdout, simCfgStderr) = SOCTUtils.runCMakeCommand(
-      Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString),
+      Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString, "-G", "Ninja"),
       defs ++ Map("VL_THREADS" -> "1") // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
     )
     soct.log.info(s"CMake configure stdout (Simulator):\n$simCfgStdout")
@@ -115,7 +115,7 @@ class SimulationSpec extends AnyFlatSpec {
     binBuildDir.toFile.mkdirs()
 
     val (binCfgStdout, binCfgStderr) = SOCTUtils.runCMakeCommand(
-      Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString),
+      Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString, "-G", "Ninja"),
       defs
     )
     soct.log.info(s"CMake configure stdout (Test Binary):\n$binCfgStdout")
