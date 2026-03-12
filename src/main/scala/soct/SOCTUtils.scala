@@ -106,14 +106,16 @@ object SOCTUtils {
   /**
    * Run a CMake command with the given defines and working directory, returning the stdout and stderr as strings. Throws an exception if the command fails (non-zero exit code), including stdout and stderr in the exception message for debugging.
    *
-   * @param command    The CMake command to run, as a sequence of strings (e.g. Seq("--build", ".", "--target", "foo"))
-   * @param definesMap A map of CMake defines to pass to the command (e.g. Map("SOCT_SYSTEM" -> "path/to/SOCTSystem.cmake")). These will be converted to -D flags (e.g. -DSOCT_SYSTEM=path/to/SOCTSystem.cmake)
-   * @param workingDir The working directory to run the command in (default: project root)
+   * @param command      The CMake command to run, as a sequence of strings (e.g. Seq("--build", ".", "--target", "foo"))
+   * @param definesMap   A map of CMake defines to pass to the command (e.g. Map("SOCT_SYSTEM" -> "path/to/SOCTSystem.cmake")). These will be converted to -D flags (e.g. -DSOCT_SYSTEM=path/to/SOCTSystem.cmake)
+   * @param workingDir   The working directory to run the command in (default: project root)
+   * @param streamOutput If true, stream the command's stdout and stderr to the console in real time while also capturing it. If false, only capture the output and print it if the command fails.
    * @return A tuple of (stdout, stderr) from the command
    */
   def runCMakeCommand(command: Seq[String],
                       definesMap: Map[String, String],
                       workingDir: Path = SOCTPaths.projectRoot,
+                      streamOutput: Boolean = false
                      ): (String, String) = {
     val defines = definesMap.flatMap { case (k, v) => Seq("-D", s"$k=$v") }.toSeq
     val fullCommand = Seq("cmake") ++ defines ++ command
@@ -122,16 +124,51 @@ object SOCTUtils {
       .directory(workingDir.toFile)
 
     val process = processBuilder.start()
+    if (streamOutput) {
+      // Stream output in real time while also capturing it
+      val stdoutBuilder = new StringBuilder
+      val stderrBuilder = new StringBuilder
 
-    val stdout = scala.io.Source.fromInputStream(process.getInputStream).mkString
-    val stderr = scala.io.Source.fromInputStream(process.getErrorStream).mkString
+      val stdoutThread = new Thread(() => {
+        scala.io.Source.fromInputStream(process.getInputStream).getLines().foreach { line =>
+          println(line)
+          stdoutBuilder.append(line).append("\n")
+        }
+      })
 
-    val exitCode = process.waitFor()
-    if (exitCode != 0) {
-      throw new RuntimeException(s"CMake command failed with exit code $exitCode\nstderr: $stderr\nstdout: $stdout")
+      val stderrThread = new Thread(() => {
+        scala.io.Source.fromInputStream(process.getErrorStream).getLines().foreach { line =>
+          System.err.println(line)
+          stderrBuilder.append(line).append("\n")
+        }
+      })
+
+      stdoutThread.start()
+      stderrThread.start()
+
+      val exitCode = process.waitFor()
+      stdoutThread.join()
+      stderrThread.join()
+
+      if (exitCode != 0) {
+        throw new RuntimeException(s"CMake command failed with exit code $exitCode\nstderr: ${stderrBuilder.toString()}\nstdout: ${stdoutBuilder.toString()}")
+      }
+
+      (stdoutBuilder.toString(), stderrBuilder.toString())
+
+    } else {
+      val stdout = scala.io.Source.fromInputStream(process.getInputStream).mkString
+      val stderr = scala.io.Source.fromInputStream(process.getErrorStream).mkString
+
+      val exitCode = process.waitFor()
+      if (exitCode != 0) {
+        throw new RuntimeException(s"CMake command failed with exit code $exitCode\nstderr: $stderr\nstdout: $stdout")
+      }
+
+      (stdout, stderr)
     }
 
-    (stdout, stderr)
+
   }
 
 
