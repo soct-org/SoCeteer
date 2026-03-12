@@ -59,7 +59,7 @@ function(install_verilator)
     execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${VERILATOR_BUILD})
 
     # configure step
-    set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release)
+    set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release -G "Ninja")
 
     if (WIN32)
        if (NOT DEFINED WIN_FLEX_BISON AND DEFINED ENV{WIN_FLEX_BISON})
