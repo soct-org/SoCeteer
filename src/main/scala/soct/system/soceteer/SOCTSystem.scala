@@ -169,7 +169,7 @@ object SOCTBootROM {
       val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
 
       runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
-      runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
+      runCMakeCommand(Seq("--build", "." , "--target", target), Map.empty, buildDir)
 
       assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
 

@@ -99,7 +99,7 @@ class SimulationSpec extends AnyFlatSpec {
     soct.log.info(s"CMake configure stderr (Simulator):\n$simCfgStderr")
 
     val (simBuildStdout, simBuildStderr) =
-      SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
+      SOCTUtils.runCMakeCommand(Seq("--build", "."), Map.empty, simBuildDir)
     soct.log.info(s"CMake build stdout (Simulator):\n$simBuildStdout")
     soct.log.info(s"CMake build stderr (Simulator):\n$simBuildStderr")
 
@@ -123,8 +123,9 @@ class SimulationSpec extends AnyFlatSpec {
 
     val (binBuildStdout, binBuildStderr) =
       SOCTUtils.runCMakeCommand(
-        Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY),
-        Map.empty
+        Seq("--build", ".", "--target", DEFAULT_EXAMPLE_BINARY),
+        Map.empty,
+        binBuildDir
       )
     soct.log.info(s"CMake build stdout (Test Binary):\n$binBuildStdout")
     soct.log.info(s"CMake build stderr (Test Binary):\n$binBuildStderr")

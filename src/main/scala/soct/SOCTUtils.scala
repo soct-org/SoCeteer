@@ -104,8 +104,12 @@ object SOCTUtils {
   }
 
   /**
-   * Run a CMake command with the given defines and working directory, returning the stdout and stderr as strings. Throws an exception if the command fails (non-zero exit code), including the stderr in the exception message.
-   * @param command The CMake command to run, as a sequence of strings (e.g. Seq("--build", "buildDir", "--target", "bootrom"))
+   * Run a CMake command with the given defines and working directory, returning the stdout and stderr as strings. Throws an exception if the command fails (non-zero exit code), including stdout and stderr in the exception message for debugging.
+   *
+   * Note: You may not use --build with the absolut build directory as it will lead to problems with CMake's default generator on Windows.
+   * Instead, you should use --build with the relative path "." and set the working directory to the build directory. For example:
+   *
+   * @param command The CMake command to run, as a sequence of strings (e.g. Seq("--build", ".", "--target", "foo"))
    * @param definesMap A map of CMake defines to pass to the command (e.g. Map("SOCT_SYSTEM" -> "path/to/SOCTSystem.cmake")). These will be converted to -D flags (e.g. -DSOCT_SYSTEM=path/to/SOCTSystem.cmake)
    * @param workingDir The working directory to run the command in (default: project root)
    * @return A tuple of (stdout, stderr) from the command
