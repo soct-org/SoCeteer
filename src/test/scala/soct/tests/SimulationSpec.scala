@@ -100,8 +100,9 @@ class SimulationSpec extends AnyFlatSpec {
 
     val (simBuildStdout, simBuildStderr) =
       SOCTUtils.runCMakeCommand(
-        Seq("--build", simBuildDir.toString),
-        Map.empty
+        Seq("--build", simBuildDir.toString, "--verbose"),
+        Map.empty,
+        streamOutput = true
       )
     soct.log.info(s"CMake build stdout (Simulator):\n$simBuildStdout")
     soct.log.info(s"CMake build stderr (Simulator):\n$simBuildStderr")

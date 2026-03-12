@@ -84,5 +84,14 @@ jobs:
             choco install winflexbison3
           fi
 
+      - name: Upload simulation workspace artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-workspace-${{ matrix.os }}
+          path: test_run_dir/workspace/**
+          if-no-files-found: warn
+          compression-level: 0
+
       - name: Run tests
         run: sbt 'testOnly soct.tests.SimulationSpec -- -t "Fast test should run without errors"'
