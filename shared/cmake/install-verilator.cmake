@@ -1,5 +1,37 @@
 cmake_minimum_required(VERSION 3.20)
 
+
+function(_run_logged_process _step_name)
+    set(options)
+    set(oneValueArgs RESULT_VAR OUT_VAR ERR_VAR)
+    set(multiValueArgs COMMAND)
+    cmake_parse_arguments(RLP "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    execute_process(
+        COMMAND ${RLP_COMMAND}
+        RESULT_VARIABLE _res
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        ECHO_OUTPUT_VARIABLE
+        ECHO_ERROR_VARIABLE
+        COMMAND_ECHO STDOUT
+    )
+
+    set(${RLP_RESULT_VAR} "${_res}" PARENT_SCOPE)
+    set(${RLP_OUT_VAR} "${_out}" PARENT_SCOPE)
+    set(${RLP_ERR_VAR} "${_err}" PARENT_SCOPE)
+
+    if(NOT _res EQUAL 0)
+        message(FATAL_ERROR
+            "${_step_name} failed with exit code ${_res}\n"
+            "stdout:\n${_out}\n"
+            "stderr:\n${_err}"
+        )
+    endif()
+endfunction()
+
+
+
 ###################################################
 # Function to install Verilator
 # Requires:
@@ -122,38 +154,31 @@ function(install_verilator)
     endif()
 
 
-    execute_process(
-            COMMAND ${_cfg_cmd}
-            RESULT_VARIABLE _cfg_res
-            OUTPUT_VARIABLE _cfg_out
-            ERROR_VARIABLE _cfg_err
+    _run_logged_process(
+        "CMake configure"
+        RESULT_VAR _cfg_res
+        OUT_VAR _cfg_out
+        ERR_VAR _cfg_err
+        COMMAND ${_cfg_cmd}
     )
-    if(NOT _cfg_res EQUAL 0)
-        message(FATAL_ERROR "CMake configure failed:\n${_cfg_err}")
-    endif()
 
-    # build step
-    execute_process(
-            COMMAND ${CMAKE_COMMAND} --build "${VERILATOR_BUILD}" --parallel ${N} --config Release
-            RESULT_VARIABLE _build_res
-            OUTPUT_VARIABLE _build_out
-            ERROR_VARIABLE _build_err
+    set(_build_cmd ${CMAKE_COMMAND} --build "${VERILATOR_BUILD}" --parallel ${N} --config Release)
+    _run_logged_process(
+        "CMake build"
+        RESULT_VAR _build_res
+        OUT_VAR _build_out
+        ERR_VAR _build_err
+        COMMAND ${_build_cmd}
     )
-    if(NOT _build_res EQUAL 0)
-        message(FATAL_ERROR "CMake build failed:\n${_build_err}")
-    endif()
 
-
-    # install step
-    execute_process(
-            COMMAND ${CMAKE_COMMAND} --install "${VERILATOR_BUILD}" --prefix ${VERILATOR_INSTALL}
-            RESULT_VARIABLE _inst_res
-            OUTPUT_VARIABLE _inst_out
-            ERROR_VARIABLE _inst_err
+    set(_inst_cmd ${CMAKE_COMMAND} --install "${VERILATOR_BUILD}" --prefix "${VERILATOR_INSTALL}" --config Release)
+    _run_logged_process(
+        "CMake install"
+        RESULT_VAR _inst_res
+        OUT_VAR _inst_out
+        ERR_VAR _inst_err
+        COMMAND ${_inst_cmd}
     )
-    if(NOT _inst_res EQUAL 0)
-        message(FATAL_ERROR "CMake install failed:\n${_inst_err}")
-    endif()
 
     # store executable path in a local variable, then export to parent scope
     if (WIN32)
