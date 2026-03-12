@@ -26,9 +26,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 \
-          && git config --system core.longpaths true
-    
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+          git config --system core.longpaths true
+
       - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
@@ -85,4 +85,4 @@ jobs:
           fi
 
       - name: Run tests
-        run: sbt 'runMain soct.SOCTLauncher --help'
+        run: sbt 'testOnly soct.tests.SimulationSpec -- -t "Fast test should run without errors"'
