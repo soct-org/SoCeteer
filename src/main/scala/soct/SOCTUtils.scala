@@ -127,7 +127,7 @@ object SOCTUtils {
 
     val exitCode = process.waitFor()
     if (exitCode != 0) {
-      throw new RuntimeException(s"CMake command failed with exit code $exitCode\nstderr: $stderr")
+      throw new RuntimeException(s"CMake command failed with exit code $exitCode\nstderr: $stderr\nstdout: $stdout")
     }
 
     (stdout, stderr)
