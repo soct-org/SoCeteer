@@ -90,12 +90,17 @@ class SimulationSpec extends AnyFlatSpec {
     simBuildDir.toFile.mkdirs()
 
     // Config:
-    SOCTUtils.runCMakeCommand(Seq(
+    val (stdout, stderr) = SOCTUtils.runCMakeCommand(Seq(
       "-S", SOCTPaths.get("sim").toString,
       "-B", simBuildDir.toString),
       defs)
+    soct.log.info(s"CMake configure stdout (Simulator):\n$stdout")
+    soct.log.info(s"CMake configure stderr (Simulator):\n$stderr")
+
     // Build:
-    SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
+    Seq(stdout, stderr) = SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
+    soct.log.info(s"CMake build stdout (Simulator):\n$stdout")
+    soct.log.info(s"CMake build stderr (Simulator):\n$stderr")
 
     // Validate that the simulator binary was created:
     val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE)
@@ -108,18 +113,26 @@ class SimulationSpec extends AnyFlatSpec {
     binBuildDir.toFile.mkdirs()
 
     // Config:
-    SOCTUtils.runCMakeCommand(Seq(
+    Seq(stdout, stderr) = SOCTUtils.runCMakeCommand(Seq(
       "-S", SOCTPaths.get("binaries").toString,
       "-B", binBuildDir.toString),
       defs)
 
+    soct.log.info(s"CMake configure stdout (Test Binary):\n$stdout")
+    soct.log.info(s"CMake configure stderr (Test Binary):\n$stderr")
+
     // Build:
-    SOCTUtils.runCMakeCommand(Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY), Map.empty)
+    Seq(stdout, stderr) = SOCTUtils.runCMakeCommand(Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY), Map.empty)
+
+    soct.log.info(s"CMake build stdout (Test Binary):\n$stdout")
+    soct.log.info(s"CMake build stderr (Test Binary):\n$stderr")
 
     val testElf = paths.elfsDir.resolve(s"$DEFAULT_EXAMPLE_BINARY.elf")
     withClue(s"Expected test ELF `${testElf}` to exist after building. ") {
       testElf.toFile.exists() shouldBe true
     }
+
+    soct.log.info(s"Running simulator at `${simBinary}` with test ELF `${testElf}`...")
 
     // Run the simulator with the test ELF in build directory as the working directory
     val simProcess = new ProcessBuilder(simBinary.toString, testElf.toString)
