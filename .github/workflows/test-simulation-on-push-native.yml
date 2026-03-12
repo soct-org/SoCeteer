@@ -77,7 +77,7 @@ jobs:
       - name: Install flex and bison
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sudo apt-get install -y flex bison
+            sudo apt-get install -y flex bison libfl-dev
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install flex bison
           else
