@@ -34,9 +34,56 @@ function(install_verilator)
             set(WIN_FLEX_BISON $ENV{WIN_FLEX_BISON})
         elseif (NOT DEFINED WIN_FLEX_BISON)
             set(WIN_FLEX_BISON "C:\\ProgramData\\chocolatey\\lib\\winflexbison3\\tools")
+            if (EXISTS "${WIN_FLEX_BISON}")
+                message(STATUS "Using default Win Flex Bison path: ${WIN_FLEX_BISON}")
+            else()
+                # There is no way Verilator will succeed to find flex/bison on Windows without this, so we error out if the default path does not exist
+                message(FATAL_ERROR "WIN_FLEX_BISON variable not defined and default path ${WIN_FLEX_BISON} does not exist. Please set WIN_FLEX_BISON to the path where Win Flex Bison is installed.")
+            endif()
         endif()
         list(APPEND _cfg_cmd -DWIN_FLEX_BISON=${WIN_FLEX_BISON})
+    elseif(APPLE)
+        find_program(BREW_EXECUTABLE brew)
+        if(BREW_EXECUTABLE)
+            # On macOS, we check for brew install and add it to the cmake include/lib paths if it exists
+            execute_process(COMMAND ${BREW_EXECUTABLE} --prefix flex
+                    RESULT_VARIABLE _brew_flex_res
+                    OUTPUT_VARIABLE _brew_flex_out
+                    ERROR_VARIABLE _brew_flex_err)
+            if(_brew_flex_res EQUAL 0)
+                string(STRIP "${_brew_flex_out}" _brew_flex_out)
+                list(APPEND _include_path ${_brew_flex_out}/include)
+                list(APPEND _library_path ${_brew_flex_out}/lib)
+            else()
+                message(WARNING "Brew flex not found, relying on the Verilator's way to find flex. Error: ${_brew_flex_err}")
+            endif()
+
+            execute_process(COMMAND ${BREW_EXECUTABLE} --prefix bison
+                    RESULT_VARIABLE _brew_bison_res
+                    OUTPUT_VARIABLE _brew_bison_out
+                    ERROR_VARIABLE _brew_bison_err)
+            if(_brew_bison_res EQUAL 0)
+                string(STRIP "${_brew_bison_out}" _brew_bison_out)
+                list(APPEND _include_path ${_brew_bison_out}/include)
+                list(APPEND _library_path ${_brew_bison_out}/lib)
+            else()
+                message(WARNING "Brew bison not found, relying on the Verilator's way to find bison. Error: ${_brew_bison_err}")
+            endif()
+
+            if(_include_path)
+                list(JOIN _include_path ";" _include_path_str)
+                list(APPEND _cfg_cmd -DCMAKE_INCLUDE_PATH=${_include_path_str})
+             endif()
+
+            if(_library_path)
+                list(JOIN _library_path ";" _library_path_str)
+                list(APPEND _cfg_cmd -DCMAKE_LIBRARY_PATH=${_library_path_str})
+            endif()
+        else()
+            message(WARNING "Homebrew not found, relying on the Verilator's way to find flex and bison. Please install Homebrew to improve chances of Verilator finding flex and bison on macOS.")
+        endif()
     endif()
+
 
     execute_process(
             COMMAND ${_cfg_cmd}

@@ -84,16 +84,16 @@ class SimulationSpec extends AnyFlatSpec {
       paths.soctSystemCMakeFile.toFile.exists() shouldBe true
     }
 
-    // Build simulator:
     val defs = Map(
       SOCT_SYSTEM_CMAKE_KEY -> paths.soctSystemCMakeFile.toString,
     )
     val simBuildDir = paths.buildDir.resolve("sim-build")
     simBuildDir.toFile.mkdirs()
 
+    // Configure and build the simulator in the test build directory, using the generated SOCTSystem.cmake file
     val (simCfgStdout, simCfgStderr) = SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString),
-      defs ++ Map("VL_THREADS" -> "1")
+      defs ++ Map("VL_THREADS" -> "1") // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
     )
     soct.log.info(s"CMake configure stdout (Simulator):\n$simCfgStdout")
     soct.log.info(s"CMake configure stderr (Simulator):\n$simCfgStderr")
@@ -109,7 +109,8 @@ class SimulationSpec extends AnyFlatSpec {
       simBinary.toFile.exists() shouldBe true
     }
 
-    // Build simple test program for the simulator to run
+
+    // Now configure and build the test binary using the same SOCTSystem.cmake file, but with a separate build directory
     val binBuildDir = paths.buildDir.resolve("prog-build")
     binBuildDir.toFile.mkdirs()
 
