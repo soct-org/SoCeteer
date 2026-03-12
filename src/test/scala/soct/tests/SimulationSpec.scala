@@ -77,7 +77,6 @@ class SimulationSpec extends AnyFlatSpec {
       "-t", "verilator",
       "--no-latest-soct-system" // Don't create symlink to latest SOCTSystem.cmake file for tests, to avoid conflicts between tests and user builds
     )
-    // Catch stdout and stderr to prevent cluttering test output, but still print if the test fails
     SOCTLauncher.main(args.toArray)
 
     withClue(s"Expected `${paths.soctSystemCMakeFile}` to exist. ") {
@@ -90,13 +89,14 @@ class SimulationSpec extends AnyFlatSpec {
     val simBuildDir = paths.buildDir.resolve("sim-build")
     simBuildDir.toFile.mkdirs()
 
+    soct.log.info(s"Configuring and building simulator in `${simBuildDir}` with SOCTSystem.cmake at `${paths.soctSystemCMakeFile}`...")
     // Configure and build the simulator in the test build directory, using the generated SOCTSystem.cmake file
-    val (simCfgStdout, simCfgStderr) = SOCTUtils.runCMakeCommand(
+    // Builds verilator on the first run, which can take a long time, so stream output to show the user that something is happening.
+    SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString, "-G", "Ninja"),
-      defs ++ Map("VL_THREADS" -> "1") // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
+      defs ++ Map("VL_THREADS" -> "1"), // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
+      streamOutput = true
     )
-    soct.log.info(s"CMake configure stdout (Simulator):\n$simCfgStdout")
-    soct.log.info(s"CMake configure stderr (Simulator):\n$simCfgStderr")
 
     val (simBuildStdout, simBuildStderr) =
       SOCTUtils.runCMakeCommand(
@@ -112,10 +112,11 @@ class SimulationSpec extends AnyFlatSpec {
       simBinary.toFile.exists() shouldBe true
     }
 
-
     // Now configure and build the test binary using the same SOCTSystem.cmake file, but with a separate build directory
     val binBuildDir = paths.buildDir.resolve("prog-build")
     binBuildDir.toFile.mkdirs()
+
+    soct.log.info(s"Configuring and building test binary in `${binBuildDir}` with SOCTSystem.cmake at `${paths.soctSystemCMakeFile}`...")
 
     val (binCfgStdout, binCfgStderr) = SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString, "-G", "Ninja"),

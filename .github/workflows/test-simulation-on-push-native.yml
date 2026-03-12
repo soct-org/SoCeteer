@@ -84,10 +84,5 @@ jobs:
             choco install winflexbison3
           fi
 
-      - name: Prebuilt Verilator on Windows
-        if: runner.os == 'Windows'
-        run: |
-          cmake -DVERILATOR_SOURCE=shared/verilator -DVERILATOR_INSTALL=shared/verilator/artifact -P shared/cmake/install-verilator.cmake
-
       - name: Run tests
         run: sbt 'testOnly soct.tests.SimulationSpec -- -t "Fast test should run without errors"'

@@ -51,9 +51,10 @@ function(install_verilator)
     include(ProcessorCount)
     ProcessorCount(N)
     if(NOT N EQUAL 0)
-        math(EXPR N "${N} - 1") # Use one less than available processors - freezes system otherwise
+        message(STATUS "Configuring Verilator build to use ${N} parallel jobs")
     else()
         set(N 2)
+        message(WARNING "Could not determine number of processors, defaulting to ${N} parallel jobs for Verilator build")
     endif()
 
     execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${VERILATOR_BUILD})
