@@ -6,6 +6,8 @@ import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
 import soct.SOCTNames.{DEFAULT_EXAMPLE_BINARY, SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_KEY}
 import soct.{SOCTLauncher, SOCTPaths, SOCTPathsBase, SOCTUtils}
 
+import java.nio.file.Files
+
 class SimulationSpec extends AnyFlatSpec {
 
   val XLEN_32 = Seq(32)
@@ -91,7 +93,7 @@ class SimulationSpec extends AnyFlatSpec {
 
     val (simCfgStdout, simCfgStderr) = SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString),
-      defs
+      defs ++ Map("VL_THREADS" -> "1")
     )
     soct.log.info(s"CMake configure stdout (Simulator):\n$simCfgStdout")
     soct.log.info(s"CMake configure stderr (Simulator):\n$simCfgStderr")
@@ -142,7 +144,20 @@ class SimulationSpec extends AnyFlatSpec {
     val simOutput = scala.io.Source.fromInputStream(simProcess.getInputStream).mkString
     val simExitCode = simProcess.waitFor()
 
-    withClue(s"Expected simulator to exit with code 0. Simulator output:\n$simOutput") {
+    val simLogFile = simBuildDir.resolve("log.txt") // TODO change once simulator is updated to have a real argparser
+    val simLog =
+      if (simLogFile.toFile.exists()) Files.readString(simLogFile)
+      else "<log.txt not found>"
+
+    withClue(
+      s"""Expected simulator to exit with code 0.
+         |Simulator stdout/stderr:
+         |$simOutput
+         |
+         |Simulator log.txt:
+         |$simLog
+         |""".stripMargin
+    ) {
       simExitCode shouldBe 0
     }
   }
