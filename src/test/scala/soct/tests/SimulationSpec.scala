@@ -89,18 +89,17 @@ class SimulationSpec extends AnyFlatSpec {
     val simBuildDir = paths.buildDir.resolve("sim-build")
     simBuildDir.toFile.mkdirs()
 
-    // Config:
-    val (stdout, stderr) = SOCTUtils.runCMakeCommand(Seq(
-      "-S", SOCTPaths.get("sim").toString,
-      "-B", simBuildDir.toString),
-      defs)
-    soct.log.info(s"CMake configure stdout (Simulator):\n$stdout")
-    soct.log.info(s"CMake configure stderr (Simulator):\n$stderr")
+    val (simCfgStdout, simCfgStderr) = SOCTUtils.runCMakeCommand(
+      Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString),
+      defs
+    )
+    soct.log.info(s"CMake configure stdout (Simulator):\n$simCfgStdout")
+    soct.log.info(s"CMake configure stderr (Simulator):\n$simCfgStderr")
 
-    // Build:
-    Seq(stdout, stderr) = SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
-    soct.log.info(s"CMake build stdout (Simulator):\n$stdout")
-    soct.log.info(s"CMake build stderr (Simulator):\n$stderr")
+    val (simBuildStdout, simBuildStderr) =
+      SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
+    soct.log.info(s"CMake build stdout (Simulator):\n$simBuildStdout")
+    soct.log.info(s"CMake build stderr (Simulator):\n$simBuildStderr")
 
     // Validate that the simulator binary was created:
     val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE)
@@ -112,20 +111,20 @@ class SimulationSpec extends AnyFlatSpec {
     val binBuildDir = paths.buildDir.resolve("prog-build")
     binBuildDir.toFile.mkdirs()
 
-    // Config:
-    Seq(stdout, stderr) = SOCTUtils.runCMakeCommand(Seq(
-      "-S", SOCTPaths.get("binaries").toString,
-      "-B", binBuildDir.toString),
-      defs)
+    val (binCfgStdout, binCfgStderr) = SOCTUtils.runCMakeCommand(
+      Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString),
+      defs
+    )
+    soct.log.info(s"CMake configure stdout (Test Binary):\n$binCfgStdout")
+    soct.log.info(s"CMake configure stderr (Test Binary):\n$binCfgStderr")
 
-    soct.log.info(s"CMake configure stdout (Test Binary):\n$stdout")
-    soct.log.info(s"CMake configure stderr (Test Binary):\n$stderr")
-
-    // Build:
-    Seq(stdout, stderr) = SOCTUtils.runCMakeCommand(Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY), Map.empty)
-
-    soct.log.info(s"CMake build stdout (Test Binary):\n$stdout")
-    soct.log.info(s"CMake build stderr (Test Binary):\n$stderr")
+    val (binBuildStdout, binBuildStderr) =
+      SOCTUtils.runCMakeCommand(
+        Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY),
+        Map.empty
+      )
+    soct.log.info(s"CMake build stdout (Test Binary):\n$binBuildStdout")
+    soct.log.info(s"CMake build stderr (Test Binary):\n$binBuildStderr")
 
     val testElf = paths.elfsDir.resolve(s"$DEFAULT_EXAMPLE_BINARY.elf")
     withClue(s"Expected test ELF `${testElf}` to exist after building. ") {
