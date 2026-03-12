@@ -106,20 +106,18 @@ object SOCTUtils {
   /**
    * Run a CMake command with the given defines and working directory, returning the stdout and stderr as strings. Throws an exception if the command fails (non-zero exit code), including stdout and stderr in the exception message for debugging.
    *
-   * Note: You may not use --build with the absolut build directory as it will lead to problems with CMake's default generator on Windows.
-   * Instead, you should use --build with the relative path "." and set the working directory to the build directory. For example:
-   *
-   * @param command The CMake command to run, as a sequence of strings (e.g. Seq("--build", ".", "--target", "foo"))
+   * @param command    The CMake command to run, as a sequence of strings (e.g. Seq("--build", ".", "--target", "foo"))
    * @param definesMap A map of CMake defines to pass to the command (e.g. Map("SOCT_SYSTEM" -> "path/to/SOCTSystem.cmake")). These will be converted to -D flags (e.g. -DSOCT_SYSTEM=path/to/SOCTSystem.cmake)
    * @param workingDir The working directory to run the command in (default: project root)
    * @return A tuple of (stdout, stderr) from the command
    */
   def runCMakeCommand(command: Seq[String],
                       definesMap: Map[String, String],
-                      workingDir: Path = SOCTPaths.projectRoot
+                      workingDir: Path = SOCTPaths.projectRoot,
+                      generator: String = "Ninja"
                      ): (String, String) = {
     val defines = definesMap.flatMap { case (k, v) => Seq("-D", s"$k=$v") }.toSeq
-    val fullCommand = Seq("cmake") ++ defines ++ command
+    val fullCommand = Seq("cmake") ++ defines ++ command ++ Seq("-G", generator)
     log.debug(s"Running CMake command: ${fullCommand.mkString(" ")} in directory: $workingDir")
     val processBuilder = new ProcessBuilder(fullCommand: _*)
       .directory(workingDir.toFile)
@@ -197,6 +195,7 @@ object SOCTUtils {
 
   /**
    * Print the help message of the firtool binary at the given path and exit with the same code as the firtool process.
+   *
    * @param firtoolBinaryPath The path to the firtool binary to invoke with --help
    */
   def printFirtoolHelp(firtoolBinaryPath: String): Unit = {

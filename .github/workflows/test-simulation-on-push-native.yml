@@ -54,14 +54,14 @@ jobs:
             choco install sbt
           fi
 
-      - name: Install cmake
+      - name: Install cmake and Ninja
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sudo apt-get install -y cmake
+            sudo apt-get install -y cmake ninja-build
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install cmake
+            brew install cmake ninja
           else
-            choco install cmake
+            choco install -y cmake ninja
           fi
 
       - name: Install device tree compiler (DTC)
