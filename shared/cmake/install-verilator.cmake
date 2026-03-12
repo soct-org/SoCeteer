@@ -30,82 +30,95 @@ function(install_verilator)
     set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release)
 
     if (WIN32)
-        if (NOT DEFINED WIN_FLEX_BISON AND DEFINED ENV{WIN_FLEX_BISON})
-            set(WIN_FLEX_BISON $ENV{WIN_FLEX_BISON})
-        elseif (NOT DEFINED WIN_FLEX_BISON)
-            set(WIN_FLEX_BISON "C:\\ProgramData\\chocolatey\\lib\\winflexbison3\\tools")
-            if (EXISTS "${WIN_FLEX_BISON}")
-                message(STATUS "Using default Win Flex Bison path: ${WIN_FLEX_BISON}")
+       if (NOT DEFINED WIN_FLEX_BISON AND DEFINED ENV{WIN_FLEX_BISON})
+           set(WIN_FLEX_BISON "$ENV{WIN_FLEX_BISON}")
+       elseif (NOT DEFINED WIN_FLEX_BISON)
+           if (DEFINED ENV{ChocolateyInstall})
+               file(TO_CMAKE_PATH "$ENV{ChocolateyInstall}/lib/winflexbison3/tools" WIN_FLEX_BISON)
+           elseif (DEFINED ENV{ProgramData})
+               file(TO_CMAKE_PATH "$ENV{ProgramData}/chocolatey/lib/winflexbison3/tools" WIN_FLEX_BISON)
+           elseif (DEFINED ENV{ALLUSERSPROFILE})
+               file(TO_CMAKE_PATH "$ENV{ALLUSERSPROFILE}/chocolatey/lib/winflexbison3/tools" WIN_FLEX_BISON)
+           else()
+               message(FATAL_ERROR
+                   "Could not determine Chocolatey install root. "
+                   "Please set WIN_FLEX_BISON to the Win Flex Bison tools directory.")
+           endif()
+
+           if (EXISTS "${WIN_FLEX_BISON}")
+               message(STATUS "Using Win Flex Bison path: ${WIN_FLEX_BISON}")
+           else()
+               message(FATAL_ERROR
+                   "WIN_FLEX_BISON variable not defined and derived path "
+                   "${WIN_FLEX_BISON} does not exist. Please set WIN_FLEX_BISON "
+                   "to the path where Win Flex Bison is installed.")
+           endif()
+       endif()
+       list(APPEND _cfg_cmd "-DWIN_FLEX_BISON=${WIN_FLEX_BISON}")
+    elseif(APPLE)
+        find_program(BREW_EXECUTABLE brew)
+        if(BREW_EXECUTABLE)
+            execute_process(
+                COMMAND "${BREW_EXECUTABLE}" --prefix flex
+                RESULT_VARIABLE _brew_flex_res
+                OUTPUT_VARIABLE _brew_flex_prefix
+                ERROR_VARIABLE _brew_flex_err
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+
+            execute_process(
+                COMMAND "${BREW_EXECUTABLE}" --prefix bison
+                RESULT_VARIABLE _brew_bison_res
+                OUTPUT_VARIABLE _brew_bison_prefix
+                ERROR_VARIABLE _brew_bison_err
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+
+            set(_prefix_path "")
+            set(_include_path "")
+            set(_library_path "")
+
+            if(_brew_flex_res EQUAL 0 AND NOT "${_brew_flex_prefix}" STREQUAL "")
+                list(APPEND _prefix_path "${_brew_flex_prefix}")
+                list(APPEND _include_path "${_brew_flex_prefix}/include")
+                list(APPEND _library_path "${_brew_flex_prefix}/lib")
+                list(APPEND _cfg_cmd "-DFLEX_EXECUTABLE=${_brew_flex_prefix}/bin/flex")
+                list(APPEND _cfg_cmd "-DFLEX_INCLUDE_DIR=${_brew_flex_prefix}/include")
             else()
-                # There is no way Verilator will succeed to find flex/bison on Windows without this, so we error out if the default path does not exist
-                message(FATAL_ERROR "WIN_FLEX_BISON variable not defined and default path ${WIN_FLEX_BISON} does not exist. Please set WIN_FLEX_BISON to the path where Win Flex Bison is installed.")
+                message(WARNING
+                    "Brew flex not found, relying on Verilator/CMake to find flex. Error: ${_brew_flex_err}")
             endif()
+
+            if(_brew_bison_res EQUAL 0 AND NOT "${_brew_bison_prefix}" STREQUAL "")
+                list(APPEND _prefix_path "${_brew_bison_prefix}")
+                list(APPEND _include_path "${_brew_bison_prefix}/include")
+                list(APPEND _library_path "${_brew_bison_prefix}/lib")
+                list(APPEND _cfg_cmd "-DBISON_EXECUTABLE=${_brew_bison_prefix}/bin/bison")
+            else()
+                message(WARNING
+                    "Brew bison not found, relying on Verilator/CMake to find bison. Error: ${_brew_bison_err}")
+            endif()
+
+            if(_prefix_path)
+                list(REMOVE_DUPLICATES _prefix_path)
+                list(JOIN _prefix_path ";" _prefix_path_str)
+                list(APPEND _cfg_cmd "-DCMAKE_PREFIX_PATH=${_prefix_path_str}")
+            endif()
+
+            if(_include_path)
+                list(REMOVE_DUPLICATES _include_path)
+                list(JOIN _include_path ";" _include_path_str)
+                list(APPEND _cfg_cmd "-DCMAKE_INCLUDE_PATH=${_include_path_str}")
+            endif()
+
+            if(_library_path)
+                list(REMOVE_DUPLICATES _library_path)
+                list(JOIN _library_path ";" _library_path_str)
+                list(APPEND _cfg_cmd "-DCMAKE_LIBRARY_PATH=${_library_path_str}")
+            endif()
+        else()
+            message(WARNING "Homebrew not found, relying on Verilator/CMake to find flex and bison. Please install Homebrew to improve chances of Verilator finding flex and bison on macOS.")
         endif()
-        list(APPEND _cfg_cmd -DWIN_FLEX_BISON=${WIN_FLEX_BISON})
-        elseif(APPLE)
-            find_program(BREW_EXECUTABLE brew)
-            if(BREW_EXECUTABLE)
-                execute_process(
-                    COMMAND "${BREW_EXECUTABLE}" --prefix flex
-                    RESULT_VARIABLE _brew_flex_res
-                    OUTPUT_VARIABLE _brew_flex_prefix
-                    ERROR_VARIABLE _brew_flex_err
-                    OUTPUT_STRIP_TRAILING_WHITESPACE
-                )
-
-                execute_process(
-                    COMMAND "${BREW_EXECUTABLE}" --prefix bison
-                    RESULT_VARIABLE _brew_bison_res
-                    OUTPUT_VARIABLE _brew_bison_prefix
-                    ERROR_VARIABLE _brew_bison_err
-                    OUTPUT_STRIP_TRAILING_WHITESPACE
-                )
-
-                set(_prefix_path "")
-                set(_include_path "")
-                set(_library_path "")
-
-                if(_brew_flex_res EQUAL 0 AND NOT "${_brew_flex_prefix}" STREQUAL "")
-                    list(APPEND _prefix_path "${_brew_flex_prefix}")
-                    list(APPEND _include_path "${_brew_flex_prefix}/include")
-                    list(APPEND _library_path "${_brew_flex_prefix}/lib")
-                    list(APPEND _cfg_cmd "-DFLEX_EXECUTABLE=${_brew_flex_prefix}/bin/flex")
-                    list(APPEND _cfg_cmd "-DFLEX_INCLUDE_DIR=${_brew_flex_prefix}/include")
-                else()
-                    message(WARNING
-                        "Brew flex not found, relying on Verilator/CMake to find flex. Error: ${_brew_flex_err}")
-                endif()
-
-                if(_brew_bison_res EQUAL 0 AND NOT "${_brew_bison_prefix}" STREQUAL "")
-                    list(APPEND _prefix_path "${_brew_bison_prefix}")
-                    list(APPEND _include_path "${_brew_bison_prefix}/include")
-                    list(APPEND _library_path "${_brew_bison_prefix}/lib")
-                    list(APPEND _cfg_cmd "-DBISON_EXECUTABLE=${_brew_bison_prefix}/bin/bison")
-                else()
-                    message(WARNING
-                        "Brew bison not found, relying on Verilator/CMake to find bison. Error: ${_brew_bison_err}")
-                endif()
-
-                if(_prefix_path)
-                    list(REMOVE_DUPLICATES _prefix_path)
-                    list(JOIN _prefix_path ";" _prefix_path_str)
-                    list(APPEND _cfg_cmd "-DCMAKE_PREFIX_PATH=${_prefix_path_str}")
-                endif()
-
-                if(_include_path)
-                    list(REMOVE_DUPLICATES _include_path)
-                    list(JOIN _include_path ";" _include_path_str)
-                    list(APPEND _cfg_cmd "-DCMAKE_INCLUDE_PATH=${_include_path_str}")
-                endif()
-
-                if(_library_path)
-                    list(REMOVE_DUPLICATES _library_path)
-                    list(JOIN _library_path ";" _library_path_str)
-                    list(APPEND _cfg_cmd "-DCMAKE_LIBRARY_PATH=${_library_path_str}")
-                endif()
-            else()
-                message(WARNING "Homebrew not found, relying on Verilator/CMake to find flex and bison. Please install Homebrew to improve chances of Verilator finding flex and bison on macOS.")
-            endif()
     endif()
 
 
