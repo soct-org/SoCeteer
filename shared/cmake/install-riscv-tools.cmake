@@ -23,6 +23,7 @@ function(install_riscv_tools)
 
 
     # Determine the platform (linux-arm, linux-arm64, linux-x64, darwin-x64, darwin-arm64, windows-x64)
+    set(FILE_FORMAT "tar.gz") # The format of the archive to download
     if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
         if (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
             set(PLATFORM "linux-arm64")
@@ -38,7 +39,8 @@ function(install_riscv_tools)
             set(PLATFORM "darwin-x64")
         endif ()
     elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-        set(PLATFORM "windows-x64")
+        set(PLATFORM "win32-x64")
+        set(FILE_FORMAT "zip") # Windows archives are zip files
     else ()
         message(FATAL_ERROR "Unsupported platform: ${CMAKE_HOST_SYSTEM_NAME} ${CMAKE_HOST_SYSTEM_PROCESSOR}")
     endif ()
@@ -46,7 +48,7 @@ function(install_riscv_tools)
     # Download the toolchain
     cmake_path(GET RISCV_TOOLS PARENT_PATH RISCV_TOOLS_DOWNLOAD_DIR)
     set(RISCV_TOOLS_FULL_NAME "xpack-riscv-none-elf-gcc-${RISCV_TOOLS_VERSION}") # Also the name of the extracted archive
-    set(RISCV_TOOLS_ARCHIVE_NAME "${RISCV_TOOLS_FULL_NAME}-${PLATFORM}.tar.gz")
+    set(RISCV_TOOLS_ARCHIVE_NAME "${RISCV_TOOLS_FULL_NAME}-${PLATFORM}.${FILE_FORMAT}")
     set(RISCV_TOOLS_URL "https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v${RISCV_TOOLS_VERSION}/${RISCV_TOOLS_ARCHIVE_NAME}")
     set(RISCV_TOOLS_URL_SHA ${RISCV_TOOLS_URL}.sha)
 
@@ -54,7 +56,7 @@ function(install_riscv_tools)
 
     message(STATUS "Downloading RISC-V toolchain from ${RISCV_TOOLS_URL} to ${RISCV_TOOLS_DOWNLOAD_DIR}")
 
-    set(_archive_path "${RISCV_TOOLS_DOWNLOAD_DIR}/riscv-none-elf-gcc.tar.gz")
+    set(_archive_path "${RISCV_TOOLS_DOWNLOAD_DIR}/riscv-none-elf-gcc.${FILE_FORMAT}")
     set(_sha_path "${_archive_path}.sha256")
 
     # Download the hash first
