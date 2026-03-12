@@ -93,13 +93,14 @@ class SimulationSpec extends AnyFlatSpec {
     // Configure and build the simulator in the test build directory, using the generated SOCTSystem.cmake file
     val (simCfgStdout, simCfgStderr) = SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString, "-G", "Ninja"),
-      defs ++ Map("VL_THREADS" -> "1") // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
+      defs ++ Map("VL_THREADS" -> "1"), // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
+      streamOutput = true
     )
     soct.log.info(s"CMake configure stdout (Simulator):\n$simCfgStdout")
     soct.log.info(s"CMake configure stderr (Simulator):\n$simCfgStderr")
 
     val (simBuildStdout, simBuildStderr) =
-      SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
+      SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty, streamOutput = true)
     soct.log.info(s"CMake build stdout (Simulator):\n$simBuildStdout")
     soct.log.info(s"CMake build stderr (Simulator):\n$simBuildStderr")
 
@@ -116,7 +117,8 @@ class SimulationSpec extends AnyFlatSpec {
 
     val (binCfgStdout, binCfgStderr) = SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString, "-G", "Ninja"),
-      defs
+      defs,
+      streamOutput = true
     )
     soct.log.info(s"CMake configure stdout (Test Binary):\n$binCfgStdout")
     soct.log.info(s"CMake configure stderr (Test Binary):\n$binCfgStderr")
@@ -124,7 +126,8 @@ class SimulationSpec extends AnyFlatSpec {
     val (binBuildStdout, binBuildStderr) =
       SOCTUtils.runCMakeCommand(
         Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY),
-        Map.empty
+        Map.empty,
+        streamOutput = true
       )
     soct.log.info(s"CMake build stdout (Test Binary):\n$binBuildStdout")
     soct.log.info(s"CMake build stderr (Test Binary):\n$binBuildStderr")
