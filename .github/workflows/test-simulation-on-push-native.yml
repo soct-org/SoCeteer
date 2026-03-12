@@ -40,7 +40,7 @@ jobs:
             && gzip -d cs.gz \
             && chmod +x cs \
             && ./cs setup -y \
-            && export PATH=${HOME}/.local/share/coursier/bin:$PATH
+            && echo "${HOME}/.local/share/coursier/bin" >> $GITHUB_PATH
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install sbt
           else
