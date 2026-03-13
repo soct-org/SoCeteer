@@ -1,14 +1,17 @@
 name: Test Simulation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - "cicd-*"
+      - "copilot/*"
   pull_request:
     branches:
       - main
       - "cicd-*"
+      - "copilot/*"
 
 jobs:
   test:
