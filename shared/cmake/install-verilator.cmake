@@ -60,7 +60,18 @@ function(install_verilator)
     execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${VERILATOR_BUILD})
 
     # configure step
-    set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release -G "Ninja")
+    # On Windows, use the Visual Studio generator so that Verilator is compiled with MSVC.
+    # Verilator built with MinGW/GCC crashes (Access Violation) when processing large designs
+    # on Windows; the MSVC build is stable. The simulation binary is still compiled with
+    # the project's own toolchain (typically MinGW GCC via Ninja) in a separate CMake invocation.
+    if (WIN32)
+        set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}"
+            -DCMAKE_BUILD_TYPE=Release
+            -G "Visual Studio 17 2022" -A x64)
+    else()
+        set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}"
+            -DCMAKE_BUILD_TYPE=Release -G "Ninja")
+    endif()
 
     if (WIN32)
        if (NOT DEFINED WIN_FLEX_BISON AND DEFINED ENV{WIN_FLEX_BISON})
