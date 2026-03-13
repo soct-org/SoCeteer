@@ -83,7 +83,16 @@ object SOCTPaths {
 
   // Dynamic paths that are created during the execution of the program - these cannot be validated at startup since they may not exist yet
   private val baseDyn: Map[String, Path] = Map(
-    "test-run-dir" -> root.resolve("test_run_dir")
+    "test-run-dir" -> {
+      // Allow overriding the test run directory via environment variable.
+      // This is useful on Windows where long paths can cause issues with Verilator's command-line
+      // length limit (Windows CreateProcess limit: 32767 chars). Setting a shorter directory
+      // (e.g. SOCT_TEST_RUN_DIR=D:\t) avoids the limit when hundreds of Verilog source files
+      // are passed to verilator_bin.exe.
+      val envOverride = System.getenv("SOCT_TEST_RUN_DIR")
+      if (envOverride != null && envOverride.nonEmpty) Paths.get(envOverride)
+      else root.resolve("test_run_dir")
+    }
   )
 
   private val derivedDyn: Map[String, Path] = Map(

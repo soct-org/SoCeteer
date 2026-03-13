@@ -84,14 +84,34 @@ jobs:
             choco install winflexbison3
           fi
 
+      # On Windows, the Verilator command line can exceed the Windows CreateProcess limit (32767 chars)
+      # because hundreds of SV source files are passed as full absolute paths.
+      # Using a very short test-run directory (D:\t) reduces each path by ~30 characters,
+      # cutting the total command line by ~11,000 characters and keeping it well under the limit.
+      - name: Set short test workspace path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "D:\t" -Force | Out-Null
+          echo "SOCT_TEST_RUN_DIR=D:\t" >> $env:GITHUB_ENV
+
       - name: Run tests
         run: sbt 'testOnly soct.tests.SimulationSpec -- -t "Fast test should run without errors"'
 
       - name: Upload simulation workspace artifact
-        if: always()
+        if: always() && runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: sim-workspace-${{ matrix.os }}
           path: test_run_dir/workspace/**
+          if-no-files-found: warn
+          compression-level: 0
+
+      - name: Upload simulation workspace artifact (Windows)
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-workspace-${{ matrix.os }}
+          path: ${{ env.SOCT_TEST_RUN_DIR }}/workspace/**
           if-no-files-found: warn
           compression-level: 0
