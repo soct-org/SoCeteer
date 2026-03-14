@@ -135,7 +135,8 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
         if (MSVC)
             target_compile_options(${SOCT_SIM_EXE} PRIVATE /O2)
         else () # mingw
-            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -march=native -static -static-libgcc -static-libstdc++)
+            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -march=native -static)
+            target_link_options(${SOCT_SIM_EXE} PRIVATE -static -static-libgcc -static-libstdc++)
         endif ()
     else() # Unix
         target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -march=native)
@@ -145,7 +146,8 @@ else () # Debug mode
         if (MSVC)
             target_compile_options(${SOCT_SIM_EXE} PRIVATE /Od /RTC1)
         else () # mingw
-            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -march=native -static -static-libgcc -static-libstdc++)
+            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -march=native -static)
+            target_link_options(${SOCT_SIM_EXE} PRIVATE -static -static-libgcc -static-libstdc++)
         endif ()
     else()
         target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -march=native)
