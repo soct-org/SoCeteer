@@ -124,31 +124,37 @@ set(COMMON_CXX_SRCS
         ${CMAKE_CURRENT_LIST_DIR}/main.cpp
         ${CMAKE_CURRENT_LIST_DIR}/remote/bitbang.cpp
 )
-message(DEBUG "Verilog files for ${SOCT_SIM_EXE}: ${CONFIG_VERILOG_SOURCES}")
-message(DEBUG "C++ files for ${SOCT_SIM_EXE}: ${COMMON_CXX_SRCS}")
+
+# On Windows CMake automatically appends .exe to the output binary name.
+# Strip any .exe suffix from SOCT_SIM_EXE before using it as the cmake target
+# name to avoid ending up with a double extension (e.g. simulator.exe.exe).
+string(REGEX REPLACE "\\.exe$" "" SOCT_SIM_TARGET "${SOCT_SIM_EXE}")
+
+message(DEBUG "Verilog files for ${SOCT_SIM_TARGET}: ${CONFIG_VERILOG_SOURCES}")
+message(DEBUG "C++ files for ${SOCT_SIM_TARGET}: ${COMMON_CXX_SRCS}")
 message(DEBUG "Verilator output directory: ${VERILATED_OUT_DIR}")
 
-add_executable(${SOCT_SIM_EXE} ${COMMON_CXX_SRCS})
+add_executable(${SOCT_SIM_TARGET} ${COMMON_CXX_SRCS})
 
 # Set the C++ standard and optimization flags
 if (MSVC) # 🤡
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE /O2)
+        target_compile_options(${SOCT_SIM_TARGET} PRIVATE /O2)
     else ()
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE /Od /RTC1)
+        target_compile_options(${SOCT_SIM_TARGET} PRIVATE /Od /RTC1)
     endif ()
-    target_compile_options(${SOCT_SIM_EXE} PRIVATE /std:c++20)
+    target_compile_options(${SOCT_SIM_TARGET} PRIVATE /std:c++20)
 else ()
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -std=c++20 -march=native)
+        target_compile_options(${SOCT_SIM_TARGET} PRIVATE -O3 -static -std=c++20 -march=native)
     else ()
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -std=c++20 -march=native)
+        target_compile_options(${SOCT_SIM_TARGET} PRIVATE -O0 -static -std=c++20 -march=native)
     endif ()
 endif ()
 
-message(STATUS "Building target ${SOCT_SIM_EXE} with Verilator. This may take a while...")
+message(STATUS "Building target ${SOCT_SIM_TARGET} with Verilator. This may take a while...")
 # Execute the verilator command
-verilate(${SOCT_SIM_EXE}
+verilate(${SOCT_SIM_TARGET}
         SOURCES ${VERILOG_SOURCES} ${CMAKE_CURRENT_LIST_DIR}/verilator_config.vlt
         DIRECTORY ${VERILATED_OUT_DIR}
         PREFIX ${VL_PREFIX}
@@ -158,42 +164,42 @@ verilate(${SOCT_SIM_EXE}
 include(${VERILATED_OUT_DIR}/${VL_PREFIX}.cmake) # Include the generated cmake file
 
 # Which include directories are available to the target
-target_include_directories(${SOCT_SIM_EXE} PRIVATE
+target_include_directories(${SOCT_SIM_TARGET} PRIVATE
         ${RV_ISA_SIM_INCLUDE_DIRS}
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
-target_compile_definitions(${SOCT_SIM_EXE} PRIVATE
+target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE
         VL_VERILATED_INCLUDE="custom-verilated.h" # Overrides the default verilated.h
         VL_PREFIX=${VL_PREFIX} # So we can include VL_PREFIX.h
 )
 
 if (WIN32)
-    target_link_libraries(${SOCT_SIM_EXE} PRIVATE ws2_32) # For windows sockets
-    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE VL_TIME_CONTEXT) # According to the verilator manual.
+    target_link_libraries(${SOCT_SIM_TARGET} PRIVATE ws2_32) # For windows sockets
+    target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE VL_TIME_CONTEXT) # According to the verilator manual.
 endif ()
 
 # Expose VL constants to the C++ code
 if (VL_TRACE)
-    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE VL_TRACE)
+    target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE VL_TRACE)
 endif ()
 
 # Set the trace depth
 if (VL_TRACE_DEPTH)
-    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE VL_TRACE_DEPTH=${VL_TRACE_DEPTH})
+    target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE VL_TRACE_DEPTH=${VL_TRACE_DEPTH})
 endif ()
 
 # Pass unknown syscalls directly to OS
 if (PASS_UNKNOWN_SYSCALLS)
-    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE PASS_UNKNOWN_SYSCALLS)
+    target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE PASS_UNKNOWN_SYSCALLS)
 endif ()
 
 # Enable logging level trace
 if (ENABLE_TRACE)
-    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE ENABLE_TRACE)
+    target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE ENABLE_TRACE)
 endif ()
 
 # Force assertions
 if (FORCE_ASSERTS)
-    target_compile_definitions(${SOCT_SIM_EXE} PRIVATE FORCE_ASSERTS)
+    target_compile_definitions(${SOCT_SIM_TARGET} PRIVATE FORCE_ASSERTS)
 endif ()
