@@ -130,19 +130,25 @@ message(DEBUG "Verilator output directory: ${VERILATED_OUT_DIR}")
 
 add_executable(${SOCT_SIM_EXE} ${COMMON_CXX_SRCS})
 
-# Set the C++ standard and optimization flags
-if (MSVC) # 🤡
-    if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE /O2)
-    else ()
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE /Od /RTC1)
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    if (WIN32)
+        if (MSVC)
+            target_compile_options(${SOCT_SIM_EXE} PRIVATE /O2)
+        else () # mingw
+            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -march=native)
+        endif ()
+    else() # Unix
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -march=native)
     endif ()
-    target_compile_options(${SOCT_SIM_EXE} PRIVATE /std:c++20)
-else ()
-    if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -std=c++20 -march=native)
-    else ()
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -std=c++20 -march=native)
+else () # Debug mode
+    if (WIN32)
+        if (MSVC)
+            target_compile_options(${SOCT_SIM_EXE} PRIVATE /Od /RTC1)
+        else () # mingw
+            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -march=native)
+        endif ()
+    else()
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -march=native)
     endif ()
 endif ()
 
