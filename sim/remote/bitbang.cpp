@@ -103,23 +103,18 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port) :
 }
 
 void remote_bitbang_t::accept() {
-    logging::fesvr::info << "Attempting to accept client socket";
-    int again = 1;
-    while (again != 0) {
-        client_fd = static_cast<int>(::accept(socket_fd, nullptr, nullptr));
-        if (client_fd == -1) {
-            if (socket_would_block()) {
-            } else {
-                logging::fesvr::error << "failed to accept on socket: "
-                    << strerror(errno) << " (" << errno << ")" << "\n";
-                again = 0;
-                abort();
-            }
+    client_fd = static_cast<int>(::accept(socket_fd, nullptr, nullptr));
+    if (client_fd == -1) {
+        if (socket_would_block()) {
+            // No client connected yet; return and try again on the next tick.
         } else {
-            socket_set_nonblocking(client_fd);
-            logging::fesvr::info << "Accepted successfully." << "\n";
-            again = 0;
+            logging::fesvr::error << "failed to accept on socket: "
+                << strerror(errno) << " (" << errno << ")" << "\n";
+            abort();
         }
+    } else {
+        socket_set_nonblocking(client_fd);
+        logging::fesvr::info << "Accepted JTAG client successfully." << "\n";
     }
 }
 

@@ -3,6 +3,10 @@
 
 #include <fstream>
 #include <utility>
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <winsock2.h>
+#endif
 #include "verilated.h"
 #include "logging.hpp"
 #include "dpi-c.hpp"
@@ -50,6 +54,13 @@ void tic_toc(const std::unique_ptr<SystemType>& topp,
 int main(const int argc, char* argv[]) {
     using namespace soct;
     Verilated::debug(0);
+
+#ifdef _WIN32
+    // On Windows, Winsock must be initialized before any socket operations.
+    // This is needed for the remote_bitbang_t JTAG server (port 1337).
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
 
     // Make argv and argc available to the debug_tick function:
     globals::argc = argc;
@@ -104,5 +115,8 @@ int main(const int argc, char* argv[]) {
     logging::close_logging();
 #ifdef VL_TRACE
     tfp->close();
+#endif
+#ifdef _WIN32
+    WSACleanup();
 #endif
 }
