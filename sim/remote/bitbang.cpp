@@ -1,16 +1,43 @@
 // See LICENSE.Berkeley for license details.
 
-#include <arpa/inet.h>
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <arpa/inet.h>
+#  include <fcntl.h>
+#  include <unistd.h>
+#endif
 #include <errno.h>
-#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+
+// Platform-specific socket I/O wrappers
+#ifdef _WIN32
+// Winsock sockets are not Unix file descriptors; use the Winsock I/O functions.
+static inline void socket_set_nonblocking(SOCKET s) {
+    u_long mode = 1;
+    ioctlsocket(s, FIONBIO, &mode);
+}
+#  define socket_read(fd, buf, len)  recv((SOCKET)(fd), (buf), (int)(len), 0)
+#  define socket_write(fd, buf, len) send((SOCKET)(fd), (buf), (int)(len), 0)
+#  define socket_close(fd)           closesocket((SOCKET)(fd))
+#  define socket_would_block()       (WSAGetLastError() == WSAEWOULDBLOCK)
+#else
+static inline void socket_set_nonblocking(int s) {
+    fcntl(s, F_SETFL, O_NONBLOCK);
+}
+#  define socket_read(fd, buf, len)  read((fd), (buf), (len))
+#  define socket_write(fd, buf, len) write((fd), (buf), (len))
+#  define socket_close(fd)           close(fd)
+#  define socket_would_block()       (errno == EAGAIN)
+#endif
 
 #include "logging.hpp"
 #include "bitbang.hpp"
@@ -25,16 +52,16 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port) :
     recv_start(0),
     recv_end(0),
     err(0) {
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    socket_fd = static_cast<int>(socket(AF_INET, SOCK_STREAM, 0));
     if (socket_fd == -1) {
         logging::fesvr::error << "remote_bitbang failed to make socket: "
             << strerror(errno) << " (" << errno << ")";
         abort();
     }
 
-    fcntl(socket_fd, F_SETFL, O_NONBLOCK);
+    socket_set_nonblocking(socket_fd);
     int reuseaddr = 1;
-    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(int)) == -1) {
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuseaddr), sizeof(int)) == -1) {
         logging::fesvr::error << "remote_bitbang failed setsockopt: "
             << strerror(errno) << " (" << errno << ")";
         abort();
@@ -79,10 +106,9 @@ void remote_bitbang_t::accept() {
     logging::fesvr::info << "Attempting to accept client socket";
     int again = 1;
     while (again != 0) {
-        client_fd = ::accept(socket_fd, NULL, NULL);
+        client_fd = static_cast<int>(::accept(socket_fd, nullptr, nullptr));
         if (client_fd == -1) {
-            if (errno == EAGAIN) {
-                // No client waiting to connect right now.
+            if (socket_would_block()) {
             } else {
                 logging::fesvr::error << "failed to accept on socket: "
                     << strerror(errno) << " (" << errno << ")" << "\n";
@@ -90,7 +116,7 @@ void remote_bitbang_t::accept() {
                 abort();
             }
         } else {
-            fcntl(client_fd, F_SETFL, O_NONBLOCK);
+            socket_set_nonblocking(client_fd);
             logging::fesvr::info << "Accepted successfully." << "\n";
             again = 0;
         }
@@ -131,10 +157,9 @@ void remote_bitbang_t::execute_command() {
     char command;
     int again = 1;
     while (again) {
-        ssize_t num_read = read(client_fd, &command, sizeof(command));
+        int num_read = socket_read(client_fd, &command, sizeof(command));
         if (num_read == -1) {
-            if (errno == EAGAIN) {
-                // We'll try again the next call.
+            if (socket_would_block()) {
                 // logging::fesvr::info << "Received no command. Will try again on the next call";
             } else {
                 logging::fesvr::error << "remote_bitbang failed to read on socket: "
@@ -187,7 +212,7 @@ void remote_bitbang_t::execute_command() {
 
     if (dosend) {
         while (1) {
-            ssize_t bytes = write(client_fd, &tosend, sizeof(tosend));
+            int bytes = socket_write(client_fd, &tosend, sizeof(tosend));
             if (bytes == -1) {
                 logging::fesvr::error << "failed to write to socket: "
                     << strerror(errno) << " (" << errno << ")" << "\n";
@@ -202,7 +227,7 @@ void remote_bitbang_t::execute_command() {
     if (quit) {
         // The remote disconnected.
         logging::fesvr::info << "Remote end disconnected" << "\n";
-        close(client_fd);
+        socket_close(client_fd);
         client_fd = 0;
     }
 }
