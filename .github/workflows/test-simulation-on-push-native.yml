@@ -1,0 +1,96 @@
+name: Test Simulation
+
+on:
+  push:
+    branches:
+      - main
+      - "cicd-*"
+      - "copilot/*"
+  pull_request:
+    branches:
+      - main
+      - "cicd-*"
+      - "copilot/*"
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+
+    steps:
+      # On Windows, the Verilator command line can exceed the Windows CreateProcess limit (32767 chars)
+      # because hundreds of SV source files are passed as full absolute paths.
+      # Using a very short test-run directory (D:\t) reduces each path by ~30 characters,
+      # cutting the total command line by ~11,000 characters and keeping it well under the limit.
+      - name: Enable long Paths for Windows and set short test workspace path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+          git config --system core.longpaths true
+          New-Item -ItemType Directory -Path "D:\t" -Force | Out-Null
+          echo "SOCT_TEST_RUN_DIR=D:\t" >> $env:GITHUB_ENV
+
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Set up JDK 22+
+        uses: actions/setup-java@v5
+        with:
+          java-version: '22'
+          distribution: 'temurin'
+          
+      - name: Install sbt
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            curl -fLsS "https://github.com/coursier/coursier/releases/download/v2.1.24/cs-x86_64-pc-linux.gz" -o cs.gz \
+            && gzip -d cs.gz \
+            && chmod +x cs \
+            && ./cs setup -y \
+            && echo "${HOME}/.local/share/coursier/bin" >> $GITHUB_PATH
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install sbt
+          else
+            choco install sbt
+          fi
+
+      - name: Install cmake and Ninja
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y cmake ninja-build
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install cmake ninja
+          else
+            choco install -y cmake ninja
+          fi
+
+      - name: Install device tree compiler (DTC)
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y device-tree-compiler
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install dtc
+          else
+            choco install dtc-msys2
+          fi
+
+      - name: Install flex and bison
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y flex bison libfl-dev
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install flex bison
+          else
+            choco install winflexbison3
+          fi
+
+      - name: Run tests
+        run: sbt 'testOnly soct.tests.SimulationSpec -- -t "Fast test should run without errors"'

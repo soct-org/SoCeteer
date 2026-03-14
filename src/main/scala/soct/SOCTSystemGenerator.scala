@@ -89,9 +89,6 @@ object SOCTSystemGenerator {
          |# The number of CPU cores in the system, extracted from the DTS
          |set(SOCT_NCPUS "${DTSExtractor.countCPUs(dtsContent)}")
          |
-         |# The root directory for this system - all relevant files for this system are located under this directory
-         |set(SOCT_SYSTEM_ROOT "${rel(paths.systemDir)}")
-         |
          |# The Verilog source files for this system
          |set(SOCT_VSRCS "${rel(paths.verilogSrcDir)}")
          |

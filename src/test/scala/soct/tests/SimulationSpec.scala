@@ -6,6 +6,8 @@ import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
 import soct.SOCTNames.{DEFAULT_EXAMPLE_BINARY, SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_KEY}
 import soct.{SOCTLauncher, SOCTPaths, SOCTPathsBase, SOCTUtils}
 
+import java.nio.file.Files
+
 class SimulationSpec extends AnyFlatSpec {
 
   val XLEN_32 = Seq(32)
@@ -75,51 +77,69 @@ class SimulationSpec extends AnyFlatSpec {
       "-t", "verilator",
       "--no-latest-soct-system" // Don't create symlink to latest SOCTSystem.cmake file for tests, to avoid conflicts between tests and user builds
     )
-    // Catch stdout and stderr to prevent cluttering test output, but still print if the test fails
     SOCTLauncher.main(args.toArray)
 
     withClue(s"Expected `${paths.soctSystemCMakeFile}` to exist. ") {
       paths.soctSystemCMakeFile.toFile.exists() shouldBe true
     }
 
-    // Build simulator:
     val defs = Map(
       SOCT_SYSTEM_CMAKE_KEY -> paths.soctSystemCMakeFile.toString,
     )
     val simBuildDir = paths.buildDir.resolve("sim-build")
     simBuildDir.toFile.mkdirs()
 
-    // Config:
-    SOCTUtils.runCMakeCommand(Seq(
-      "-S", SOCTPaths.get("sim").toString,
-      "-B", simBuildDir.toString),
-      defs)
-    // Build:
-    SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString), Map.empty)
+    soct.log.info(s"Configuring and building simulator in `${simBuildDir}` with SOCTSystem.cmake at `${paths.soctSystemCMakeFile}`...")
+    // Configure and build the simulator in the test build directory, using the generated SOCTSystem.cmake file
+    // Builds verilator on the first run, which can take a long time, so stream output to show the user that something is happening.
+    SOCTUtils.runCMakeCommand(
+      Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString, "-G", "Ninja"),
+      defs ++ Map("VL_THREADS" -> "1"), // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
+      streamOutput = true
+    )
+
+    val (simBuildStdout, simBuildStderr) =
+      SOCTUtils.runCMakeCommand(
+        Seq("--build", simBuildDir.toString, "--verbose"),
+        Map.empty,
+        streamOutput = true
+      )
+    soct.log.info(s"CMake build stdout (Simulator):\n$simBuildStdout")
+    soct.log.info(s"CMake build stderr (Simulator):\n$simBuildStderr")
 
     // Validate that the simulator binary was created:
-    val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE)
+    val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE + (if (SOCTUtils.isWindows) ".exe" else ""))
     withClue(s"Expected simulator binary `${simBinary}` to exist after building. ") {
       simBinary.toFile.exists() shouldBe true
     }
 
-    // Build simple test program for the simulator to run
+    // Now configure and build the test binary using the same SOCTSystem.cmake file, but with a separate build directory
     val binBuildDir = paths.buildDir.resolve("prog-build")
     binBuildDir.toFile.mkdirs()
 
-    // Config:
-    SOCTUtils.runCMakeCommand(Seq(
-      "-S", SOCTPaths.get("binaries").toString,
-      "-B", binBuildDir.toString),
-      defs)
+    soct.log.info(s"Configuring and building test binary in `${binBuildDir}` with SOCTSystem.cmake at `${paths.soctSystemCMakeFile}`...")
 
-    // Build:
-    SOCTUtils.runCMakeCommand(Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY), Map.empty)
+    val (binCfgStdout, binCfgStderr) = SOCTUtils.runCMakeCommand(
+      Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString, "-G", "Ninja"),
+      defs
+    )
+    soct.log.info(s"CMake configure stdout (Test Binary):\n$binCfgStdout")
+    soct.log.info(s"CMake configure stderr (Test Binary):\n$binCfgStderr")
+
+    val (binBuildStdout, binBuildStderr) =
+      SOCTUtils.runCMakeCommand(
+        Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY),
+        Map.empty
+      )
+    soct.log.info(s"CMake build stdout (Test Binary):\n$binBuildStdout")
+    soct.log.info(s"CMake build stderr (Test Binary):\n$binBuildStderr")
 
     val testElf = paths.elfsDir.resolve(s"$DEFAULT_EXAMPLE_BINARY.elf")
     withClue(s"Expected test ELF `${testElf}` to exist after building. ") {
       testElf.toFile.exists() shouldBe true
     }
+
+    soct.log.info(s"Running simulator at `${simBinary}` with test ELF `${testElf}`...")
 
     // Run the simulator with the test ELF in build directory as the working directory
     val simProcess = new ProcessBuilder(simBinary.toString, testElf.toString)
@@ -130,7 +150,20 @@ class SimulationSpec extends AnyFlatSpec {
     val simOutput = scala.io.Source.fromInputStream(simProcess.getInputStream).mkString
     val simExitCode = simProcess.waitFor()
 
-    withClue(s"Expected simulator to exit with code 0. Simulator output:\n$simOutput") {
+    val simLogFile = simBuildDir.resolve("log.txt") // TODO change once simulator is updated to have a real argparser
+    val simLog =
+      if (simLogFile.toFile.exists()) Files.readString(simLogFile)
+      else "<log.txt not found>"
+
+    withClue(
+      s"""Expected simulator to exit with code 0.
+         |Simulator stdout/stderr:
+         |$simOutput
+         |
+         |Simulator log.txt:
+         |$simLog
+         |""".stripMargin
+    ) {
       simExitCode shouldBe 0
     }
   }

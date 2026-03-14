@@ -24,12 +24,19 @@ function(get_tool_version tool variable)
     endif ()
 endfunction()
 
+
+if (WIN32)
+    set(_tool_exe ".exe")
+else ()
+    set(_tool_exe "")
+endif ()
+
 # Set the compiler toolchain and verify that it exists
-set(CMAKE_C_COMPILER "${RV_PREFIX}gcc")
-set(CMAKE_CXX_COMPILER "${RV_PREFIX}g++")
-set(CMAKE_ASM_COMPILER "${RV_PREFIX}gcc")
-set(CMAKE_AR "${RV_PREFIX}ar")
-set(CMAKE_SIZE "${RV_PREFIX}size")
+set(CMAKE_C_COMPILER   "${RV_PREFIX}gcc${_tool_exe}")
+set(CMAKE_CXX_COMPILER "${RV_PREFIX}g++${_tool_exe}")
+set(CMAKE_ASM_COMPILER "${RV_PREFIX}gcc${_tool_exe}")
+set(CMAKE_AR           "${RV_PREFIX}ar${_tool_exe}")
+set(CMAKE_SIZE         "${RV_PREFIX}size${_tool_exe}")
 
 # Get versions
 get_tool_version(${CMAKE_C_COMPILER} C_COMPILER_VERSION)
