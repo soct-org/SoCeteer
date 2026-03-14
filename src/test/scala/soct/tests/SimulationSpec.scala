@@ -108,7 +108,7 @@ class SimulationSpec extends AnyFlatSpec {
     soct.log.info(s"CMake build stderr (Simulator):\n$simBuildStderr")
 
     // Validate that the simulator binary was created:
-    val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE)
+    val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE + (if (SOCTUtils.isWindows) ".exe" else ""))
     withClue(s"Expected simulator binary `${simBinary}` to exist after building. ") {
       simBinary.toFile.exists() shouldBe true
     }
