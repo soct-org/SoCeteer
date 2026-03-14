@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - "cicd-*"
+      - "copilot/*"
   pull_request:
     branches:
       - main
       - "cicd-*"
+      - "copilot/*"
 
 jobs:
   test:
