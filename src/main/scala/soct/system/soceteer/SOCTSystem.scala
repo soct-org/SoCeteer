@@ -164,12 +164,12 @@ object SOCTBootROM {
 
       val sourceDir = SOCTPaths.get("binaries")
       val buildDir = paths.buildDir.resolve("bootrom-build")
-      soct.log.debug(s"Building bootrom with CMake. Source dir: $sourceDir, Build dir: $buildDir")
+      soct.log.info(s"Building bootrom with CMake. Source dir: $sourceDir, Build dir: $buildDir")
 
       val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
 
-      runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString), defs)
-      runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
+      runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString, "-G", "Ninja"), defs, streamOutput = true)
+      runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty, streamOutput = true)
 
       assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
 

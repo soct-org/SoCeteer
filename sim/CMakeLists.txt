@@ -140,9 +140,15 @@ if (MSVC) # 🤡
     target_compile_options(${SOCT_SIM_EXE} PRIVATE /std:c++20)
 else ()
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -std=c++20 -march=native)
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -std=c++20 -march=native)
     else ()
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -std=c++20 -march=native)
+        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -std=c++20 -march=native)
+    endif ()
+    # On Windows with MinGW, statically link the runtime libraries to avoid
+    # DLL dependency issues (STATUS_ENTRYPOINT_NOT_FOUND / 0xC0000139) caused
+    # by MinGW runtime DLLs not being found or having version mismatches at runtime.
+    if (WIN32)
+        target_link_options(${SOCT_SIM_EXE} PRIVATE -static -static-libgcc -static-libstdc++)
     endif ()
 endif ()
 

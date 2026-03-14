@@ -18,7 +18,7 @@ object SOCTReadmeBuilder {
   val sct = s"**$name**"
   val url = "https://github.com/soct-org/SoCeteer"
   val gitUrl = url + ".git"
-  val root = "<soceteer-root>"
+  val root = "$PWD"
   val rootDocker = "/soceteer"
 
   val chiselVersions = info.supportedChiselVersions.split(",").map(_.trim).toList
@@ -205,7 +205,7 @@ object SOCTReadmeBuilder {
        |
        |## Quick Start
        |
-       |Here's a quick start guide to get you up and running with $sct.
+       |Here's a quick start guide to get you up and running with $sct. All commands assume you are in the root directory of the project (the cloned repository).
        |By default, running the launcher without any args will emit a RocketChip SoC with the default configuration ($defaultConfigPath) - a single RocketChip core for simulation (by default with 64-bit XLEN).
        |
        |After running the launcher, you can find the emitted files (like the FIRRTL and Verilog description, regmaps and the device tree) in the `$exampleOutDir` directory.
@@ -214,7 +214,7 @@ object SOCTReadmeBuilder {
        |
        |> [!NOTE]
        |> $sct emits a CMake file for each emitted design named $SOCT_SYSTEM_CMAKE_FILE which contains information about the emitted design, such as the CPU architecture, the number of cores etc.
-       |> This simplifies the process of building binaries as commonly used variables are already defined for you and don't need to be extracted from the device tree blob.
+       |> This simplifies the process of building binaries and the simulator as commonly used variables are already defined for you and don't need to be extracted from the device tree blob.
        |> For our example, the emitted $SOCT_SYSTEM_CMAKE_FILE file is located at `$soctCmakePath`.
        |---
        |
@@ -261,7 +261,7 @@ object SOCTReadmeBuilder {
        |
        |#### Building Binaries (CLI)
        |
-       |1. Create a `build` directory: `mkdir -p $progBuildDir`. This path is recommended to be inside the emitted system directory to keep generated files organized.
+       |1. Create a build directory: `mkdir -p $progBuildDir`. This path is recommended to be inside the emitted system directory to keep generated files organized.
        |2. Initialize the CMake project for the example: `cmake -S ${path("binaries")} -B $progBuildDir $cmakeSoctSystemDef`
        |3. Build the example binary: `cmake --build $progBuildDir --target $defaultBin`
        |
@@ -279,9 +279,9 @@ object SOCTReadmeBuilder {
        |
        |#### Running the Simulator (CLI)
        |
-       |1. Create a `build` directory: `mkdir -p $simBuildDir`. Again, we recommend keeping this inside the emitted system directory for better organization of generated files.
+       |1. Create a build directory: `mkdir -p $simBuildDir`. Again, we recommend keeping this inside the emitted system directory for better organization of generated files.
        |2. Initialize the CMake project for the example: `cmake -S ${path("sim")} -B $simBuildDir -DCMAKE_BUILD_TYPE=Release $cmakeSoctSystemDef`
-       |3. Build the simulator: `cmake --build $simBuildDir --parallel $$(nproc)`
+       |3. Build the simulator: `cmake --build $simBuildDir`
        |4. Run the example binary on the simulator: `$simBuildDir/$SOCT_SIMULATOR_EXE $defaultBinPath`
        |
        |---

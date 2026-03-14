@@ -83,7 +83,11 @@ object SOCTPaths {
 
   // Dynamic paths that are created during the execution of the program - these cannot be validated at startup since they may not exist yet
   private val baseDyn: Map[String, Path] = Map(
-    "test-run-dir" -> root.resolve("test_run_dir")
+    "test-run-dir" -> {
+      val envOverride = System.getenv("SOCT_TEST_RUN_DIR") // Allow overriding the test run directory with an environment variable, to avoid too long paths being passed to verilator on Windows.
+      if (envOverride != null && envOverride.nonEmpty) Paths.get(envOverride)
+      else root.resolve("test_run_dir")
+    }
   )
 
   private val derivedDyn: Map[String, Path] = Map(
