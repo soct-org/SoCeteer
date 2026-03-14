@@ -60,7 +60,8 @@ function(install_verilator)
     execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${VERILATOR_BUILD})
 
     # configure step
-    set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release -G "Ninja")
+    set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release)
+    set(_generator "Ninja")
 
     if (WIN32)
        if (NOT DEFINED WIN_FLEX_BISON AND DEFINED ENV{WIN_FLEX_BISON})
@@ -87,6 +88,7 @@ function(install_verilator)
                    "to the path where Win Flex Bison is installed.")
            endif()
        endif()
+       set(_generator "Visual Studio 17 2022")
        list(APPEND _cfg_cmd "-DWIN_FLEX_BISON=${WIN_FLEX_BISON}")
     elseif(APPLE)
         find_program(BREW_EXECUTABLE brew)
@@ -154,6 +156,8 @@ function(install_verilator)
         endif()
     endif()
 
+    # Add generator
+    list(APPEND _cfg_cmd -G "${_generator}")
 
     _run_logged_process(
         "CMake configure"
