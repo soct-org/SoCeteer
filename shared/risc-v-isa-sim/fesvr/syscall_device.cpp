@@ -213,7 +213,11 @@ uint64_t syscall_device_t::sys_openat(const uint64_t dirfd, const uint64_t pname
 
 uint64_t syscall_device_t::sys_pathconf(const uint64_t path, const uint64_t param, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t) {
     soct::logging::fesvr::debug << "Getting pathconf for " << path << " with param " << param << "\n";
+#ifdef _WIN32
+    throw std::runtime_error("pathconf not implemented on Windows");
+#else
     return sysret_errno(pathconf(reinterpret_cast<char*>(path), param));
+#endif
 }
 
 
@@ -249,5 +253,9 @@ uint64_t syscall_device_t::syscall_any(const uint32_t sysno, const uint64_t a0, 
                                     const uint64_t a6) {
     soct::logging::fesvr::debug << "Unknown syscall " << sysno << " with args " << a0 << " " << a1 << " " << a2 << " "
         << a3 << " " << a4 << " " << a5 << " " << a6 << "\n";
+#ifdef _WIN32
+    throw std::runtime_error("Unknown syscall " + std::to_string(sysno) + " not available on Windows");
+#else
     return syscall(sysno, a0, a1, a2, a3, a4, a5, a6);
+#endif
 }
