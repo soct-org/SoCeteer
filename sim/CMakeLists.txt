@@ -40,9 +40,9 @@ find_package(VERILATOR REQUIRED HINTS ${VERILATOR_ROOT}) # Provides verilate() f
 # Find the configurations and include sub-projects
 ##################################################
 # Risc-v ISA simulator files
-if(NOT DEFINED RV_ISA_SIM_DIR)
+if (NOT DEFINED RV_ISA_SIM_DIR)
     set(RV_ISA_SIM_DIR ${SOCETEER_ROOT}/shared/risc-v-isa-sim)
-endif()
+endif ()
 
 message(STATUS "RV_ISA_SIM_DIR: ${RV_ISA_SIM_DIR}")
 set(RV_ISA_SIM_INCLUDE_DIRS
@@ -97,10 +97,10 @@ message(STATUS "Verilator arguments: ${VL_ARGS}")
 # Speed up compilation with ccache
 ##################################
 find_program(CCACHE_FOUND ccache)
-if(CCACHE_FOUND)
+if (CCACHE_FOUND)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-endif()
+endif ()
 
 #################################
 # Create targets from each config
@@ -109,11 +109,11 @@ file(GLOB_RECURSE VERILOG_SOURCES "${SOCT_VSRCS}/**/*.v" "${SOCT_VSRCS}/*.v" "${
 cmake_path(APPEND SOCT_BUILD_DIR "verilated" OUTPUT_VARIABLE VERILATED_OUT_DIR)
 
 file(GLOB_RECURSE CANDIDATES LIST_DIRECTORIES true "${SOCT_VSRCS}/*")
-foreach(path IN LISTS CANDIDATES)
-    if(IS_DIRECTORY "${path}")
+foreach (path IN LISTS CANDIDATES)
+    if (IS_DIRECTORY "${path}")
         list(APPEND VL_INCLUDE_DIR "${path}")
-    endif()
-endforeach()
+    endif ()
+endforeach ()
 file(GLOB COLLATERAL_CXX_SRCS "${SOCT_VSRCS}/*.cc" "${SOCT_VSRCS}/*.cpp")
 
 # The C++ sources for the config
@@ -133,27 +133,29 @@ add_executable(${SOCT_SIM_EXE} ${COMMON_CXX_SRCS})
 set(SOCT_COMPILE_FLAGS "")
 set(SOCT_LINK_FLAGS "")
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
     set(SOCT_OPT_FLAG -O3)
-else()
+else ()
     set(SOCT_OPT_FLAG -O0)
-endif()
+endif ()
 
-if(WIN32)
-    if(MSVC)
-        if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if (WIN32)
+    if (MSVC)
+        if (CMAKE_BUILD_TYPE STREQUAL "Release")
             list(APPEND SOCT_COMPILE_FLAGS /O2)
-        else()
+        else ()
             list(APPEND SOCT_COMPILE_FLAGS /Od /RTC1)
-        endif()
-    else() # MinGW
+        endif ()
+    else () # MinGW
         list(APPEND SOCT_COMPILE_FLAGS ${SOCT_OPT_FLAG} -march=native)
         list(APPEND SOCT_LINK_FLAGS -static -static-libgcc -static-libstdc++)
-    endif()
-else() # Unix
+    endif ()
+else () # UNIX
+    if (NOT APPLE) # Static linking on linux, but not on macOS since it causes issues with the system libraries
+        list(APPEND SOCT_LINK_FLAGS -static)
+    endif ()
     list(APPEND SOCT_COMPILE_FLAGS ${SOCT_OPT_FLAG} -march=native)
-    list(APPEND SOCT_LINK_FLAGS -static)
-endif()
+endif ()
 
 target_compile_options(${SOCT_SIM_EXE} PRIVATE ${SOCT_COMPILE_FLAGS})
 target_link_options(${SOCT_SIM_EXE} PRIVATE ${SOCT_LINK_FLAGS})
