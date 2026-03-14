@@ -130,29 +130,33 @@ message(DEBUG "Verilator output directory: ${VERILATED_OUT_DIR}")
 
 add_executable(${SOCT_SIM_EXE} ${COMMON_CXX_SRCS})
 
-if (CMAKE_BUILD_TYPE STREQUAL "Release")
-    if (WIN32)
-        if (MSVC)
-            target_compile_options(${SOCT_SIM_EXE} PRIVATE /O2)
-        else () # mingw
-            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -march=native -static)
-            target_link_options(${SOCT_SIM_EXE} PRIVATE -static -static-libgcc -static-libstdc++)
-        endif ()
-    else() # Unix
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O3 -static -march=native)
-    endif ()
-else () # Debug mode
-    if (WIN32)
-        if (MSVC)
-            target_compile_options(${SOCT_SIM_EXE} PRIVATE /Od /RTC1)
-        else () # mingw
-            target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -march=native -static)
-            target_link_options(${SOCT_SIM_EXE} PRIVATE -static -static-libgcc -static-libstdc++)
-        endif ()
-    else()
-        target_compile_options(${SOCT_SIM_EXE} PRIVATE -O0 -static -march=native)
-    endif ()
-endif ()
+set(SOCT_COMPILE_FLAGS "")
+set(SOCT_LINK_FLAGS "")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(SOCT_OPT_FLAG -O3)
+else()
+    set(SOCT_OPT_FLAG -O0)
+endif()
+
+if(WIN32)
+    if(MSVC)
+        if(CMAKE_BUILD_TYPE STREQUAL "Release")
+            list(APPEND SOCT_COMPILE_FLAGS /O2)
+        else()
+            list(APPEND SOCT_COMPILE_FLAGS /Od /RTC1)
+        endif()
+    else() # MinGW
+        list(APPEND SOCT_COMPILE_FLAGS ${SOCT_OPT_FLAG} -march=native)
+        list(APPEND SOCT_LINK_FLAGS -static -static-libgcc -static-libstdc++)
+    endif()
+else() # Unix
+    list(APPEND SOCT_COMPILE_FLAGS ${SOCT_OPT_FLAG} -march=native)
+    list(APPEND SOCT_LINK_FLAGS -static)
+endif()
+
+target_compile_options(${SOCT_SIM_EXE} PRIVATE ${SOCT_COMPILE_FLAGS})
+target_link_options(${SOCT_SIM_EXE} PRIVATE ${SOCT_LINK_FLAGS})
 
 message(STATUS "Building target ${SOCT_SIM_EXE} with Verilator. This may take a while...")
 # Execute the verilator command
