@@ -5,12 +5,12 @@ on:
     branches:
       - main
       - "cicd-*"
-      - "copilot/*"
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
       - "cicd-*"
-      - "copilot/*"
 
 jobs:
   test:
@@ -28,7 +28,7 @@ jobs:
       # because hundreds of SV source files are passed as full absolute paths.
       # Using a very short test-run directory (D:\t) reduces each path by ~30 characters,
       # cutting the total command line by ~11,000 characters and keeping it well under the limit.
-      - name: Enable long Paths for Windows and set short test workspace path
+      - name: Enable long paths for Windows and set short test workspace path
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
