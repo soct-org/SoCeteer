@@ -12,7 +12,6 @@ env:
   IMAGE_NAME: soceteer
   REGISTRY: ghcr.io
   BUILDX_NO_DEFAULT_ATTESTATIONS: 1
-  SOCT_DOCKER_IMAGE_LATEST: ghcr.io/${{ github.repository_owner }}/soceteer:latest
 
 jobs:
   prepare:
@@ -57,5 +56,4 @@ jobs:
     with:
       os: ${{ matrix.os }}
       chisel: ${{ matrix.chisel }}
-      docker_image: ${{ env.SOCT_DOCKER_IMAGE_LATEST }}
       test_script: ./.github/scripts/ci/run-full-tests.sh

@@ -10,9 +10,6 @@ concurrency:
   group: on-pr-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  SOCT_DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/soceteer:latest
-
 jobs:
   prepare:
     name: Prepare matrices
@@ -44,5 +41,4 @@ jobs:
     with:
       os: ${{ matrix.os }}
       chisel: ${{ matrix.chisel }}
-      docker_image: ${{ env.SOCT_DOCKER_IMAGE }}
       test_script: ./.github/scripts/ci/run-fast-tests.sh

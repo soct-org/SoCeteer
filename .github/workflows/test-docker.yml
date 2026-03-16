@@ -10,8 +10,9 @@ on:
         required: true
         type: string
       docker_image:
-        required: true
+        required: false
         type: string
+        default: ghcr.io/${{ github.repository_owner }}/soceteer:latest
       test_script:
         required: true
         type: string
