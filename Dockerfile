@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Last line of the installation are the packages required for building and running Verilator, see 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata locales wget curl \
-    git build-essential clang lld cmake make g++ python3-dev pkg-config autoconf ccache openjdk-21-jdk \
+    git build-essential clang lld cmake make g++ python3-dev pkg-config autoconf ccache openjdk-21-jdk ninja-build \
     help2man perl mold libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev zlib1g zlib1g-dev flex bison \
     && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen \
@@ -42,7 +42,7 @@ RUN set -eux; \
       curl -fL "https://github.com/VirtusLab/coursier-m1/releases/download/${CS_VERSION}/cs-aarch64-pc-linux.gz" | gzip -d > cs; \
     fi; \
     chmod +x cs; \
-    yes | ./cs setup
+    ./cs setup -y
 
 # Verilator Build Stage
 FROM base AS verilator-builder
