@@ -1,0 +1,53 @@
+name: Tests (Docker mounted)
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      chisel:
+        required: true
+        type: string
+      docker_image:
+        required: true
+        type: string
+      test_script:
+        required: true
+        type: string
+
+jobs:
+  test-docker:
+    runs-on: ${{ inputs.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Enable long paths for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+          git config --system core.longpaths true
+
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Pull docker image
+        run: |
+          docker pull "${{ inputs.docker_image }}"
+
+      - name: Run tests (docker, mounted workspace)
+        env:
+          SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
+        run: |
+          docker run --rm \
+            -e SOCT_CHISEL_VERSION="${SOCT_CHISEL_VERSION}" \
+            -e SOCT_TEST_RUN_DIR="/tmp/t" \
+            -w /work \
+            -v "${PWD}:/work" \
+            --user 0:0 \
+            "${{ inputs.docker_image }}" \
+            bash -lc 'chmod +x "${{ inputs.test_script }}" && "${{ inputs.test_script }}"'

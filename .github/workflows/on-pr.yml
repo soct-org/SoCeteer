@@ -1,0 +1,48 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, "cicd-*"]
+  pull_request:
+    branches: [main, "cicd-*"]
+
+concurrency:
+  group: on-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOCT_DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/soceteer:latest
+
+jobs:
+  prepare:
+    name: Prepare matrices
+    uses: ./.github/workflows/prepare-matrix.yml
+
+  fast-native:
+    name: Fast (native) - ${{ matrix.os }} - chisel ${{ matrix.chisel }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+    uses: ./.github/workflows/test-native.yml
+    with:
+      os: ${{ matrix.os }}
+      chisel: ${{ matrix.chisel }}
+      test_script: ./.github/scripts/ci/run-fast-tests.sh
+
+  fast-docker:
+    name: Fast (docker :latest) - ${{ matrix.os }} - chisel ${{ matrix.chisel }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+    uses: ./.github/workflows/test-docker.yml
+    with:
+      os: ${{ matrix.os }}
+      chisel: ${{ matrix.chisel }}
+      docker_image: ${{ env.SOCT_DOCKER_IMAGE }}
+      test_script: ./.github/scripts/ci/run-fast-tests.sh

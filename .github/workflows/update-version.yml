@@ -1,23 +1,22 @@
-name: Update VERSION file from tag
+name: Chore (update VERSION from tag)
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
 
 jobs:
-  update-version-file:
+  update-version:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout (main)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.ACTIONS_PUSH_TOKEN }}  # use PAT instead of GITHUB_TOKEN
+          ref: main
+          token: ${{ secrets.ACTIONS_PUSH_TOKEN }} # PAT required to push to main
 
       - name: Extract version from tag
         id: version
+        shell: bash
         run: |
           RAW_TAG="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
           VERSION="${RAW_TAG#v}"
@@ -25,13 +24,13 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Configure git user
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Commit and push VERSION
-        env:
-          ACTIONS_PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH_TOKEN }}
+        shell: bash
         run: |
           if git diff --quiet VERSION; then
             echo "VERSION file already up to date, nothing to commit."
