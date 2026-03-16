@@ -50,16 +50,26 @@ object SOCTReadmeBuilder {
   def rel(path: Path): String = {
     SOCTPaths.projectRoot.relativize(path).toString
   }
+
   def path(s: String): String = {
     rel(SOCTPaths.get(s))
   }
 
   def emit(): String = {
-    s"""A framework for the design and deployment of Chisel-based RISC-V-based SoCs.
+    s"""<p align="center">SoCeteer - A framework for design and deployment of RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.</p>
+       |
+       |<p align="center">
+       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/test-simulation-on-push-native.yml">
+       |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/test-simulation-on-push-native.yml/badge.svg?branch=main" alt="Test Simulation" />
+       |  </a>
+       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/build-docker-image.yml">
+       |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/build-docker-image.yml/badge.svg?branch=main" alt="Build Docker Image" />
+       |  </a>
+       |</p>
        |
        |> [!IMPORTANT]
        |> This project is in early development and is NOT ready for any serious use. We recomment using $sct for experimentation and learning purposes only at this time.
-       |> For a more stable experience, please use the tagged releases, which are available on GitHub. The latest release is [v${info.version}]($url/releases/tag/v${info.version}).
+       |> For a more stable experience, please use the tagged releases, which are available on GitHub.
        |
        |
        |> [!NOTE]
@@ -89,8 +99,6 @@ object SOCTReadmeBuilder {
        |---
        |
        |## Setup and Dependencies
-       |
-       |---
        |
        |The recommended way to use $sct is via IntelliJ IDEA with the Scala plugin, which provides excellent support for sbt projects.
        |However, you can also use it via the command line (CLI) with sbt (either in a docker container or natively).
@@ -138,19 +146,19 @@ object SOCTReadmeBuilder {
        |
        |---
        |
-       |#### CMake
+       |#### CMake and Ninja
        |
        |* Required to build the CMake projects for the bootrom and other binaries that run on the generated designs. Must be on the system `PATH`.
        |
        |```bash
        |# Ubuntu/Debian
-       |sudo apt-get install cmake
+       |sudo apt-get install cmake ninja-build
        |# Arch Linux
-       |sudo pacman -S cmake
+       |sudo pacman -S cmake ninja
        |# macOS
-       |brew install cmake
+       |brew install cmake ninja
        |# Windows (via Chocolatey)
-       |choco install cmake
+       |choco install cmake ninja
        |```
        |
        |---
@@ -180,6 +188,7 @@ object SOCTReadmeBuilder {
        |#### Verilator (for Simulation)
        |
        |* A maintained, compatible [submodule](${path("verilator")}) is built automatically when running $sct for simulation the first time.
+       |    Windows developers must have a working Visual Studio 2022 installation for building the Verilator binary itself and MinGW toolchain for building the simulator executable.
        |* Requires `flex` and `bison`:
        |
        |```bash
@@ -207,10 +216,13 @@ object SOCTReadmeBuilder {
        |
        |Here's a quick start guide to get you up and running with $sct. All commands assume you are in the root directory of the project (the cloned repository).
        |By default, running the launcher without any args will emit a RocketChip SoC with the default configuration ($defaultConfigPath) - a single RocketChip core for simulation (by default with 64-bit XLEN).
+       |Refer to the [Simulation Tests](src/test/scala/soct/tests/SimulationSpec.scala) for more examples of supported configurations and generators and how to run them.
+       |The [Github Workflow](.github/workflows/test-simulation-on-push-native.yml) shows the full setup for Windows, Linux and macOS hosts for running the simulation tests via CLI natively on the system.
        |
        |After running the launcher, you can find the emitted files (like the FIRRTL and Verilog description, regmaps and the device tree) in the `$exampleOutDir` directory.
-       |We then use the CMake project in ${path("binaries")}") to emit a simple program that runs on the generated design in simulation.
+       |We then use the CMake project in ${path("binaries")} to emit a simple program that runs on the generated design in simulation.
        |For this, the CMake project in ${path("sim")} will build a Verilator-based simulator for the generated design, and you can run the emitted program on the simulator to see it in action.
+       |
        |
        |> [!NOTE]
        |> $sct emits a CMake file for each emitted design named $SOCT_SYSTEM_CMAKE_FILE which contains information about the emitted design, such as the CPU architecture, the number of cores etc.
@@ -286,9 +298,14 @@ object SOCTReadmeBuilder {
        |
        |---
        |
+       |## FPGA Deployment (SECTION UNDER CONSTRUCTION)
+       |$sct can emit SoCs and block designs for FPGA synthesis using Vivado. For this, select `--target vivado` when running the launcher
+       |and specify the desired board with `--board <board-name>` (see `--help` for the list of supported boards).
+       |
+       |
        |## Known Issues and Limitations
        |* If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
-       |* Currently we cannot build Verilator on Apple Silicon (ARM64) hosts due to a flex/bison issue. We are working on a solution for this.
+       |* The FPGA support is currently in development and we could not validate a big rocket core correctly running on FPGA yet. Only a small one has been successfully tested.
        |
        |""".stripMargin
   }

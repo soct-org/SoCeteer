@@ -1,4 +1,4 @@
-name: Test Simulation
+name: Test Simulation (Linux, macOS, Windows)
 
 on:
   push:
