@@ -56,14 +56,14 @@ object SOCTReadmeBuilder {
   }
 
   def emit(): String = {
-    s"""<p align="center">SoCeteer - A framework for design and deployment of RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.</p>
+    s"""<p align="center">SoCeteer - A framework for designing and running RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.</p>
        |
        |<p align="center">
        |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/test-simulation-on-push-native.yml">
        |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/test-simulation-on-push-native.yml/badge.svg?branch=main" alt="Test Simulation" />
        |  </a>
-       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/build-docker-image.yml">
-       |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/build-docker-image.yml/badge.svg?branch=main" alt="Build Docker Image" />
+       |  <a href="https://github.com/orgs/soct-org/packages/container/package/soceteer">
+       |    <img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" />
        |  </a>
        |</p>
        |
@@ -94,7 +94,7 @@ object SOCTReadmeBuilder {
        |
        |* Docker images available for easy setup and use, with support for both x86_64 and ARM64 hosts (including Apple Silicon)
        |
-       |* Cross-platform support for Linux, macOS(ARM / x86_64), and Windows (even native!)
+       |* Runs natively on Linux, macOS(ARM / x86_64), and Windows
        |
        |---
        |
@@ -115,9 +115,6 @@ object SOCTReadmeBuilder {
        |# If already cloned without --recurse-submodules:
        |git submodule update --init --recursive
        |```
-       |
-       |This may take significant time due to [Gemmini's](https://github.com/ucb-bar/gemmini) dependencies. For faster
-       |initialization when branch switching is not required, use `--depth 1`.
        |
        |⚠️ Don't open the project in an IDE before initializing submodules, as it may add directories for uninitialized
        |submodules which can cause issues with cloning.
