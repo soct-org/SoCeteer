@@ -36,8 +36,8 @@ jobs:
         run: |
           docker run --rm \
             -e SOCT_CHISEL_VERSION="${SOCT_CHISEL_VERSION}" \
-            -e SOCT_TEST_RUN_DIR="/tmp/t" \
             -w /work \
             -v "${PWD}:/work" \
+            --user "$(id -u):$(id -g)" \
             "${{ inputs.docker_image }}" \
-            bash -c 'bash "${{ inputs.test_script }}"'
+            bash -c "${{ inputs.test_script }}"
