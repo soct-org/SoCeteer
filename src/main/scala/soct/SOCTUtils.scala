@@ -167,40 +167,10 @@ object SOCTUtils {
 
       (stdout, stderr)
     }
-
-
   }
-
-
-  // Copy Gemmini software files to the system directory
-  /*
-  def copyGemminiSoftware(header: String): Unit = {
-    val srcDir = SOCTPaths.projectRoot.resolve("generators").resolve("gemmini").resolve("software").resolve("gemmini-rocc-tests")
-    val srcInclude = srcDir.resolve("include")
-
-    val destDir = currentSoCPaths.get.systemDir.resolve("gemmini-rocc-tests")
-    val destInclude = destDir.resolve("include")
-    // Create include directory if it doesn't exist
-    Files.createDirectories(destInclude)
-    SOCTUtils.recCopy(srcInclude, destInclude)
-
-    val destParams = destInclude.resolve("gemmini_params.h")
-    Files.write(destParams, header.getBytes(StandardCharsets.UTF_8))
-
-    // Gemmini includes rocc-software/scr/xcustom.h so we copy that as well
-    val srcXCustom = srcDir.resolve("rocc-software").resolve("src").resolve("xcustom.h")
-    val destXCustom = destDir.resolve("rocc-software").resolve("src").resolve("xcustom.h")
-    Files.createDirectories(destXCustom.getParent)
-    Files.copy(srcXCustom, destXCustom, StandardCopyOption.REPLACE_EXISTING)
-  }
-   */
 
   def isWindows: Boolean = {
     System.getProperty("os.name").toLowerCase.contains("win")
-  }
-
-  def isUnix: Boolean = {
-    System.getProperty("os.name").toLowerCase.contains("nix") || System.getProperty("os.name").toLowerCase.contains("nux")
   }
 
   /**
