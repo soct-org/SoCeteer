@@ -30,15 +30,13 @@ jobs:
       test_script: ./.github/scripts/ci/run-fast-tests.sh
 
   fast-docker:
-    name: Fast (docker :latest) - ${{ matrix.os }} - chisel ${{ matrix.chisel }}
+    name: Fast (docker :latest) - chisel ${{ matrix.chisel }}
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
     uses: ./.github/workflows/test-docker.yml
     with:
-      os: ${{ matrix.os }}
       chisel: ${{ matrix.chisel }}
       test_script: ./.github/scripts/ci/run-fast-tests.sh
