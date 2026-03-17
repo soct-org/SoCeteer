@@ -1,0 +1,59 @@
+name: Tests (Full Suite)
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: on-tag-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: soceteer
+  REGISTRY: ghcr.io
+  BUILDX_NO_DEFAULT_ATTESTATIONS: 1
+
+jobs:
+  prepare:
+    name: Prepare matrices
+    uses: ./.github/workflows/prepare-matrix.yml
+
+  update-version:
+    name: Update VERSION on main from tag
+    needs: prepare
+    uses: ./.github/workflows/update-version.yml
+
+  docker:
+    name: Build docker (multi-arch) + manifest
+    needs: [prepare, update-version]
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      image_name: soceteer
+
+  full-native:
+    name: Full (native) - ${{ matrix.os }} - chisel ${{ matrix.chisel }}
+    needs: [prepare, docker]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+    uses: ./.github/workflows/test-native.yml
+    with:
+      os: ${{ matrix.os }}
+      chisel: ${{ matrix.chisel }}
+      test_script: ./.github/scripts/ci/run-full-tests.sh
+
+  full-docker:
+    name: Full (docker :latest) - ${{ matrix.os }} - chisel ${{ matrix.chisel }}
+    needs: [prepare, docker]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+    uses: ./.github/workflows/test-docker.yml
+    with:
+      os: ${{ matrix.os }}
+      chisel: ${{ matrix.chisel }}
+      test_script: ./.github/scripts/ci/run-full-tests.sh

@@ -4,7 +4,7 @@ enablePlugins(BuildInfoPlugin)
 // CHANGE CHISEL VERSION HERE
 //***************************
 val fallbackChiselVersion = "7.9.0"
-val supportedChiselVersions = Seq("7.9.0", "3.6.1")
+val supportedChiselVersions = Seq("7.9.0", "3.6.1") // parsed in .github/workflows/scripts/ci/extract-chisel-versions.py, don't change structure without updating that script
 
 
 val chiselVersion = sys.env.get("SOCT_CHISEL_VERSION") match {
@@ -147,7 +147,7 @@ lazy val boom = freshProject("riscv-boom", boomDir)
   .settings(commonSettings)
   .settings(chiselSettings)
 
-lazy val rocketchip = freshProject("rocket-chip" + (if (useChisel3) "-chisel3" else ""), rocketChipDir)
+lazy val rocketchip = freshProject("rocket-chip", rocketChipDir)
   .settings(berkeley_org)
   .dependsOn(cde)
   .dependsOn(compat)

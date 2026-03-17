@@ -1,0 +1,35 @@
+name: Tests (prepare)
+
+on:
+  workflow_call:
+    outputs:
+      chisel_versions_json:
+        description: "JSON array of supported Chisel versions from build.sbt"
+        value: ${{ jobs.prepare.outputs.chisel_versions_json }}
+      image_tag:
+        description: "Raw tag name (vX.Y.Z) when running on tags; otherwise ref name"
+        value: ${{ jobs.prepare.outputs.image_tag }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      chisel_versions_json: ${{ steps.chisel.outputs.json }}
+      image_tag: ${{ steps.imagetag.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract supported Chisel versions from build.sbt
+        id: chisel
+        shell: bash
+        run: |
+          python3 ./.github/scripts/ci/extract-chisel-versions.py build.sbt | tee chisel_versions.json
+          echo "json=$(cat chisel_versions.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Set image tag from git ref
+        id: imagetag
+        shell: bash
+        run: |
+          RAW_TAG="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          echo "image_tag=${RAW_TAG}" >> "$GITHUB_OUTPUT"
