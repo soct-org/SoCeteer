@@ -29,9 +29,10 @@ jobs:
 
       - name: Set and create test workspace (SOCT_TEST_RUN_DIR)
         run: |
-          echo "SOCT_TEST_RUN_DIR=${{ runner.os == 'Windows' && 'D:\\t' || '/tmp/t' }}" >> $GITHUB_ENV
-          mkdir -p "${SOCT_TEST_RUN_DIR}"
-
+          soct_test_run_dir="${{ runner.os == 'Windows' && 'D:/t' || '/tmp/t' }}"
+          mkdir -p "$soct_test_run_dir"
+          echo "SOCT_TEST_RUN_DIR=$soct_test_run_dir" >> "$GITHUB_ENV"
+      
 
       - name: Checkout code with submodules
         uses: actions/checkout@v4
