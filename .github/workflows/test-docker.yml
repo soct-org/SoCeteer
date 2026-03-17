@@ -40,4 +40,4 @@ jobs:
             -w /work \
             -v "${PWD}:/work" \
             "${{ inputs.docker_image }}" \
-            bash -c 'chmod +x "${{ inputs.test_script }}" && "${{ inputs.test_script }}"'
+            bash -c 'bash "${{ inputs.test_script }}"'
