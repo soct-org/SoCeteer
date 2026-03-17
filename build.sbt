@@ -147,7 +147,7 @@ lazy val boom = freshProject("riscv-boom", boomDir)
   .settings(commonSettings)
   .settings(chiselSettings)
 
-lazy val rocketchip = freshProject("rocket-chip" + (if (useChisel3) "-chisel3" else ""), rocketChipDir)
+lazy val rocketchip = freshProject("rocket-chip", rocketChipDir)
   .settings(berkeley_org)
   .dependsOn(cde)
   .dependsOn(compat)

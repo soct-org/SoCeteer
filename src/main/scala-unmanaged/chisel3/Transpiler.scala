@@ -10,6 +10,7 @@ import org.chipsalliance.cde.config.Parameters
 
 import java.nio.file.{Files, Path}
 import firrtl.options.TargetDirAnnotation
+import firrtl.transforms.{BlackBoxInlineAnno, BlackBoxPathAnno, BlackBoxResourceFileNameAnno}
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 
 import scala.collection.mutable
@@ -103,5 +104,12 @@ object Transpiler {
 
     loweringArgs ++= c.args.userFirtoolArgs
     stage.execute(loweringArgs.toArray, verilogAnnos)
+
+    // BlackBoxInlineAnno does not allow us to specify the path of the file so we move it to the correct location after generation
+    paths.systemDir.toFile.listFiles().filter(_.getName.endsWith(".v")).foreach { file =>
+      soct.log.debug(s"Moving generated verilog file ${file.getName} to ${paths.verilogSrcDir}")
+      val target = paths.verilogSrcDir.resolve(file.getName)
+      Files.move(file.toPath, target)
+    }
   }
 }
