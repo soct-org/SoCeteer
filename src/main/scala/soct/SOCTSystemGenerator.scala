@@ -48,13 +48,17 @@ object SOCTSystemGenerator {
     val dtsContent = Files.readString(paths.dtsFile)
     val march = DTSExtractor.extractMarch(dtsContent)
     val thisDir = "SOCT_SYSTEM_ROOT"
-
+    val realCurrentListDir = paths.soctSystemCMakeFile.getParent.toRealPath()
 
     def rel(path: Path): String = {
-      // Make relative to CMAKE_CURRENT_LIST_DIR so the directory structure can be moved without breaking the paths in the CMake file
       val currentListDir = paths.soctSystemCMakeFile.getParent
-      val suffix = currentListDir.relativize(path).toString.replace("\\", "/") // Use forward slashes for CMake paths, even on Windows
-      s"$${$thisDir}/$suffix".stripSuffix("/") // Remove trailing slash if the path is a directory
+      val suffix = currentListDir.relativize(path).toString.replace("\\", "/")
+      s"$${$thisDir}/$suffix".stripSuffix("/")
+    }
+
+    def relFromRealBase(path: Path): String = {
+      val suffix = realCurrentListDir.relativize(path.toRealPath()).toString.replace("\\", "/")
+      s"$${$thisDir}/$suffix".stripSuffix("/")
     }
 
     val common =
@@ -66,7 +70,7 @@ object SOCTSystemGenerator {
          |get_filename_component($thisDir "$${_real_file}" DIRECTORY)
          |
          |# The root directory of the SoCeteer project - all static files are located under this directory
-         |file(REAL_PATH "${rel(SOCTPaths.projectRoot)}" SOCETEER_ROOT)
+         |cmake_path(SET SOCETEER_ROOT NORMALIZE "${relFromRealBase(SOCTPaths.projectRoot)}")
          |
          |# The version of soceteer used to generate this system
          |set(SOCETEER_VERSION "$version")
