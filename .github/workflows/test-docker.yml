@@ -40,4 +40,4 @@ jobs:
             -v "${PWD}:/work" \
             --user "$(id -u):$(id -g)" \
             "${{ inputs.docker_image }}" \
-            bash -c "${{ inputs.test_script }}"
+            bash "${{ inputs.test_script }}"
