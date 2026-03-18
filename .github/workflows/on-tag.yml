@@ -3,7 +3,6 @@ name: Tests (Full Suite)
 on:
   push:
     tags: ["v*"]
-    branches: [main] # TODO remove once fixed
 
 concurrency:
   group: on-tag-${{ github.ref }}
