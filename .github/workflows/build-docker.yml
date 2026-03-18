@@ -63,8 +63,9 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image_name }}:${{ steps.imagetag.outputs.image_tag }}-${{ matrix.arch }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image_name }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image_name }}:buildcache-${{ matrix.arch }},mode=max
+
 
   manifest:
     name: Create Multi-Arch Manifest (:latest + :tag)
