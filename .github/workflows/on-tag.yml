@@ -3,6 +3,7 @@ name: Tests (Full Suite)
 on:
   push:
     tags: ["v*"]
+    branches: [main] # todo temporary
 
 concurrency:
   group: on-tag-${{ github.ref }}

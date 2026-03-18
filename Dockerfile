@@ -128,3 +128,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     device-tree-compiler \
     && rm -rf /var/lib/apt/lists/*
 USER soct
+
+RUN chmod 1777 ${HOME}
