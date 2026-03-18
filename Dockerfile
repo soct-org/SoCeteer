@@ -105,21 +105,21 @@ RUN cmake -DRISCV_TOOLS_VERSION=${XPACK_TAG} \
     -DRISCV_TOOLS=${RISCV_TOOLS} \
     -P ${SCRIPTS_DIR}/install-riscv-tools.cmake
 
-# Main Build Stage
+# Main Build Stage, copying all necessary artifacts from the previous stages with permssions so envoking users (--user in docker run) can access them without issues
 FROM base AS final
 
 # Circt
-COPY --chown=soct:soct --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
+COPY --chown=soct:soct --chmod=777 --from=circt-builder ${CIRCT_ROOT} ${CIRCT_ROOT}
 
 # Verilator
-COPY --chown=soct:soct --from=verilator-builder ${VERILATOR_ROOT} ${VERILATOR_ROOT}
+COPY --chown=soct:soct --chmod=777 --from=verilator-builder ${VERILATOR_ROOT} ${VERILATOR_ROOT}
 
 # RISC-V compiler
-COPY --chown=soct:soct --from=riscv-builder ${RISCV_TOOLS} ${RISCV_TOOLS}
+COPY --chown=soct:soct --chmod=777 --from=riscv-builder ${RISCV_TOOLS} ${RISCV_TOOLS}
 
 # Scala
-COPY --chown=soct:soct --from=scala-builder ${HOME}/.local/share/coursier ${HOME}/.local/share/coursier
-COPY --chown=soct:soct --from=scala-builder ${HOME}/.cache/coursier ${HOME}/.cache/coursier
+COPY --chown=soct:soct --chmod=777 --from=scala-builder ${HOME}/.local/share/coursier ${HOME}/.local/share/coursier
+COPY --chown=soct:soct --chmod=777 --from=scala-builder ${HOME}/.cache/coursier ${HOME}/.cache/coursier
 ENV PATH=${HOME}/.local/share/coursier/bin:${PATH}
 
 # Add Packages only needed at runtime here:
