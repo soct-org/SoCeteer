@@ -3,6 +3,7 @@ name: Tests (Full Suite)
 on:
   push:
     tags: ["v*"]
+    branches: [main] # TODO remove once fixed
 
 concurrency:
   group: on-tag-${{ github.ref }}
@@ -25,7 +26,10 @@ jobs:
 
   docker:
     name: Build docker (multi-arch) + manifest
-    needs: [prepare, update-version]
+    needs: [ prepare, update-version ]
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-docker.yml
     with:
       image_name: soceteer
