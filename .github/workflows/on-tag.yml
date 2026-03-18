@@ -22,6 +22,8 @@ jobs:
     name: Update VERSION on main from tag
     needs: prepare
     uses: ./.github/workflows/update-version.yml
+    secrets:
+      ACTIONS_PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH_TOKEN }}
 
   docker:
     name: Build docker (multi-arch) + manifest

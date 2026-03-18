@@ -2,6 +2,9 @@ name: Chore (update VERSION from tag)
 
 on:
   workflow_call:
+    secrets:
+      ACTIONS_PUSH_TOKEN:
+        required: true
 
 jobs:
   update-version:
@@ -12,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
-          token: ${{ secrets.ACTIONS_PUSH_TOKEN }} # PAT required to push to main
+          token: ${{ secrets.ACTIONS_PUSH_TOKEN }}
 
       - name: Extract version from tag
         id: version
