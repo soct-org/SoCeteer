@@ -34,10 +34,10 @@ jobs:
         env:
           SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
         run: |
-          docker run --rm -i \
+          docker run --rm \
             -e SOCT_CHISEL_VERSION="${SOCT_CHISEL_VERSION}" \
             -w /work \
             -v "${PWD}:/work" \
             --user "$(id -u):$(id -g)" \
             "${{ inputs.docker_image }}" \
-            /bin/bash -s -- < "${{ inputs.test_script }}"
+            bash "${{ inputs.test_script }}"
