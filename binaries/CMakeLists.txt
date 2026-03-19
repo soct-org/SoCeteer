@@ -39,7 +39,7 @@ add_custom_command(
 )
 add_custom_target(device_tree ALL DEPENDS "${SOCT_DTB}")
 
-file(GLOB ALL_ENTRIES
+file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}"
         "${CMAKE_CURRENT_LIST_DIR}/bootroms/*/"
         "${CMAKE_CURRENT_LIST_DIR}/programs/*/"
 )
@@ -51,7 +51,8 @@ add_subdirectory(${LIBGLOSS_DIR} ${CMAKE_BINARY_DIR}/libgloss)
 
 # Add each program and bootrom as a subdirectory
 foreach (ENTRY ${ALL_ENTRIES})
-    if (IS_DIRECTORY ${ENTRY})
-        add_subdirectory(${ENTRY} ${CMAKE_BINARY_DIR}/${ENTRY})
+    set(ENTRY_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/${ENTRY}")
+    if (IS_DIRECTORY "${ENTRY_SOURCE_DIR}")
+        add_subdirectory("${ENTRY_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/${ENTRY}")
     endif ()
 endforeach ()
