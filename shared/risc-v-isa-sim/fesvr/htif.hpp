@@ -98,7 +98,7 @@ private:
             throw std::runtime_error("no payload specified");
         }
         if (!std::filesystem::exists(m_path_to_elf)) {
-            throw std::runtime_error("could find payload " + m_path_to_elf);
+            throw std::runtime_error("Payload " + m_path_to_elf + " does not exist");
         }
         if (std::filesystem::is_directory(m_path_to_elf)) {
             throw std::runtime_error("payload " + m_path_to_elf + " is a directory");

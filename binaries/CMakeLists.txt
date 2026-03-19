@@ -27,47 +27,31 @@ project(RV_Binaries C CXX ASM)
 
 ###########################################################################################
 # This Cmake can build both programs and bootroms.
-# Set BOOTROM_MODE=ON to build bootroms, otherwise programs to execute on the board/simulator.
 ###########################################################################################
-if (DEFINED BOOTROM_MODE)
-    message(NOTICE "Configured to build RISC-V bootroms.")
-    # Required variables for bootroms:
-    set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary (dtc). If not set, looks for dtc in PATH.")
+set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary (dtc). If not set, looks for dtc in PATH.")
 
-    # Device tree building:
-    add_custom_command(
-            OUTPUT "${SOCT_DTB}"
-            COMMAND ${DTC} -I dts -O dtb -@ -A -o "${SOCT_DTB}" "${SOCT_DTS}"
-            DEPENDS "${SOCT_DTS}"
-            COMMENT "Building DTB from ${SOCT_DTS}"
-    )
-    add_custom_target(device_tree ALL DEPENDS "${SOCT_DTB}")
+# Device tree building:
+add_custom_command(
+        OUTPUT "${SOCT_DTB}"
+        COMMAND ${DTC} -I dts -O dtb -@ -A -o "${SOCT_DTB}" "${SOCT_DTS}"
+        DEPENDS "${SOCT_DTS}"
+        COMMENT "Building DTB from ${SOCT_DTS}"
+)
+add_custom_target(device_tree ALL DEPENDS "${SOCT_DTB}")
 
-    file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}/bootroms" "${CMAKE_CURRENT_LIST_DIR}/bootroms/*/")
-else () # PROGRAM MODE
-    message(NOTICE "Configured to build RISC-V programs.")
+file(GLOB ALL_ENTRIES
+        "${CMAKE_CURRENT_LIST_DIR}/bootroms/*/"
+        "${CMAKE_CURRENT_LIST_DIR}/programs/*/"
+)
 
-    # Add libgloss
-    set(LIBGLOSS_DIR ${SOCETEER_ROOT}/shared/libgloss)
-    add_subdirectory(${LIBGLOSS_DIR} ${CMAKE_BINARY_DIR}/libgloss)
-    include(${LIBGLOSS_DIR}/cmake/libgloss.cmake) # Include libgloss CMake variables
+# Add libgloss
+set(LIBGLOSS_DIR ${SOCETEER_ROOT}/shared/libgloss)
+add_subdirectory(${LIBGLOSS_DIR} ${CMAKE_BINARY_DIR}/libgloss)
 
-    file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}/programs" "${CMAKE_CURRENT_LIST_DIR}/programs/*/")
-endif ()
 
 # Add each program and bootrom as a subdirectory
 foreach (ENTRY ${ALL_ENTRIES})
-    if (DEFINED BOOTROM_MODE)
-        set(BOOTROM ${ENTRY})
-        set(_path ${CMAKE_CURRENT_LIST_DIR}/bootroms/${BOOTROM})
-        if (EXISTS "${_path}/CMakeLists.txt")
-            add_subdirectory(${_path} EXCLUDE_FROM_ALL)
-        endif ()
-    else ()
-        set(PROGRAM ${ENTRY})
-        set(_path ${CMAKE_CURRENT_LIST_DIR}/programs/${PROGRAM})
-        if (EXISTS ${_path}/CMakeLists.txt)
-            add_subdirectory(${_path} EXCLUDE_FROM_ALL)
-        endif ()
+    if (IS_DIRECTORY ${ENTRY})
+        add_subdirectory(${ENTRY} ${CMAKE_BINARY_DIR}/${ENTRY})
     endif ()
 endforeach ()

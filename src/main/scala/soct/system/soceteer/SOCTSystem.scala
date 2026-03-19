@@ -12,7 +12,7 @@ import freechips.rocketchip.util.{DontTouch, ElaborationArtefacts, HasCoreMonito
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.bundlebridge.BundleBridgeSource
 import org.chipsalliance.diplomacy.lazymodule.{InModuleBody, LazyModule, LazyRawModuleImp}
-import soct.SOCTNames.{BOOTROM_MODE_KEY, SOCT_SYSTEM_CMAKE_KEY}
+import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
 import soct.SOCTUtils.runCMakeCommand
 import soct.{HasSOCTConfig, HasSOCTPaths, SOCTPaths, SOCTSystemGenerator}
 
@@ -158,8 +158,6 @@ object SOCTBootROM {
       // Compile bootrom using CMake
       val defs = Map(
         SOCT_SYSTEM_CMAKE_KEY -> paths.soctSystemCMakeFile.toString,
-        // And configure for bootrom build
-        BOOTROM_MODE_KEY -> "ON",
       )
 
       val sourceDir = SOCTPaths.get("binaries")

@@ -90,10 +90,16 @@ message(STATUS "Using sysroot: ${CMAKE_SYSROOT}")
 
 # Set the system name and processor
 set(CMAKE_SYSTEM_NAME Generic)
-set(CMAKE_SYSTEM_PROCESSOR riscv64) # The project is configured to build both 32-bit and 64-bit binaries
+set(CMAKE_SYSTEM_PROCESSOR riscv64)
 
 # Set the find root path
 set(CMAKE_FIND_ROOT_PATH ${SYSROOT})
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+# Set supported features for linking based on gcc:
+set(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED TRUE)
+set(CMAKE_LINK_GROUP_USING_RESCAN
+    "LINKER:--start-group"
+    "LINKER:--end-group")

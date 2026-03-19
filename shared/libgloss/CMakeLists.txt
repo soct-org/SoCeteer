@@ -14,7 +14,7 @@ set(HTIF_DIR ${LIBGLOSS_DIR}/htif)
 set(BOARD_DIR ${LIBGLOSS_DIR}/board)
 
 # Common sources
-file(GLOB_RECURSE LIBGLOSS_COMMON_C_SRCS ${LIBGLOSS_DIR}/src/**/*.c)
+file(GLOB_RECURSE LIBGLOSS_COMMON_C_SRCS ${LIBGLOSS_DIR}/src/**/*.c ${LIBGLOSS_DIR}/src/*.c)
 file(GLOB_RECURSE HTIF_C_SRCS ${HTIF_DIR}/**/*.c)
 file(GLOB_RECURSE HTIF_ASM_SRCS ${HTIF_DIR}/**/*.S)
 file(GLOB_RECURSE BOARD_C_SRCS ${BOARD_DIR}/**/*.c)
@@ -59,5 +59,5 @@ add_obj_library(common_objs "${LIBGLOSS_COMMON_C_SRCS}" "" "${INCLUDE_DIRS}" "${
 add_obj_library(gloss_htif_objs "${HTIF_C_SRCS}" "${HTIF_ASM_SRCS}" "${HTIF_DIR}/misc;${INCLUDE_DIRS};${INCLUDE_DIRS}/htif" "${CFLAGS}" "${ASMFLAGS}")
 add_obj_library(gloss_board_objs "${BOARD_C_SRCS}" "${BOARD_ASM_SRCS}" "${BOARD_DIR}/misc;${INCLUDE_DIRS};${INCLUDE_DIRS}/board" "${CFLAGS}" "${ASMFLAGS}")
 
-add_static_library(libgloss_htif gloss_htif_objs common_objs gloss_htif)
-add_static_library(libgloss_board gloss_board_objs common_objs gloss_board)
+add_static_library(gloss_htif gloss_htif_objs common_objs gloss_htif)
+add_static_library(gloss_board gloss_board_objs common_objs gloss_board)

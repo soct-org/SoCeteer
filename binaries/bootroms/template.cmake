@@ -5,12 +5,12 @@ cmake_minimum_required(VERSION 3.20)
 # Targets: device_tree - target that builds the device tree blob
 # Requires SOCT_SYSTEM
 
-get_filename_component(BOOTROM_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
+get_filename_component(SOCT_BOOTROM ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 
-message(STATUS "Adding bootrom: ${BOOTROM_NAME}")
+message(STATUS "Adding bootrom: ${SOCT_BOOTROM}")
 
-set(BOOTROM_ELF ${BOOTROM_NAME}_elf)
-set(BOOTROM_IMG ${BOOTROM_NAME}_img)
+set(BOOTROM_ELF ${SOCT_BOOTROM}_elf)
+set(BOOTROM_IMG ${SOCT_BOOTROM}_img)
 
 set(ALL_CFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -mcmodel=medany -nostartfiles -Os -fno-pic -fno-common -g -Wall -Wextra)
 set(ALL_LFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -static -nostartfiles -Wall -Wextra)
@@ -29,9 +29,8 @@ target_include_directories(${BOOTROM_ELF} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(${BOOTROM_ELF} PRIVATE ${ALL_CFLAGS})
 target_link_options(${BOOTROM_ELF} PRIVATE ${ALL_LFLAGS})
 
-set_target_properties(${BOOTROM_ELF} PROPERTIES OUTPUT_NAME ${BOOTROM_NAME}.elf
+set_target_properties(${BOOTROM_ELF} PROPERTIES OUTPUT_NAME ${SOCT_BOOTROM}.elf
         RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR}
-
 )
 
 # Build the bootrom image
@@ -44,4 +43,4 @@ add_custom_target(${BOOTROM_IMG} ALL
 )
 
 # Final target to build both ELF and IMG
-add_custom_target(${BOOTROM_NAME} ALL DEPENDS ${BOOTROM_ELF} ${BOOTROM_IMG})
+add_custom_target(${SOCT_BOOTROM} ALL DEPENDS ${BOOTROM_ELF} ${BOOTROM_IMG})

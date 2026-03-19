@@ -7,7 +7,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
 ######################################################################
 # Apply Project specific flags - Modify this section to add more flags
 ######################################################################
-target_compile_options(${PROGRAM_NAME} PRIVATE -std=gnu11)
-target_include_directories(${PROGRAM_NAME} PRIVATE
+target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11)
+target_include_directories(${SOCT_PROGRAM} PRIVATE
         ${SOCT_SYSTEM_ROOT}/gemmini-rocc-tests
 )

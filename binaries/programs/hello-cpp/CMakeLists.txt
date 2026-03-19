@@ -7,4 +7,4 @@ include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
 ######################################################################
 # Apply Project specific flags - Modify this section to add more flags
 ######################################################################
-target_compile_options(${PROGRAM_NAME} PRIVATE -std=gnu++20 -O3 -Wall -Wextra -Wpedantic)
+target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu++20 -Os -O3)

@@ -9,5 +9,5 @@ if (SOCT_TARGET STREQUAL "verilator")
     ######################################################################
     # Apply Project specific flags - Modify this section to add more flags
     ######################################################################
-    target_compile_options(${PROGRAM_NAME} PRIVATE -std=gnu++20 -O3 -Os)
+    target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu++20 -O3 -Os)
 endif ()
