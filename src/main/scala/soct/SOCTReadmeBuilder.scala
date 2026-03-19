@@ -62,6 +62,11 @@ object SOCTReadmeBuilder {
        |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml">
        |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml/badge.svg?branch=main" alt="Test Simulation" />
        |  </a>
+       |
+       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml">
+       |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml/badge.svg?branch=main" alt="Test Full Suite" />
+       |  </a>
+       |
        |  <a href="https://github.com/orgs/soct-org/packages/container/package/soceteer">
        |    <img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" />
        |  </a>
@@ -214,7 +219,7 @@ object SOCTReadmeBuilder {
        |Here's a quick start guide to get you up and running with $sct. All commands assume you are in the root directory of the project (the cloned repository).
        |By default, running the launcher without any args will emit a RocketChip SoC with the default configuration ($defaultConfigPath) - a single RocketChip core for simulation (by default with 64-bit XLEN).
        |Refer to the [Simulation Tests](src/test/scala/soct/tests/SimulationSpec.scala) for more examples of supported configurations and generators and how to run them.
-       |The [Github Workflow](.github/workflows/test-simulation-on-push-native.yml) shows the full setup for Windows, Linux and macOS hosts for running the simulation tests via CLI natively on the system.
+       |The [GitHub Workflow](.github/workflows/test-simulation-on-push-native.yml) shows the full setup for Windows, Linux and macOS hosts for running the simulation tests via CLI natively on the system.
        |
        |After running the launcher, you can find the emitted files (like the FIRRTL and Verilog description, regmaps and the device tree) in the `$exampleOutDir` directory.
        |We then use the CMake project in ${path("binaries")} to emit a simple program that runs on the generated design in simulation.
