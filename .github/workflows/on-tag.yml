@@ -1,4 +1,4 @@
-name: Tests (Full Suite)
+name: Release Workflow
 
 on:
   push:

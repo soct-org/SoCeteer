@@ -59,17 +59,7 @@ object SOCTReadmeBuilder {
     s"""<p align="center">SoCeteer - A framework for designing and running RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.</p>
        |
        |<p align="center">
-       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml">
-       |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml/badge.svg?branch=main" alt="Test Simulation" />
-       |  </a>
-       |
-       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml">
-       |    <img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml/badge.svg?branch=main" alt="Test Full Suite" />
-       |  </a>
-       |
-       |  <a href="https://github.com/orgs/soct-org/packages/container/package/soceteer">
-       |    <img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" />
-       |  </a>
+       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml/badge.svg?branch=main" alt="CI" /></a><a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml/badge.svg?branch=main" alt="Release Workflow" /></a><a href="https://github.com/orgs/soct-org/packages/container/package/soceteer"><img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" /></a>
        |</p>
        |
        |> [!IMPORTANT]
