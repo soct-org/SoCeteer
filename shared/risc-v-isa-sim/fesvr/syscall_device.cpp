@@ -70,6 +70,7 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t>& htif, const st
     m_table[FESVR_write] = [this](auto... args) { return sys_write(args...); };
     m_table[FESVR_open] = [this](auto... args) { return sys_open(args...); };
     m_table[FESVR_close] = [this](auto... args) { return sys_close(args...); };
+    m_table[FESVR_fstat] = [this](auto... args) { return sys_fstat(args...); };
     m_table[FESVR_lseek] = [this](auto... args) { return sys_lseek(args...); };
     m_table[FESVR_exit] = [this](auto... args) { return sys_exit(args...); };
     m_table[FESVR_openat] = [this](auto... args) { return sys_openat(args...); };
@@ -152,6 +153,16 @@ uint64_t syscall_device_t::sys_write(const uint64_t fd, const uint64_t pbuf, con
     return sysret_errno(write(fd_, buf.data(), len));
 }
 
+uint64_t syscall_device_t::sys_fstat(const uint64_t fd, const uint64_t pbuf, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t) {
+    soct::logging::fesvr::debug << "fstat on fd " << fd << " to " << pbuf << "\n";
+    struct stat st{};
+    const int ret = sysret_errno(fstat(m_fds.lookup(fd).first, &st));
+    if (ret == 0) {
+        m_cmemif->write(pbuf, sizeof(st), reinterpret_cast<uint8_t*>(&st));
+    }
+    return ret;
+}
+
 uint64_t syscall_device_t::sys_open(const uint64_t pname, const uint64_t flags, const uint64_t mode, uint64_t, uint64_t, uint64_t, uint64_t) {
     auto host_flags = flags;
     auto host_mode = mode;
@@ -177,7 +188,7 @@ uint64_t syscall_device_t::sys_open(const uint64_t pname, const uint64_t flags, 
 
 uint64_t syscall_device_t::sys_close(const uint64_t fd, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t) {
     soct::logging::fesvr::debug << "Closing fd " << fd << "\n";
-    if (const auto [fd_, type] = m_fds.lookup(fd); type != fds_t::any_t) { // No need to close stdin, stdout, stderr
+    if (const auto [fd_, type] = m_fds.lookup(fd); type == fds_t::any_t) { // Only close and dealloc for regular fds
         close(fd_);
         m_fds.dealloc(fd);
     }
@@ -200,9 +211,8 @@ uint64_t syscall_device_t::sys_openat(const uint64_t dirfd, const uint64_t pname
 #ifdef _WIN32
     throw std::runtime_error("openat not implemented on Windows");
 #else
-    std::vector<char> name(MAX_PATH_SIZE);
-    m_cmemif->read(pname, MAX_PATH_SIZE, reinterpret_cast<unsigned char*>(name.data()));
-    soct::logging::fesvr::debug << "Opening file " << name.data() << " with flags " << flags << " and mode " << mode
+    const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
+    soct::logging::fesvr::debug << "Opening file " << name << " with flags " << flags << " and mode " << mode
     << " in directory " << dirfd << "\n";
     const sreg_t fd = sysret_errno(openat(m_fds.lookup(dirfd).first, name.data(), flags, mode));
     if (fd < 0)

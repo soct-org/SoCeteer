@@ -33,6 +33,20 @@ struct memif_t {
         read(addr, sizeof(T), reinterpret_cast<uint8_t*>(&val));
         return val;
     }
+
+    /// Read a null-terminated string from a memory address. Reads at most max_len bytes (including the null terminator).
+    [[nodiscard]] std::string read_string(const addr_t addr, const size_t max_len) const {
+        std::string result;
+        for (size_t i = 0; i < max_len; i++) {
+            char c;
+            read(addr + i, sizeof(c), reinterpret_cast<uint8_t*>(&c));
+            if (c == 0) {
+                break;
+            }
+            result += c;
+        }
+        return result;
+    }
 };
 
 struct chunked_memif_t : memif_t {

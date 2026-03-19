@@ -33,6 +33,7 @@ if (SOCT_TARGET STREQUAL "verilator")
             "LINKER:--wrap=printf"
             "LINKER:--wrap=sprintf"
             "LINKER:--wrap=snprintf"
+            "LINKER:--gc-sections"
     )
 elseif (SOCT_TARGET STREQUAL "vivado")
     set(LD_SCRIPT ${LIBGLOSS_DIR}/board/util/board.ld)
@@ -51,8 +52,11 @@ target_compile_options(${SOCT_PROGRAM} PRIVATE
         -fno-exceptions
         -fno-rtti
         -fno-use-cxa-atexit
+        -ffunction-sections
+        -fdata-sections
         -Wall
         -Wextra
+        -g0
 )
 
 target_compile_definitions(${SOCT_PROGRAM} PRIVATE BAREMETAL)
