@@ -75,7 +75,9 @@ void make_guest_stdio_stat(struct stat& st) {
     std::memset(&st, 0, sizeof(st));
     st.st_mode = S_IFCHR | 0666;
     st.st_nlink = 1;
+#ifndef _WIN32
     st.st_blksize = 64;
+#endif
 }
 
 } // namespace
