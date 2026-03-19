@@ -33,8 +33,7 @@ public:
     /// Lookup a file descriptor
     [[nodiscard]] std::pair<sreg_t, fd_type> lookup(size_t fd) const;
 
-    ~fds_t();
-
+    ~fds_t() = default;
 private:
   	/// The file descriptors
     std::vector<uint64_t> m_fds;

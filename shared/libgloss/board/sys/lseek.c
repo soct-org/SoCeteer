@@ -1,5 +1,7 @@
+#include <sys/types.h>
+
 #include "syscall.h"
 
-int _lseek(int fd, unsigned int offset) {
-    return io_seek(fd, offset);
+off_t _lseek(int fd, off_t offset, int whence) {
+    return io_seek(fd, offset, whence);
 }

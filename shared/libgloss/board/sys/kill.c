@@ -1,3 +1,6 @@
+#include <errno.h>
+
 int _kill(int, int) {
-    return -1; // Not implemented
+    errno = ENOSYS;
+    return -1;
 }

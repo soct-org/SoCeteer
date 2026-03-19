@@ -2,11 +2,83 @@
 #include "htif.hpp"
 #include "syscalls.h"
 
+#include <cerrno>
+#include <cstring>
 #include <stdexcept>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+
+namespace {
+
+int translate_open_flags(const uint64_t guest_flags) {
+    int host_flags = 0;
+
+#ifdef RV_O_ACCMODE
+    switch (guest_flags & RV_O_ACCMODE) {
+    case RV_O_WRONLY:
+        host_flags |= O_WRONLY;
+        break;
+    case RV_O_RDWR:
+        host_flags |= O_RDWR;
+        break;
+    case RV_O_RDONLY:
+    default:
+        host_flags |= O_RDONLY;
+        break;
+    }
+#else
+    if ((guest_flags & 0x3) == 0x1)
+        host_flags |= O_WRONLY;
+    else if ((guest_flags & 0x3) == 0x2)
+        host_flags |= O_RDWR;
+    else
+        host_flags |= O_RDONLY;
+#endif
+
+#ifdef RV_O_APPEND
+    if (guest_flags & RV_O_APPEND) host_flags |= O_APPEND;
+#endif
+#ifdef RV_O_CREAT
+    if (guest_flags & RV_O_CREAT) host_flags |= O_CREAT;
+#endif
+#ifdef RV_O_TRUNC
+    if (guest_flags & RV_O_TRUNC) host_flags |= O_TRUNC;
+#endif
+#ifdef RV_O_EXCL
+    if (guest_flags & RV_O_EXCL) host_flags |= O_EXCL;
+#endif
+#ifdef RV_O_SYNC
+    if (guest_flags & RV_O_SYNC) host_flags |= O_SYNC;
+#endif
+#ifdef RV_O_NONBLOCK
+    if (guest_flags & RV_O_NONBLOCK) host_flags |= O_NONBLOCK;
+#endif
+#ifdef RV_O_NOFOLLOW
+    if (guest_flags & RV_O_NOFOLLOW) host_flags |= O_NOFOLLOW;
+#endif
+#ifdef RV_O_CLOEXEC
+    if (guest_flags & RV_O_CLOEXEC) host_flags |= O_CLOEXEC;
+#endif
+#ifdef RV_O_DIRECTORY
+    if (guest_flags & RV_O_DIRECTORY) host_flags |= O_DIRECTORY;
+#endif
+#ifdef RV_O_NOCTTY
+    if (guest_flags & RV_O_NOCTTY) host_flags |= O_NOCTTY;
+#endif
+
+    return host_flags;
+}
+
+void make_guest_stdio_stat(struct stat& st) {
+    std::memset(&st, 0, sizeof(st));
+    st.st_mode = S_IFCHR | 0666;
+    st.st_nlink = 1;
+    st.st_blksize = 64;
+}
+
+} // namespace
 
 size_t fds_t::alloc(const sreg_t fd) {
     uint64_t i;
@@ -22,7 +94,8 @@ size_t fds_t::alloc(const sreg_t fd) {
 }
 
 void fds_t::dealloc(const sreg_t fd) {
-    m_fds[fd] = -1;
+    if (fd >= 0 && static_cast<size_t>(fd) < m_fds.size())
+        m_fds[fd] = -1;
 }
 
 std::pair<sreg_t, fds_t::fd_type> fds_t::lookup(const size_t fd) const {
@@ -31,6 +104,9 @@ std::pair<sreg_t, fds_t::fd_type> fds_t::lookup(const size_t fd) const {
 
     // check if requested fd is i/o fd
     if (fd >= m_fds.size()) {
+        return {-1, invalid_t};
+    }
+    if (m_fds[fd] == -1) {
         return {-1, invalid_t};
     }
     // Here we compare against the integers and not macros as they come from the target and are specific to the software running on it
@@ -46,13 +122,6 @@ std::pair<sreg_t, fds_t::fd_type> fds_t::lookup(const size_t fd) const {
     }
 
     return {m_fds[fd], any_t};
-}
-
-fds_t::~fds_t() {
-    for (const auto i : m_fds) {
-        dealloc(i);
-    }
-    m_fds.clear();
 }
 
 syscall_device_t::~syscall_device_t() {
@@ -155,8 +224,21 @@ uint64_t syscall_device_t::sys_write(const uint64_t fd, const uint64_t pbuf, con
 
 uint64_t syscall_device_t::sys_fstat(const uint64_t fd, const uint64_t pbuf, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t) {
     soct::logging::fesvr::debug << "fstat on fd " << fd << " to " << pbuf << "\n";
+
+    const auto [host_fd, type] = m_fds.lookup(fd);
+    if (type == fds_t::invalid_t)
+        return -EBADF;
+
     struct stat st{};
-    const int ret = sysret_errno(fstat(m_fds.lookup(fd).first, &st));
+
+    int ret;
+    if (type == fds_t::stdin_t || type == fds_t::stdout_t || type == fds_t::stderr_t) {
+        make_guest_stdio_stat(st);
+        ret = 0;
+    } else {
+        ret = sysret_errno(fstat(host_fd, &st));
+    }
+
     if (ret == 0) {
         m_cmemif->write(pbuf, sizeof(st), reinterpret_cast<uint8_t*>(&st));
     }
@@ -171,15 +253,16 @@ uint64_t syscall_device_t::sys_open(const uint64_t pname, const uint64_t flags, 
         soct::logging::fesvr::debug << "Received fopen syscall, applying O_RDONLY flag\n";
         host_flags = O_RDONLY;
         host_mode = 0;
+    } else {
+        host_flags = static_cast<uint64_t>(translate_open_flags(flags));
     }
 #ifdef _WIN32
     throw std::runtime_error("open not implemented on Windows");
 #else
-    std::vector<char> name(MAX_PATH_SIZE);
-    m_cmemif->read(pname, MAX_PATH_SIZE, reinterpret_cast<uint8_t*>(name.data()));
-    soct::logging::fesvr::debug << "Opening file " << name.data() << " with flags " << host_flags << " and mode "
+    const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
+    soct::logging::fesvr::debug << "Opening file " << name << " with flags " << host_flags << " and mode "
         << host_mode << "\n";
-    const int64_t fd = sysret_errno(open(name.data(), host_flags, host_mode));
+    const int64_t fd = sysret_errno(open(name.c_str(), host_flags, host_mode));
     if (fd < 0)
         return fd;
     return m_fds.alloc(fd);
@@ -188,8 +271,13 @@ uint64_t syscall_device_t::sys_open(const uint64_t pname, const uint64_t flags, 
 
 uint64_t syscall_device_t::sys_close(const uint64_t fd, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t) {
     soct::logging::fesvr::debug << "Closing fd " << fd << "\n";
-    if (const auto [fd_, type] = m_fds.lookup(fd); type == fds_t::any_t) { // Only close and dealloc for regular fds
-        close(fd_);
+    const auto [fd_, type] = m_fds.lookup(fd);
+    if (type == fds_t::invalid_t)
+        return -EBADF;
+    if (type == fds_t::any_t || type == fds_t::stdin_t || type == fds_t::stdout_t || type == fds_t::stderr_t) {
+        const auto ret = sysret_errno(close(fd_));
+        if (ret < 0)
+            return ret;
         m_fds.dealloc(fd);
     }
     return 0;
@@ -211,10 +299,15 @@ uint64_t syscall_device_t::sys_openat(const uint64_t dirfd, const uint64_t pname
 #ifdef _WIN32
     throw std::runtime_error("openat not implemented on Windows");
 #else
+    const auto [host_dirfd, type] = m_fds.lookup(dirfd);
+    if (type == fds_t::invalid_t)
+        return -EBADF;
+
     const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
+    const auto host_flags = translate_open_flags(flags);
     soct::logging::fesvr::debug << "Opening file " << name << " with flags " << flags << " and mode " << mode
     << " in directory " << dirfd << "\n";
-    const sreg_t fd = sysret_errno(openat(m_fds.lookup(dirfd).first, name.data(), flags, mode));
+    const sreg_t fd = sysret_errno(openat(host_dirfd, name.c_str(), host_flags, mode));
     if (fd < 0)
         return fd;
     return m_fds.alloc(fd);
@@ -226,7 +319,8 @@ uint64_t syscall_device_t::sys_pathconf(const uint64_t path, const uint64_t para
 #ifdef _WIN32
     throw std::runtime_error("pathconf not implemented on Windows");
 #else
-    return sysret_errno(pathconf(reinterpret_cast<char*>(path), param));
+    const auto host_path = m_cmemif->read_string(path, MAX_PATH_SIZE);
+    return sysret_errno(pathconf(host_path.c_str(), param));
 #endif
 }
 
@@ -266,6 +360,6 @@ uint64_t syscall_device_t::syscall_any(const uint32_t sysno, const uint64_t a0, 
 #ifdef _WIN32
     throw std::runtime_error("Unknown syscall " + std::to_string(sysno) + " not available on Windows");
 #else
-    return syscall(sysno, a0, a1, a2, a3, a4, a5, a6);
+    return sysret_errno(syscall(sysno, a0, a1, a2, a3, a4, a5, a6));
 #endif
 }

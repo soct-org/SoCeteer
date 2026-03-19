@@ -146,17 +146,39 @@ int _ff_write(FD_ENTRY* entry, const void* buf, const uint32_t count) {
     return (int)bw; // Number of bytes written
 }
 
-int _ff_lseek(FD_ENTRY* entry, const off_t offset) {
+int _ff_lseek(FD_ENTRY* entry, off_t* offset, int whence) {
     if (!entry->in_use) {
         errno = EBADF; // Bad file descriptor
         return -1;
     }
 
-    const FRESULT res = f_lseek(&entry->fil, offset);
+    off_t target = *offset;
+    switch (whence) {
+    case SEEK_SET:
+        break;
+    case SEEK_CUR:
+        target += (off_t)f_tell(&entry->fil);
+        break;
+    case SEEK_END:
+        target += (off_t)f_size(&entry->fil);
+        break;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (target < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    const FRESULT res = f_lseek(&entry->fil, (FSIZE_t)target);
     if (res != FR_OK) {
         errno = EIO; // I/O error
         return -1;
     }
+
+    *offset = target;
     return 0; // Success
 }
 
@@ -176,7 +198,7 @@ ssize_t cookie_io_write(void* cookie, const char* buf, size_t size) {
 // Adapter for io_seek
 int cookie_io_seek(void* cookie, off_t* offset, int whence) {
     FD_ENTRY* entry = cookie;
-    return _ff_lseek(entry, *offset);
+    return _ff_lseek(entry, offset, whence);
 }
 
 // Adapter for io_close
@@ -254,21 +276,49 @@ int io_close(const int fd) {
 }
 
 // Seek to a file descriptor
-int io_seek(const int fd, const off_t offset) {
+off_t io_seek(const int fd, const off_t offset, const int whence) {
     if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].in_use) {
         errno = EBADF; // Bad file descriptor
         return -1;
     }
-    return _ff_lseek(&fd_table[fd], offset);
+    if (fd == 0 || fd == 1 || fd == 2) {
+        errno = ESPIPE;
+        return -1;
+    }
+
+    off_t new_offset = offset;
+    if (_ff_lseek(&fd_table[fd], &new_offset, whence) < 0) {
+        return -1;
+    }
+
+    return new_offset;
 }
 
 int io_fstat(int fd, struct stat* st) {
-    if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].in_use)
+    if (st == NULL) {
+        errno = EFAULT;
         return -1;
+    }
+
+    memset(st, 0, sizeof(*st));
+
+    if (fd == 0 || fd == 1 || fd == 2) {
+        st->st_mode = S_IFCHR | 0666;
+        st->st_nlink = 1;
+        st->st_blksize = 64;
+        return 0;
+    }
+
+    if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].in_use) {
+        errno = EBADF;
+        return -1;
+    }
 
     // Fill the stat structure
     st->st_mode = S_IFREG; // Regular file
+    st->st_nlink = 1;
     st->st_size = f_size(&fd_table[fd].fil);
+    st->st_blksize = 512;
     st->st_atime = 0; // Not supported
     st->st_mtime = 0; // Not supported
     st->st_ctime = 0; // Not supported

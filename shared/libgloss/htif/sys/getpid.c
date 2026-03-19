@@ -1,5 +1,6 @@
 #include "syscall.h"
 
 int _getpid() {
-    return htif_syscall_0(FESVR_getpid);
+    long ret = htif_syscall_0(FESVR_getpid);
+    return (int)htif_check_ret(ret);
 }

@@ -21,7 +21,7 @@ int io_open(const char* path, int flags, int mode);
 int io_close(int fd);
 
 // Seek to a file descriptor
-int io_seek(int fd, off_t offset);
+off_t io_seek(int fd, off_t offset, int whence);
 
 
 int io_fstat(int fd, struct stat* st);

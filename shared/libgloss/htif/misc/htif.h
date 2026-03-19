@@ -7,10 +7,13 @@
 extern volatile uint64_t tohost;
 extern volatile uint64_t fromhost;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static uint64_t htif_tohost(const uint64_t dev, const uint64_t cmd, const uint64_t payload) {
     return (dev & HTIF_DEV_MASK) << HTIF_DEV_SHIFT | (cmd & HTIF_CMD_MASK) << HTIF_CMD_SHIFT |
-        payload & HTIF_PAYLOAD_MASK;
+        (payload & HTIF_PAYLOAD_MASK);
 }
+#pragma GCC diagnostic pop
 
 extern long htif_syscall(uint64_t syscall,
                          uint64_t a0,
