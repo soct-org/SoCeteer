@@ -254,13 +254,14 @@ class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args
 
   /**
    * Path to the directory containing the generated source files for Vivado (e.g., the init.tcl file, the block design tcl file, constraints, etc.)
+   * All paths in the generated TCL scripts must be relative to this directory (Allows sharing generated TCL scripts across different systems without needing to modify the paths in the scripts, as long as the relative structure is maintained).
    */
   val vivadoSourceDir: Path = systemDir.resolve("vivado-srcs")
 
   /**
    * Path to the Vivado project directory - where the Vivado project files like the .xpr file will be stored
    */
-  val vivadoProjectDir: Path = args.vivadoWorkspace.resolve(config.configName).resolve(fpgaBoardName)
+  val vivadoProjectDir: Path = systemDir.resolve("vivado-project")
 
   /**
    * Path to the TCL file that initializes the Vivado project (loading sources, constraints, etc.)
@@ -293,7 +294,6 @@ class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args
 
   override def createSubdirsImpl(): Unit = {
     vivadoSourceDir.toFile.mkdirs()
-    vivadoProjectDir.toFile.mkdirs()
     xdcDir.toFile.mkdirs()
   }
 }

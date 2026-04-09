@@ -3,7 +3,7 @@ package soct.system.vivado
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
-import soct.{BdBuilderKey, VivadoSOCTPaths}
+import soct.{BdBuilderKey, SOCTArgs, SOCTRemote, VivadoSOCTPaths}
 
 import java.nio.file.{Files, Path}
 import scala.reflect.io.Path.jfile2path
@@ -19,7 +19,6 @@ class XilinxDesignException(private val message: String = "",
 object XilinxDesignException {
   def apply(message: String): XilinxDesignException = new XilinxDesignException(message)
 }
-
 
 
 object SOCTVivado {
@@ -155,17 +154,39 @@ object SOCTVivado {
     true
   }
 
-  def generateProject(tclFile: Path, vivado: Path, workdir: Path): Unit = {
-    val file = tclFile.toAbsolutePath.toString
-    var cmd = Seq(vivado.toAbsolutePath.toString, "-mode", "batch", "-source")
-    cmd :+= file
+  def generateProject(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
+    var cmd = Seq(args.vivado.get.toAbsolutePath.toString, "-mode", "batch", "-source")
+    var file = boardPaths.tclInitFile.toAbsolutePath
+    if (args.useRemoteVivado) {
+      if (args.remoteDir.isEmpty) {
+        soct.log.warn("Remote Vivado requested but no remote directory provided, ignoring remote Vivado option")
+      }
+      if (args.openSSHConfig.isEmpty) {
+        soct.log.warn("Remote Vivado requested but no OpenSSH config provided, ignoring remote Vivado option")
+      }
+
+      if (args.remoteDir.isDefined && args.openSSHConfig.isDefined) {
+        // First, sync the design files to the remote directory using rsync over SSH
+        val remoteWorkspace = SOCTRemote.pushDir(args.workspaceDir, args).get
+        cmd = Seq("ssh", args.openSSHConfig.get) ++ cmd
+        // Relativize the tcl file path to the remote directory
+        file = SOCTRemote.toRemote(Map(args.workspaceDir -> remoteWorkspace), file).getOrElse {
+          throw new RuntimeException(s"Could not find remote path for ${file.toAbsolutePath} in path map")
+        }
+      }
+    }
+
+    cmd = cmd :+ file.toString
+
+    soct.log.info(s"Running Vivado with command: ${cmd.mkString(" ")}")
+
     val process = new ProcessBuilder(cmd: _*)
-      .directory(workdir.toFile)
       .inheritIO()
       .start()
     val exitCode = process.waitFor()
     if (exitCode != 0) {
       throw new RuntimeException(s"Vivado failed with exit code $exitCode")
     }
+    SOCTRemote.pullDir(args.workspaceDir, args)
   }
 }

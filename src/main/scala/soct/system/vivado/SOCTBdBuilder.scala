@@ -91,6 +91,12 @@ class SOCTBdBuilder extends SOCTBd {
     topInstance = () => topInst
     fpgaInstance = () => fpga
 
+    def rel(path: Path, base: Path = paths.vivadoSourceDir, baseVar: String = k.thisDir): String = {
+      val relative = base.relativize(path).toString.replace("\\", "/")
+      // Concat with $thisDir to get the full path in the TCL script
+      s"$baseVar/$relative"
+    }
+
     args.vars ++= Map(
       k.aggressive -> TclVar("Whether to aggressively overwrite existing Vivado projects and sources", if (aggressive) "1" else "0"),
       k.sources -> TclVar("The name of the fileset containing the design sources", "sources_1"),
@@ -101,13 +107,19 @@ class SOCTBdBuilder extends SOCTBd {
       k.bdName -> TclVar("The name of the block design to create", s"${config.topModuleName}_bd"),
       k.xilinxPart -> TclVar("The Xilinx part number of the target FPGA", fpga.xilinxPart),
       k.partName -> TclVar("The Xilinx part name of the target FPGA", fpga.partName),
-      k.sourcesDir -> TclVar("The directory containing the design sources", paths.systemDir.toString),
-      k.vivadoProjectDir -> TclVar("The directory to use for the Vivado project", paths.vivadoProjectDir.toString),
-      k.defaultBdGenerator -> TclVar("The default TCL file to load the block design", paths.defaultBdGenerator.toString),
-      k.defaultSynthGenerator -> TclVar("The default TCL file to launch synthesis", paths.defaultSynthGenerator.toString),
-      k.defaultImplGenerator -> TclVar("The default TCL file to launch implementation", paths.defaultImplGenerator.toString),
-      k.xdcDir -> TclVar("The directory containing the generated XDC constraint files", paths.xdcDir.toString),
-      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", (Runtime.getRuntime.availableProcessors().doubleValue * .5).toInt.toString)
+      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", (Runtime.getRuntime.availableProcessors().doubleValue * .5).toInt.toString),
+      k.thisDir -> TclVar(
+        "The directory this file is located in - all paths are relative to this directory",
+        "[file dirname [file normalize [info script]]]",
+        0
+      ),
+      // Paths - all relative to thisDir
+      k.sourcesDir -> TclVar("The directory containing the design sources", rel(paths.verilogSrcDir)),
+      k.vivadoProjectDir -> TclVar("The directory to use for the Vivado project", rel(paths.vivadoProjectDir)),
+      k.defaultBdGenerator -> TclVar("The default TCL file to load the block design", rel(paths.defaultBdGenerator)),
+      k.defaultSynthGenerator -> TclVar("The default TCL file to launch synthesis", rel(paths.defaultSynthGenerator)),
+      k.defaultImplGenerator -> TclVar("The default TCL file to launch implementation", rel(paths.defaultImplGenerator)),
+      k.xdcDir -> TclVar("The directory containing the generated XDC constraint files", rel(paths.xdcDir))
     )
   }
 
@@ -361,6 +373,7 @@ class SOCTBdBuilder extends SOCTBd {
 
   /**
    * Generate a TCL script to launch synthesis for the block design. Assumes the project is already set up and the block design is already generated.
+   *
    * @return TCL script as string
    */
   def generateSynthesisTcl(): String = {
@@ -391,6 +404,7 @@ class SOCTBdBuilder extends SOCTBd {
 
   /**
    * Generate XDC constraint files for all components that emit constraints, grouped by the XDC name they specify.
+   *
    * @param basePath The path to the directory where the generated XDC files should be placed.
    * @return A map from XDC file paths to their contents as strings.
    */
@@ -463,6 +477,6 @@ class SOCTBdBuilder extends SOCTBd {
        |# WARNING, not yet tested - use with caution:
        |#source ${k.defaultSynthGenerator}
        |
-       |""".stripMargin  // TODO: Add impl and not always launch synth and impl here
+       |""".stripMargin // TODO: Add impl and not always launch synth and impl here
   }
 }

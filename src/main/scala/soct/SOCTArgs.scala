@@ -82,7 +82,6 @@ object Targets {
 case class SOCTArgs(
                      // General options
                      workspaceDir: Path = projectRoot.resolve("workspace"),
-                     vivadoWorkspace: Path = projectRoot.resolve("vivado-projects"),
                      userOutDir: Option[Path] = None,
                      baseConfig: config.Parameters = new RocketB1,
                      xlen: Int = 64,
@@ -115,6 +114,12 @@ case class SOCTArgs(
                      coreFreq: Option[BigInt] = Some(100 * 1000 * 1000), // Default to 100 MHz
                      peripheryFreq: BigInt = 100 * 1000 * 1000, // Default to 100 MHz
                      overrideVivadoProject: Boolean = true,
+
+                     // Remote development
+                     remoteDir: Option[Path] = None, // Relative to the remote user home directory.
+                     openSSHConfig: Option[String] = None, // The name of the SSH config to use for remote development. This is used to determine the remote host and user.
+                     useRemoteVivado: Boolean = false, // Whether to use Vivado on the remote machine for synthesis (i.e. the path to Vivado provided by --vivado is on the remote machine and not the local machine)
+
                      // Terminating options
                      getVersion: Boolean = false, // Print the version of the tool
                      wtf: Boolean = false, // What the firtool - for debugging
@@ -150,9 +155,8 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
 
   help("help").text("Prints this usage text")
   // General options
-  opt[String]('w', "workspace").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"A custom workspace directory to use instead of the default ${defaultSOCTArgs.workspaceDir}. The generated files will be stored in a subdirectory of this directory based on the config and target. Superseded by --out-dir if both are provided.")
-  opt[String]('o', "out-dir").action((x, c) => c.copy(userOutDir = Some(Paths.get(x).toAbsolutePath))).text("The output directory to use for all generated files. If set, this overrides the default workspace directory and the --workspace option.")
-  opt[String]("vivado-workspace").action((x, c) => c.copy(vivadoWorkspace = Paths.get(x).toAbsolutePath)).text(s"The directory to store the generated vivado projects. The generated Vivado project for a config will be stored in a subdirectory of this directory based on the config and the target board. Default is ${defaultSOCTArgs.vivadoWorkspace}.")
+  opt[String]('w', "workspace").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(s"A custom workspace directory to use instead of the default ${defaultSOCTArgs.workspaceDir}. All generated files will be stored in a subdirectory of this directory based on the config and target. Superseded by --out-dir if both are provided.")
+  opt[String]('o', "out-dir").action((x, c) => c.copy(userOutDir = Some(Paths.get(x).toAbsolutePath))).text("The direct output directory to use for all generated files (Not based on target/config). If set, this overrides the default workspace directory and the --workspace option.")
   opt[String]('c', "config")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
@@ -208,7 +212,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |This should only be used for simple designs where it is sufficient to set a single frequency for all bus clocks.
          |For more complex designs where the core is driven by multiple clocks, set the frequency of the bus clock(s) by adding the configs ${classOf[WithPeripheryBusFrequency].getClass.getName} etc. to the main config.
          |""".stripMargin
-      )
+    )
   opt[String]("periphery-freq-mhz").action((x, c) => c.copy(peripheryFreq = BigInt((x.toDouble * 1000 * 1000).toInt)))
     .text(
       s"""
@@ -218,6 +222,12 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |""".stripMargin
     )
   opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the out-dir directory.")
+
+  // Remote development options
+  opt[String]("remote-dir").action((x, c) => c.copy(remoteDir = Some(Paths.get(x)))).text("The directory on the remote machine to use for remote development. This should be a path relative to the remote user home directory. If not set, remote development features will be disabled.")
+  opt[String]("ssh-config").action((x, c) => c.copy(openSSHConfig = Some(x))).text("The name of the SSH config to use for remote development. This is used to determine the remote host and user. If not set, remote development features will be disabled.")
+  opt[Unit]("use-remote-vivado").action((_, c) => c.copy(useRemoteVivado = true)).text("Whether to use Vivado on the remote machine for synthesis (i.e. the path to Vivado provided by --vivado is on the remote machine and not the local machine). Only applicable if --remote-dir and --ssh-config are set.")
+
   // Terminating options
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")
   opt[Unit]("wtf").action((_, c) => c.copy(wtf = true)).text("What the firtool -- Prints the firtool help.")

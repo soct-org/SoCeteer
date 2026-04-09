@@ -8,8 +8,9 @@ import scala.collection.mutable
  *
  * @param description Description of the variable
  * @param default     Default value of the variable
+ * @param priority    Priority of the variable (higher means it will be set later, allowing it to override lower priority variables)
  */
-final case class TclVar(description: String, default: String)
+final case class TclVar(description: String, default: String, priority: Int = 99)
 
 
 class SOCTBdVars {
@@ -34,7 +35,9 @@ class SOCTBdVars {
 
 
   def genTCLHeader(vars: Map[String, TclVar]): String = {
-    val varDecls = vars.map { case (v, TclVar(description, default)) =>
+    // Sort variables by priority and then by name (higher = later, allowing it to override lower priority variables)
+    val sortedVars = vars.toSeq.sortBy { case (name, tclVar) => (tclVar.priority, name) }
+    val varDecls = sortedVars.map { case (v, TclVar(description, default, _)) =>
       // Strip the leading $ from the variable name
       val varName = v.stripPrefix("$")
       s"""
@@ -63,12 +66,13 @@ object SOCTBdVars {
     final val bdName = "$bd_name"
     final val xilinxPart = "$xilinx_part"
     final val partName = "$part_name"
+    final val nThreads = "$n_threads"
+    final val thisDir = "$this_dir" // All paths are relative to this directory
     final val sourcesDir = "$sources_dir"
     final val vivadoProjectDir = "$vivado_project_dir"
     final val defaultBdGenerator = "$default_bd_generator"
     final val defaultSynthGenerator = "$default_synth_generator"
     final val defaultImplGenerator = "$default_impl_generator"
     final val xdcDir = "$xdc_dir"
-    final val nThreads = "$n_threads"
   }
 }

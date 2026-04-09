@@ -4,11 +4,8 @@ import firtoolresolver.FirtoolBinary
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
 
-import java.nio.file.{Files, LinkOption, Path, Paths, StandardCopyOption}
-import java.util.Comparator
-import scala.jdk.CollectionConverters.IteratorHasAsScala
+import java.nio.file.{Path, Paths}
 import scala.util.Try
-import scala.util.control.NonFatal
 
 
 // JSON4S serializer for java.nio.file.Path
@@ -30,6 +27,81 @@ object TargetsSerializer extends CustomSerializer[Targets](_ => ( {
 // Internal Bug exception with stacktrace and message
 class InternalBugException(message: String) extends Exception(message) {
   override def toString: String = s"InternalBugException: $message\n${getStackTrace.mkString("\n")}"
+}
+
+
+/**
+ * Handles remote sync of output directories to a remote host via rsync over SSH.
+ * Requires both --ssh-config (an OpenSSH host alias) and --remote-dir to be set.
+ */
+object SOCTRemote {
+
+  /**
+   * Given a map of local output directories to their corresponding remote directories, and a local path, returns the corresponding remote path if the local path is within one of the mapped local directories. This is used to translate local paths to their remote equivalents after syncing.
+   *
+   * @param map       A map of local output directories to their corresponding remote directories (e.g. Map("/local/workspace" -> "/remote/outputs/workspace")).
+   * @param localPath A local path that may be within one of the mapped local directories.
+   * @return The corresponding remote path if localPath is within one of the mapped local directories, or None if it is not. For example, if map contains an entry "/local/workspace" -> "/remote/outputs/workspace", and localPath is "/local/workspace/build", this would return Some("/remote/outputs/workspace/build"). If localPath is "/local/otherdir/file.txt", this would return None since it is not within any of the mapped local directories.
+   */
+  def toRemote(map: Map[Path, Path], localPath: Path): Option[Path] = {
+    // Find the first entry in the map where the localPath starts with the key (local output directory)
+    map.find { case (localDir, _) => localPath.startsWith(localDir) }
+      .map { case (localDir, remoteDir) =>
+        // Replace the localDir prefix in localPath with the corresponding remoteDir
+        remoteDir.resolve(localDir.relativize(localPath))
+      }
+  }
+
+  private def rsync(cmd: Seq[String], what: String): Unit = {
+    log.debug(s"Running: ${cmd.mkString(" ")}")
+    val exitCode = new ProcessBuilder(cmd: _*).inheritIO().start().waitFor()
+    if (exitCode != 0) throw new RuntimeException(s"rsync failed ($what), exit code $exitCode")
+  }
+
+  private def validate(args: SOCTArgs): Boolean = {
+    if (args.openSSHConfig.isEmpty || args.remoteDir.isEmpty) {
+      log.warn(s"SSH host and remote root must be set to rsync paths")
+      return false
+    }
+    true
+  }
+
+  /**
+   * Push a local directory to the remote host using rsync over SSH. The local directory will be copied to the remote root directory specified in args, preserving the directory name. For example, if localDir is "/local/workspace/build" and args.remoteDir is "/remote/outputs", this will copy the contents of "/local/workspace/build" to "/remote/outputs/build" on the remote host specified by args.openSSHConfig. Returns the remote path of the pushed directory if successful, or None if validation fails (e.g. missing SSH config or remote dir).
+   *
+   * @param localDir The local directory to push to the remote host. This directory must exist and will be copied to the remote host using rsync.
+   * @param args     The SOCTArgs containing the SSH configuration and remote directory information needed to perform the rsync. Specifically, args.openSSHConfig should contain the OpenSSH host alias (e.g. "user@remotehost") and args.remoteDir should contain the remote root directory (e.g. "/remote/outputs") where the local directory will be copied to.
+   * @return The remote path of the pushed directory if the push is successful, or None if validation fails (e.g. missing SSH config or remote dir). For example, if localDir is "/local/workspace/build", args.openSSHConfig is "user@remotehost", and args.remoteDir is "/remote/outputs", this would return Some("/remote/outputs/build") if the rsync is successful.
+   * @throws RuntimeException if the rsync command fails (non-zero exit code)
+   */
+  def pushDir(localDir: Path, args: SOCTArgs): Option[Path] = {
+    if (!validate(args)) return None
+    val sshHost = args.openSSHConfig.get
+    val remoteRoot = args.remoteDir.get
+    val dirName = localDir.getFileName.toString
+    val localSrc = s"${localDir.toAbsolutePath}/"
+    val remoteDst = s"$sshHost:$remoteRoot/$dirName/"
+    rsync(Seq("rsync", "-az", "--progress", "--stats", localSrc, remoteDst), s"push $localSrc -> $remoteDst")
+    Some(remoteRoot.resolve(dirName))
+  }
+
+  /**
+   * Pull a remote directory from the remote host to the local machine using rsync over SSH. The remote directory is specified by combining the remote root directory from args with the name of the local directory. For example, if localDir is "/local/workspace/build" and args.remoteDir is "/remote/outputs", this will pull the contents of "/remote/outputs/build" from the remote host specified by args.openSSHConfig to "/local/workspace/build" on the local machine. The local directory will be created if it does not exist. Returns Unit if successful, or does nothing if validation fails (e.g. missing SSH config or remote dir).
+   *
+   * @param localDir The local directory to pull the remote contents into. This directory will be created if it does not exist. The name of this local directory is used to determine the corresponding remote directory name under the remote root specified in args.remoteDir.
+   * @param args     The SOCTArgs containing the SSH configuration and remote directory information needed to perform the rsync. Specifically, args.openSSHConfig should contain the OpenSSH host alias (e.g. "user@remotehost") and args.remoteDir should contain the remote root directory (e.g. "/remote/outputs") where the remote directory with the same name as localDir is located.
+   * @throws RuntimeException if the rsync command fails (non-zero exit code)
+   */
+  def pullDir(localDir: Path, args: SOCTArgs): Unit = {
+    if (!validate(args)) return
+    val sshHost = args.openSSHConfig.get
+    val remoteRoot = args.remoteDir.get
+    localDir.toFile.mkdirs()
+    val dirName = localDir.getFileName.toString
+    val remoteSrc = s"$sshHost:$remoteRoot/$dirName/"
+    val localDst = s"${localDir.toAbsolutePath}/"
+    rsync(Seq("rsync", "-az", "--progress", "--stats", remoteSrc, localDst), s"pull $remoteSrc -> $localDst")
+  }
 }
 
 
