@@ -71,6 +71,7 @@ object SOCTBdVars {
     final val sourcesDir = "$sources_dir"
     final val vivadoProjectDir = "$vivado_project_dir"
     final val defaultBdGenerator = "$default_bd_generator"
+    final val defaultTCGenerator = "$default_tc_generator"
     final val defaultSynthGenerator = "$default_synth_generator"
     final val defaultImplGenerator = "$default_impl_generator"
     final val xdcDir = "$xdc_dir"

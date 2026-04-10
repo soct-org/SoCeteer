@@ -273,12 +273,15 @@ class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args
    */
   val defaultBdGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_bd.tcl")
 
+  /**
+   * Path to the TCL file that generates timing constraints for the top module in Vivado
+   */
+  val defaultTCGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_timing_constraints.tcl")
 
   /**
    * Path to the TCL file that synthesizes the top module in Vivado
    */
   val defaultSynthGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_synth.tcl")
-
 
   /**
    * Path to the TCL file that implements the top module in Vivado

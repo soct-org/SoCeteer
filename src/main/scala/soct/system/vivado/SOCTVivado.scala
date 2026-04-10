@@ -130,6 +130,9 @@ object SOCTVivado {
     val initTCL = bd.generateInitScript()
     Files.writeString(boardPaths.tclInitFile, initTCL)
 
+    val tcTCL = bd.generateTimingConstraintsTcl()
+    Files.writeString(boardPaths.defaultTCGenerator, tcTCL)
+
     val bdTCL = bd.generateBoardTcl()
     Files.writeString(boardPaths.defaultBdGenerator, bdTCL)
 

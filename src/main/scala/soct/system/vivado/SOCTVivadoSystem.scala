@@ -136,6 +136,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val peripheryClock = clkWiz.CLK_OUT(1, peripheryDomain)
     val coreClock = clkWiz.CLK_OUT(2, coreDomain)
 
+    // Timing constraints
+    lazy val (coreClockTCL, coreClockObj, corePeriodProp) = clkWiz.timingTcl(2, "core_clock")
+    bd.addTimingConstraints(() => coreClockTCL)
+    bd.addTimingConstraints(() => ddr4.timingTcl(coreClockObj, corePeriodProp))
+
     // --------------------------------------------------------------------------
     // Fundamental interconnect (interfaces & major clocks)
     // --------------------------------------------------------------------------
@@ -233,7 +238,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val sdPmod = SDCardPMOD(dtsInfo = sdDTSOpt.get, getAxiMasterPin = axiMMIO,
         getAxiSlavePins = Seq((axiL2Frontend, "reg0")))
 
-      val ports = Seq(SDIOCDPort(sdPMODPort), SDIOClkPort(sdPMODPort), SDIOCmdPort(sdPMODPort), SDIODataPort(sdPMODPort))
+      val (sdioCd, sdioClk, sdioCmd, sdioData) = (SDIOCDPort(sdPMODPort), SDIOClkPort(sdPMODPort), SDIOCmdPort(sdPMODPort), SDIODataPort(sdPMODPort))
+      val ports = Seq(sdioCd, sdioClk, sdioCmd, sdioData)
 
       peripheryClock --> sdPmod.CLOCK
       periphPsr.PeripheralAResetN --> sdPmod.ASYNC_RESETN
@@ -248,6 +254,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
           sdPmod.INTERRUPT --> interruptConcat.IN(irq.index)
         }
       }
+
+      bd.addTimingConstraints(() => sdPmod.timingTcl(coreClockObj, corePeriodProp, sdioCd, sdioClk, sdioCmd, sdioData))
     }
 
     // --------------------------------------------------------------------------
@@ -286,6 +294,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val b2j = BSCAN2JTAG()
       bscan <-> b2j
       b2j <-> jtagXIntf
+
+      bd.addTimingConstraints(() => bscan.timingTcl(coreClockObj, corePeriodProp))
     }
   }
 }

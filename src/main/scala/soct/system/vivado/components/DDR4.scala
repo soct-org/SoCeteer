@@ -22,6 +22,8 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
 
   object C0_DDR4_UI_CLK_SYNC_RST extends BdPinOut("c0_ddr4_ui_clk_sync_rst", DDR4.this)
 
+  object CO_INIT_CALIB_COMPLETE extends BdPinOut("c0_init_calib_complete", DDR4.this)
+
   object C0_DDR4_UI_CLK extends BdPinOut("c0_ddr4_ui_clk", DDR4.this)
 
   object C0_DDR4_ARESETN extends BdPinIn("c0_ddr4_aresetn", DDR4.this)
@@ -58,6 +60,18 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
     Seq(
       s"assign_bd_address -offset 0x00000000 -range 0x400000000 -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
+  }
+
+  def timingTcl(clockVar: String, clockPeriodVar: String): TCLCommands = {
+    Seq(s"""# Timing constraints for DDR4 controller
+           |set ddrmc_inst [get_cells -hier $instanceName]
+           |set_false_path -through [get_pins $$ddrmc_inst/${SYS_RST.pin}]
+           |set_false_path -through [get_pins $$ddrmc_inst/${CO_INIT_CALIB_COMPLETE.pin}]
+           |set ddrc_clock [get_clocks -of_objects [get_pins $$ddrmc_inst/${C0_DDR4_UI_CLK.pin}]]
+           |set ddrc_clock_period [get_property -min PERIOD $$ddrc_clock]
+           |set_max_delay -from $$$clockVar -to $$ddrc_clock -datapath_only $$ddrc_clock_period
+           |set_max_delay -from $$ddrc_clock -to $$$clockVar -datapath_only $$$clockPeriodVar
+           |""".stripMargin.tcl)
   }
 }
 

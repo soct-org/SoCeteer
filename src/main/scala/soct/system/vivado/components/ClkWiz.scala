@@ -1,7 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}
 import soct.system.vivado.abstracts.BdPinPort
 import soct.system.vivado.abstracts.{HasIndexedPins, _}
 import soct.system.vivado.fpga.FPGAResetPortSource
@@ -56,6 +56,35 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
 
     m.toMap
   }
+
+  /**
+   * Generate the TCL commands needed to find the specified clock output and period objects. It is of form
+   *
+   * set pinVar [get_pins -quiet -hier *thisInst/clk_outidx]
+   *
+   * set pinVar_clk [get_clocks -of_objects $pinVar]
+   *
+   * set pinVar_period [get_property -min PERIOD $pinVar_clock]
+   *
+   *
+   * @param idx the index of the clock output to find (Must exist in the block design)
+   * @param pinVar the name of the variable to store the pin object in
+   * @return a tuple of (TCL commands, clock variable name, period variable name)
+   */
+  def timingTcl(idx: Int, pinVar: String): (TCLCommands, String, String) = {
+    val clockVar = s"${pinVar}_clk"
+    val clockCmd = s"set $clockVar [get_clocks -of_objects $$$pinVar]".tcl
+    val periodVar = s"${pinVar}_period"
+    val periodCmd = s"set $periodVar [get_property -min PERIOD $$$clockVar]".tcl
+    val ifCmd =
+      s"""# Timing constraints for ClkWiz output $idx
+         |set $pinVar [get_pins -quiet -hier *$instanceName/clk_out$idx]
+         |$clockCmd
+         |$periodCmd
+         |""".stripMargin.tcl
+    (Seq(ifCmd), clockVar, periodVar)
+  }
+
 }
 
 object ClkWiz {
