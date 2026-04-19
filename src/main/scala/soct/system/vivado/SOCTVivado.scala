@@ -188,7 +188,7 @@ object SOCTVivado {
       .start()
     val exitCode = process.waitFor()
     if (exitCode != 0) {
-      throw new RuntimeException(s"Vivado failed with exit code $exitCode")
+      soct.log.error(s"Vivado process exited with code $exitCode")
     }
     SOCTRemote.pullDir(args.workspaceDir, args)
   }

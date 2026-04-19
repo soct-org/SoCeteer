@@ -26,7 +26,7 @@ trait DrivenByNet extends BdPinPort
 
 
 /** Internal connection direction: bidirectional scalar net */
-trait BiDirNet extends BdPinPort
+trait BiDirNet extends DrivesNet with DrivenByNet
 
 
 /**
@@ -92,18 +92,6 @@ object BdPinPort {
   implicit def drivesToDriven[A <: DrivesNet, B <: DrivenByNet]: ToSinkConnect[A, B] =
     (a, b, bd) => bd.addEdge(a, b)
 
-  // source (drives) --> sink (bidir)
-  implicit def drivesToBidir[A <: DrivesNet, B <: BiDirNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.addEdge(a, b)
-
-  // source (bidir) --> sink (driven)
-  implicit def bidirToDriven[A <: BiDirNet, B <: DrivenByNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.addEdge(a, b)
-
-  // source (bidir) --> sink (bidir)
-  implicit def bidirToBidir[A <: BiDirNet, B <: BiDirNet]: ToSinkConnect[A, B] =
-    (a, b, bd) => bd.addEdge(a, b)
-
 
   // -------------------------------------------------
   // Scalar directional connections (ToSourceConnect)
@@ -113,17 +101,6 @@ object BdPinPort {
   implicit def drivenFromDrives[A <: DrivenByNet, B <: DrivesNet]: ToSourceConnect[A, B] =
     (a, b, bd) => bd.addEdge(b, a)
 
-  // sink (bidir) <-- source (drives)
-  implicit def bidirFromDrives[A <: BiDirNet, B <: DrivesNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.addEdge(b, a)
-
-  // sink (driven) <-- source (bidir)
-  implicit def drivenFromBidir[A <: DrivenByNet, B <: BiDirNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.addEdge(b, a)
-
-  // sink (bidir) <-- source (bidir)
-  implicit def bidirFromBidir[A <: BiDirNet, B <: BiDirNet]: ToSourceConnect[A, B] =
-    (a, b, bd) => bd.addEdge(b, a)
 
 
   private def snake(name: String): String = {

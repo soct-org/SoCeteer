@@ -42,10 +42,8 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
     val m = mutable.Map.empty[String, String]
     val ddr4Intf = bd.singleConnector(C0_DDR4, p => p.isInstanceOf[DDR4Port])
     val boardClk = bd.singleConnector(C0_SYS_CLK, p => p.isInstanceOf[FPGAClockPort])
-    val boardRst = bd.singleConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
     m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
     m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> boardClk.ref
-    m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
 
     ADDN_UI_CLKOUT.all.foreach {
       case (idx, clk) =>

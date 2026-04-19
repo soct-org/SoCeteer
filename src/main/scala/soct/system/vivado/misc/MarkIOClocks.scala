@@ -1,9 +1,11 @@
 package soct.system.vivado.misc
 
+import chisel3.Clock
 import freechips.rocketchip.amba.axi4.AXI4Bundle
 import freechips.rocketchip.prci.ClockBundle
 import freechips.rocketchip.tilelink.TLBusWrapper
 import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 import soct.system.vivado.abstracts.{BdChiselPin, BdIntfPin, BdPinBase, MapsToPorts, XSignal}
 
@@ -30,6 +32,36 @@ case class ClkDesc(clkPin: BdChiselPin,
                    buses: Seq[TLBusWrapper],
                    freqHz: Option[BigInt] = None)
 
+
+case class MarkClockAndResets(clocks: Seq[Clock], resets: Seq[chisel3.Reset], clockGroup: String = "CLOCK", resetGroup: String = "RESET")
+                            (implicit val bd: SOCTBdBuilder, p: Parameters) extends MapsToPorts {
+
+  private def toClk(clock: Clock) = new XSignal {
+    override def partName: String = "xilinx.com:signal:clock:1.0"
+  }
+
+  private def toRst(reset: chisel3.Reset) = new XSignal {
+    override def partName: String = "xilinx.com:signal:reset:1.0"
+  }
+
+  override def portMapping: Map[String, Seq[String]] = {
+    val clkMaps = clocks.flatMap { clk =>
+      val clkSignal = toClk(clk)
+      val info = s"""(* X_INTERFACE_INFO = "${clkSignal.partName} $clockGroup CLK" *)"""
+      Map(portToBdPin(clk).pin -> Seq(info))
+    }.toMap
+
+    val rstMaps = resets.flatMap { rst =>
+      val rstSignal = toRst(rst)
+      val info = s"""(* X_INTERFACE_INFO = "${rstSignal.partName} $resetGroup RST" *)"""
+      // All chisel Resets are active high by default
+      val param = s"""(* X_INTERFACE_PARAMETER = "POLARITY ACTIVE_HIGH" *)"""
+      Map(portToBdPin(rst).pin -> Seq(info, param))
+    }.toMap
+
+    clkMaps ++ rstMaps
+  }
+}
 
 case class MarkIOClocks(io: Map[ClockBundle, ClkDesc], resetGroup: String = "RESET", clockGroup: String = "CLOCK")
                        (implicit val bd: SOCTBdBuilder, p: Parameters) extends MapsToPorts {

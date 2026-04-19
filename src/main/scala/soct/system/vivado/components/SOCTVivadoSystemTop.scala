@@ -11,7 +11,7 @@ import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.AXIMM
-import soct.system.vivado.misc.{AXI4BusInfo, ClkDesc, MarkIOClocks}
+import soct.system.vivado.misc.{AXI4BusInfo, ClkDesc, MarkClockAndResets, MarkIOClocks}
 import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
 
 
@@ -96,6 +96,10 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
 
   override protected def finalizeBdImpl(): Unit = {
     MarkIOClocks(ioClocksMapping)
+    MarkClockAndResets(
+      s.debug.map(_.clock).toSeq,
+      s.debug.map(_.reset).toSeq ++ s.debug.flatMap(_.systemjtag).map(_.reset).toSeq
+    )
   }
 
   override def reference: String = c.topModuleName

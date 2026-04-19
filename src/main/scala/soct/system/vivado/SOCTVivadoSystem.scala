@@ -4,13 +4,14 @@ import chisel3._
 import freechips.rocketchip.resources.ResourceInt
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
+import soct._
 import soct.system.soceteer.SOCTSystem
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
 import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
-import soct.system.vivado.intf.{AXIMM, JTAGIntf}
+import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq}
-import soct._
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -115,10 +116,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Components
     // --------------------------------------------------------------------------
     val clkWiz = ClkWiz()
-
-    val periphPsr = ProcSysReset().withInstanceName("periph_psr")
-    val corePsr = ProcSysReset().withInstanceName("core_psr")
-    val ddrPsr = ProcSysReset().withInstanceName("ddr_psr")
+    val rstSync = ResetSyncStretch()
+    val memRstCtrl = MemResetControl()
 
     val uart = AXIUartLite(dtsInfo = uartDTS, getAxiMasterPin = axiMMIO)
     val ddr4 = DDR4(axiMem)
@@ -127,7 +126,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
     val dmaSMC = AXISmartConnect().withInstanceName("dma_smc")
 
-    val interruptConcat = InlineConcat(nExtInterrupts)
+    val interruptConcat = InlineConcat(2)
 
     // --------------------------------------------------------------------------
     // Derived pins (clock outputs / DDR helper pins)
@@ -142,70 +141,53 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     bd.addTimingConstraints(() => ddr4.timingTcl(coreClockObj, corePeriodProp))
 
     // --------------------------------------------------------------------------
-    // Fundamental interconnect (interfaces & major clocks)
+    // Fundamental interconnect (interfaces & major clocks and resets)
     // --------------------------------------------------------------------------
+    val memOk = memRstCtrl.MEM_OK
+    val clockOk = clkWiz.LOCKED
+    // TODO add ioOk later
+
     ddr4 <-> ddr4Port
     uart.UART <-> uartPort
 
     // DDR4 -> drive clock wizard input from DDR addn clkout
     ddr4Clk1 --> clkWiz.CLK_IN(1)
 
-    // DDR reset domain clocking
-    ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
-
     // Board clocks/resets into IPs
     fpgaClk --> ddr4.C0_SYS_CLK
+
     fpgaRst --> Seq(
-      ddr4.SYS_RST,
       clkWiz.RESET,
-      periphPsr.EXT_RESET_IN,
-      corePsr.EXT_RESET_IN
+      memRstCtrl.SYS_RESET
     )
 
-    // --------------------------------------------------------------------------
-    // Reset strategy
-    // --------------------------------------------------------------------------
-    // DDR PSR should assert reset if either:
-    //  - board reset is active, OR
-    //  - DDR UI clock domain provides a sync reset signal
-    OR(1, fpgaRst, ddr4.C0_DDR4_UI_CLK_SYNC_RST) --> ddrPsr.EXT_RESET_IN
-
-    // Clock wizard lock feeds reset synchronizers for domains derived from it
-    clkWiz.LOCKED --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
-
-    // Domain clocks:
     // Periphery domain clock drives periph reset sync + periph-ish IP clocks
     peripheryClock --> Seq(
-      periphPsr.SLOWEST_SYNC_CLK,
       mmioSMC.ACLK(0),
       dmaSMC.ACLK(0),
-      uart.S_AXI_ACLK
+      uart.S_AXI_ACLK,
+      memRstCtrl.CLOCK
     )
 
-    // Core domain clock drives core reset sync + top clocks + one mem SMC clock
+    memRstCtrl.ARESETN --> ddr4.C0_DDR4_ARESETN
+
+    memRstCtrl.CLOCK_OK <-- clockOk
+
     coreClock --> Seq(
-      corePsr.SLOWEST_SYNC_CLK,
+      rstSync.CLOCK,
       memSMC.ACLK(0),
       mmioSMC.ACLK(1),
-      dmaSMC.ACLK(1),
+      dmaSMC.ACLK(1), // TODO: use periphery clock for this?
     )
     coreClock --> clockPins
-    corePsr.PeripheralReset --> resetPins
-    // Hart in reset is driven by core peripheral reset as well
-    corePsr.PeripheralReset --> resetctrl.getWrappedValue.get.hartIsInReset
 
-    // Memory smartconnect is bridging domains:
-    //  - aclk0 = core clock
-    //  - aclk1 = DDR UI clock
-    ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(1)
+    ddr4.C0_DDR4_UI_CLK --> Seq(memSMC.ACLK(1), memRstCtrl.UI_CLK)
+    ddr4.CO_INIT_CALIB_COMPLETE --> memRstCtrl.CALIB_COMPLETE
+    ddr4.C0_DDR4_UI_CLK_SYNC_RST --> memRstCtrl.UI_CLK_SYNC_RST
 
-    // Reset net distribution (active-low aresetn)
-    periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
-    ddrPsr.PeripheralAResetN --> ddr4.C0_DDR4_ARESETN
-
-    // memSMC reset is influenced by BOTH core and DDR domains:
-    // hold in reset if either domain is in reset, release only when BOTH are out of reset.
-    AND(1, corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN) --> memSMC.ARESETN
+    //val anyInvalid = NOT(AND(memOk, clockOk, "mem_ok_and_clock_ok").r, "not_ok").r
+    //rstSync.RESET_IN <-- OR(fpgaRst, anyInvalid, "fpga_rst_or_not_ok").r
+    rstSync.RESET_IN <-- fpgaRst
 
     // --------------------------------------------------------------------------
     // Interrupt wiring
@@ -230,6 +212,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // DMA path: SD DMA -> dmaSMC -> Rocket L2 frontend
     dmaSMC.M_AXI(0) <-> axiL2Frontend
 
+    rstSync.ARESETN --> dmaSMC.ARESETN
+    rstSync.ARESETN --> mmioSMC.ARESETN
+    rstSync.ARESETN --> uart.S_AXI_ARESETN
+    memRstCtrl.ARESETN --> memSMC.ARESETN
+
+    TieOff().withInstanceName("mmcm_locked_tieoff").DOUT --> memRstCtrl.MMCM_LOCKED
+    memRstCtrl.MEM_RESET --> ddr4.SYS_RST
+
     // --------------------------------------------------------------------------
     // Optional SDCard PMOD
     // --------------------------------------------------------------------------
@@ -242,7 +232,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       val ports = Seq(sdioCd, sdioClk, sdioCmd, sdioData)
 
       peripheryClock --> sdPmod.CLOCK
-      periphPsr.PeripheralAResetN --> sdPmod.ASYNC_RESETN
+      rstSync.ARESETN --> sdPmod.ASYNC_RESETN
 
       sdPmod <-> ports
 
@@ -261,41 +251,54 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Debug / SystemJTAG integration
     // --------------------------------------------------------------------------
-    val debugIf = debug.getWrappedValue.get
+    val coreReset: BdPinOut = if (debug.isDefined) {
+      val debugIf = debug.getWrappedValue.get
 
-    coreClock --> debugIf.clock
-    corePsr.PeripheralReset --> debugIf.reset
+      coreClock --> debugIf.clock
+      rstSync.RESET --> debugIf.reset
+      portToBdPin(debugIf.dmactiveAck) --> portToBdPin(debugIf.dmactive)
 
-    // Tie off debug active ack to 0 since we are not using it in this design (No clock gating etc.)
-    TieOff().withInstanceName("debug_active_ack_tieoff") --> debugIf.dmactiveAck
+      if (debugIf.systemjtag.isDefined) {
+        val jtagIO = debugIf.systemjtag.get
+        val jtag = jtagIO.jtag
+        TieOff().withInstanceName("jtag_io_reset_tieoff") --> jtagIO.reset
 
-    if (debugIf.systemjtag.isDefined) {
-      val jtagIO = debugIf.systemjtag.get
-      val jtag = jtagIO.jtag
-      corePsr.PeripheralReset --> jtagIO.reset
+        // Create TDT signal for Vivado JTAG integration - TDO is driven when TDT is low
+        val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")
+        jtag_tdt := ~jtag.TDO.driven
 
-      // Create TDT signal for Vivado JTAG integration - TDO is driven when TDT is low
-      val jtag_tdt = IO(Output(Bool())).suggestName("jtag_tdt")
-      jtag_tdt := ~jtag.TDO.driven
+        val jtagXIntf = JTAGIntf(jtag, jtag_tdt)
 
-      val jtagXIntf = JTAGIntf(jtag, jtag_tdt)
+        // Tie off unused fields using inline constants - rename for clarity in block design
+        val mfrIdConst = InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth).withInstanceName("jtag_mfr_id_constant")
+        mfrIdConst --> jtagIO.mfr_id
 
-      // Tie off unused fields using inline constants - rename for clarity in block design
-      val mfrIdConst = InlineConstant("b10010001001".U, jtagIO.mfr_id.getWidth).withInstanceName("jtag_mfr_id_constant")
-      mfrIdConst --> jtagIO.mfr_id
+        val partNumConst = InlineConstant(0.U, jtagIO.part_number.getWidth).withInstanceName("jtag_part_number_constant")
+        partNumConst --> jtagIO.part_number
 
-      val partNumConst = InlineConstant(0.U, jtagIO.part_number.getWidth).withInstanceName("jtag_part_number_constant")
-      partNumConst --> jtagIO.part_number
+        val versionConst = InlineConstant(0.U, jtagIO.version.getWidth).withInstanceName("jtag_version_constant")
+        versionConst --> jtagIO.version
 
-      val versionConst = InlineConstant(0.U, jtagIO.version.getWidth).withInstanceName("jtag_version_constant")
-      versionConst --> jtagIO.version
+        val bscan = BSCAN()
+        val b2j = BSCAN2JTAG()
+        bscan <-> b2j
+        b2j <-> jtagXIntf
 
-      val bscan = BSCAN()
-      val b2j = BSCAN2JTAG()
-      bscan <-> b2j
-      b2j <-> jtagXIntf
+        bd.addTimingConstraints(() => bscan.timingTcl(coreClockObj, corePeriodProp))
+      }
+      OR(rstSync.RESET, portToBdPin(debugIf.ndreset), "sync_reset_or_ndreset").r
+    } else {
+      rstSync.RESET
+    }
 
-      bd.addTimingConstraints(() => bscan.timingTcl(coreClockObj, corePeriodProp))
+    // --------------------------------------------------------------------------
+    // Final wiring and tie-offs
+    // --------------------------------------------------------------------------
+    coreReset --> resetPins
+    resetctrl.foreach { r =>
+      r.hartIsInReset.zipWithIndex.foreach { case (h, i) =>
+        TieOff().withInstanceName(s"reset_tieoff_$i") --> h
+      }
     }
   }
 }

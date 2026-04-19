@@ -5,9 +5,16 @@ import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
 
 /**
+ * Result of an inline vector logic operation, containing the component and the output pin to connect to
+ * @param c the inline vector logic component instance
+ * @param r the output pin of the component to connect to
+ */
+case class Result(c: InlineVectorLogic, r: BdPinOut)
+
+/**
  * Base inline vector logic (hidden from users)
  */
-sealed abstract class InlineVectorLogic private[components](op: String, width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
+sealed abstract class InlineVectorLogic (op: String, width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with XInlineHDL with ConnectOps {
 
   require(width > 0, s"InlineVectorLogic width must be > 0 (got $width)")
@@ -43,24 +50,28 @@ final case class AND(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BinaryVectorLogic("and", width)
 
 object AND {
-  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val andComp = AND(width)
+  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = {
+    val andComp = AND(width).withInstanceName(name)
     op1 --> andComp.OP1
     op2 --> andComp.OP2
-    andComp.RES
+    Result(andComp, andComp.RES)
   }
+  // apply with one bit width for convenience
+  def apply(op1: => DrivesNet, op2: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = apply(1, op1, op2, name)
 }
 
 final case class OR(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BinaryVectorLogic("or", width)
 
 object OR {
-  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val orComp = OR(width)
+  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = {
+    val orComp = OR(width).withInstanceName(name)
     op1 --> orComp.OP1
     op2 --> orComp.OP2
-    orComp.RES
+    Result(orComp, orComp.RES)
   }
+  // apply with one bit width for convenience
+  def apply(op1: => DrivesNet, op2: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = apply(1, op1, op2, name)
 }
 
 final case class XOR(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
@@ -68,21 +79,25 @@ final case class XOR(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
 
 
 object XOR {
-  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val xorComp = XOR(width)
+  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = {
+    val xorComp = XOR(width).withInstanceName(name)
     op1 --> xorComp.OP1
     op2 --> xorComp.OP2
-    xorComp.RES
+    Result(xorComp, xorComp.RES)
   }
+  // apply with one bit width for convenience
+  def apply(op1: => DrivesNet, op2: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = apply(1, op1, op2, name)
 }
 
 final case class NOT(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends InlineVectorLogic("not", width)
 
 object NOT {
-  def apply(width: Int, op: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val notComp = NOT(width)
+  def apply(width: Int, op: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = {
+    val notComp = NOT(width).withInstanceName(name)
     op --> notComp.OP1
-    notComp.RES
+    Result(notComp, notComp.RES)
   }
+  // apply with one bit width for convenience
+  def apply(op: => DrivesNet, name: String)(implicit bd: SOCTBdBuilder, p: Parameters): Result = apply(1, op, name)
 }

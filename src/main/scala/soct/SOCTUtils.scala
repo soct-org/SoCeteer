@@ -79,9 +79,16 @@ object SOCTRemote {
     val sshHost = args.openSSHConfig.get
     val remoteRoot = args.remoteDir.get
     val dirName = localDir.getFileName.toString
+    // Create remote root directory
+    val cmd = Seq("ssh", sshHost, "mkdir", "-p", s"$remoteRoot/")
+    log.info(s"Ensuring remote root directory exists with command: ${cmd.mkString(" ")}")
+    val exitCode = new ProcessBuilder(cmd: _*).start().waitFor()
+
+    if (exitCode != 0) throw new RuntimeException(s"Failed to create remote root directory $remoteRoot, exit code $exitCode")
     val localSrc = s"${localDir.toAbsolutePath}/"
     val remoteDst = s"$sshHost:$remoteRoot/$dirName/"
     rsync(Seq("rsync", "-az", "--progress", "--stats", localSrc, remoteDst), s"push $localSrc -> $remoteDst")
+
     Some(remoteRoot.resolve(dirName))
   }
 
