@@ -201,12 +201,16 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
     // memSMC reset is influenced by BOTH core and DDR domains:
     // hold in reset if either domain is in reset, release only when BOTH are out of reset.
-    AND(1, corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN) --> memSMC.ARESETN
+    AND(corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN) --> memSMC.ARESETN
 
     // --------------------------------------------------------------------------
     // Interrupt wiring
     // --------------------------------------------------------------------------
-    interruptConcat.DOUT --> top.INTERRUPTS
+    val intDelay = RAMShiftReg(nExtInterrupts, 3).withInstanceName("delay_3")
+    interruptConcat --> intDelay.D
+    coreClock --> intDelay.CLK
+    intDelay.Q --> top.INTERRUPTS
+
     uartDTS.irqs.foreach { irq =>
       uart.INTERRUPT --> interruptConcat.IN(irq.index)
     }

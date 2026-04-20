@@ -113,11 +113,3 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
     InterconnectResetN.createSlices()
   }
 }
-
-object ProcSysReset {
-
-  // Allow: procSysReset.PeripheralReset --> someChiselReset
-  implicit val syncResetToChiselClock: ToSinkConnect[BdPinOut with ProcSysReset#ProcSysResetPort with Reset, chisel3.Reset] =
-    (source: BdPinOut with ProcSysReset#ProcSysResetPort with Reset, sink: chisel3.Reset, bd: SOCTBdBuilder) =>
-      bd.addEdge(source, BdPinPort.portToBdPin(sink)(bd))
-}

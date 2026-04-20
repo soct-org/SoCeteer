@@ -23,11 +23,6 @@ case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters)
     pinConstructor = idx => M_AXI_I(idx)
   )
 
-  def axiIdxSuffix(idx: Int): String = idx match {
-    case 0 => "" // No prefix for index 0
-    case _ => f"$idx%02d" // Two-digit index with leading zeros
-  }
-
   case class ACLK_I(idx: Int) extends BdPinIn(if (idx == 0) "aclk" else {s"aclk$idx"}, AXISmartConnect.this)
   object ACLK extends SimpleIndexedPinFactory[ACLK_I](
     indexRange = (0, Int.MaxValue), // TODO upper limit?

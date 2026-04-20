@@ -13,6 +13,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
 
   case class M_BSCAN_I(i: Int) extends BdIntfPin(s"m${i}_bscan", BSCAN.this)
+
   // TODO upper limit on number of BSCAN ports?
   object M_BSCAN extends SimpleIndexedPinFactory[M_BSCAN_I](
     indexRange = (0, 16),
@@ -53,6 +54,6 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
 }
 
 object BSCAN {
-  implicit val a: AutoConnect[BSCAN, BSCAN2JTAG] = (comp: BSCAN, sink: BSCAN2JTAG, bd: SOCTBdBuilder) =>
+  implicit val bscanToBscan2Jtag: AutoConnect[BSCAN, BSCAN2JTAG] = (comp: BSCAN, sink: BSCAN2JTAG, bd: SOCTBdBuilder) =>
     bd.addEdge(comp.M_BSCAN.getOrElseInit(0), sink.S_BSCAN) // By default, only connect the first BSCAN port
 }

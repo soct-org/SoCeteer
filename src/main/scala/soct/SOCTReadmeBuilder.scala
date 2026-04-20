@@ -299,7 +299,7 @@ object SOCTReadmeBuilder {
        |* (Apple Silicon (ARM64) users) The [firtool](https://github.com/llvm/circt/releases) binary needed for Chisel is only available for x86_64 architecture, requiring Rosetta to run on ARM64 hosts. Make sure it is installed and configured correctly.
        |To force installation run `softwareupdate --install-rosetta --agree-to-license` in the terminal.
        |* If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
-       |* The FPGA support is currently in development and we could not validate a big rocket core correctly running on FPGA yet. Only a small one has been successfully tested.
+       |* If UART to the board fails, close the Vivado hardware manager. Sometimes the /dev/ttyUSB* disappears where either rebooting or running `udevadm trigger` can help.
        |
        |""".stripMargin
   }

@@ -93,6 +93,13 @@ object BdPinPort {
     (a, b, bd) => bd.addEdge(a, b)
 
 
+  implicit def chiselToDriven[A <: Data, B <: DrivenByNet]: ToSinkConnect[A, B] =
+    (a, b, bd) => bd.addEdge(portToBdPin(a)(bd), b)
+
+
+  implicit def drivesToChisel[A <: DrivesNet, B <: Data]: ToSinkConnect[A, B] =
+    (a, b, bd) => bd.addEdge(a, portToBdPin(b)(bd))
+
   // -------------------------------------------------
   // Scalar directional connections (ToSourceConnect)
   // -------------------------------------------------
@@ -101,6 +108,11 @@ object BdPinPort {
   implicit def drivenFromDrives[A <: DrivenByNet, B <: DrivesNet]: ToSourceConnect[A, B] =
     (a, b, bd) => bd.addEdge(b, a)
 
+  implicit def drivenFromChisel[A <: DrivenByNet, B <: Data]: ToSourceConnect[A, B] =
+    (a, b, bd) => bd.addEdge(portToBdPin(b)(bd), a)
+
+  implicit def chiselToDrives[A <: Data, B <: DrivesNet]: ToSourceConnect[A, B] =
+    (a, b, bd) => bd.addEdge(portToBdPin(a)(bd), b)
 
   private def snake(name: String): String = {
     name.toLowerCase.replace(".", "_")

@@ -2,7 +2,8 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.abstracts.{BdComp, BdPinIn, BdPinOut, ConnectOps, HasIndexedPins, XInlineHDL}
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
+import soct.system.vivado.abstracts.{BdComp, BdPinIn, BdPinOut, BdPinPort, ConnectOps, HasIndexedPins, ToSinkConnect, XInlineHDL}
 
 
 case class InlineConcat(nPorts: Int) (implicit bd: SOCTBdBuilder, p: Parameters)
@@ -20,4 +21,15 @@ case class InlineConcat(nPorts: Int) (implicit bd: SOCTBdBuilder, p: Parameters)
     indexRange = (0, nPorts - 1),
     pinConstructor = idx => IN_I(idx)
   )
+}
+
+
+object InlineConcat {
+  implicit def doutIsDefaultSrcChisel[T <: chisel3.Data]: ToSinkConnect[InlineConcat, T] = (comp: InlineConcat, sink: T, bd: SOCTBdBuilder) => {
+    bd.addEdge(comp.DOUT, portToBdPin(sink)(bd))
+  }
+
+  implicit def doutIsDefaultSrcBdPinPort: ToSinkConnect[InlineConcat, BdPinPort] = (comp: InlineConcat, sink: BdPinPort, bd: SOCTBdBuilder) => {
+    bd.addEdge(comp.DOUT, sink)
+  }
 }

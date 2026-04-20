@@ -86,10 +86,3 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 
 }
-
-object ClkWiz {
-  // Allow: clkWiz.CLK_OUT(n, ...) --> someChiselClock
-  implicit val clkOutToChiselClock: ToSinkConnect[ClkWiz#CLK_OUT_I, chisel3.Clock] =
-    (source: ClkWiz#CLK_OUT_I, sink: chisel3.Clock, bd: SOCTBdBuilder) =>
-      bd.addEdge(source, BdPinPort.portToBdPin(sink)(bd))
-}

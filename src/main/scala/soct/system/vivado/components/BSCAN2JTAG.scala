@@ -39,6 +39,6 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
 }
 
 object BSCAN2JTAG {
-  implicit val a: AutoConnect[BSCAN2JTAG, JTAGIntf] = (comp: BSCAN2JTAG, port: JTAGIntf, bd: SOCTBdBuilder) =>
+  implicit val bscan2jtagToJtag: AutoConnect[BSCAN2JTAG, JTAGIntf] = (comp: BSCAN2JTAG, port: JTAGIntf, bd: SOCTBdBuilder) =>
     bd.addEdge(comp.JTAG, port)
 }

@@ -50,7 +50,12 @@ object InlineConstant {
     InlineConstant(value.litValue, nBits)
   }
 
-  implicit def a[T <: chisel3.Data]: ToSinkConnect[InlineConstant, T] = (comp: InlineConstant, sink: T, bd: SOCTBdBuilder) => {
+  implicit def doutIsDefaultSrcChisel[T <: chisel3.Data]: ToSinkConnect[InlineConstant, T] = (comp: InlineConstant, sink: T, bd: SOCTBdBuilder) => {
     bd.addEdge(comp.DOUT, portToBdPin(sink)(bd))
   }
+
+  implicit def doutIsDefaultSrcBdPinPort: ToSinkConnect[InlineConstant, BdPinPort] = (comp: InlineConstant, sink: BdPinPort, bd: SOCTBdBuilder) => {
+    bd.addEdge(comp.DOUT, sink)
+  }
+
 }

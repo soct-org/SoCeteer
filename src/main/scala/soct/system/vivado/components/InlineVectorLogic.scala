@@ -2,13 +2,16 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 
 /**
- * Base inline vector logic (hidden from users)
+ * Base inline vector logic
  */
-sealed abstract class InlineVectorLogic private[components](op: String, width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdComp with XInlineHDL with ConnectOps {
+abstract class InlineVectorLogic(op: String, width: Int, connectOnInit: Boolean = true)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with XInlineHDL with ConnectOps with HasIndexedPins {
+
+  val ops: Seq[DrivesNet]
 
   require(width > 0, s"InlineVectorLogic width must be > 0 (got $width)")
 
@@ -23,66 +26,39 @@ sealed abstract class InlineVectorLogic private[components](op: String, width: I
     "CONFIG.C_SIZE" -> width.toString
   )
 
-  object OP1 extends BdPinIn("Op1", this)
+  case class OP_I(idx: Int) extends BdPinIn(s"Op$idx", this)
+
+  object OP extends SimpleIndexedPinFactory[OP_I](
+    indexRange = (1, 64), // TODO how many inputs can we support?
+    pinConstructor = idx => OP_I(idx)
+  )
 
   object RES extends BdPinOut("Res", this)
+
+  if (connectOnInit) {
+    ops.zipWithIndex.foreach { case (op, i) =>
+      op --> OP(i + 1)
+    }
+  }
+
 }
 
-/**
- * Binary operators expose OP2
- */
-sealed abstract class BinaryVectorLogic(op: String, width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InlineVectorLogic(op, width) {
+object InlineVectorLogic {
+  implicit def resIsDefaultSrcChisel[T <: chisel3.Data]: ToSinkConnect[InlineVectorLogic, T] = (comp: InlineVectorLogic, sink: T, bd: SOCTBdBuilder) => {
+    bd.addEdge(comp.RES, portToBdPin(sink)(bd))
+  }
 
-  object OP2 extends BdPinIn("Op2", this)
+  implicit def resIsDefaultSrcBdPinPort: ToSinkConnect[InlineVectorLogic, BdPinPort] = (comp: InlineVectorLogic, sink: BdPinPort, bd: SOCTBdBuilder) => {
+    bd.addEdge(comp.RES, sink)
+  }
 }
 
 
 // ---------------- Concrete Types ----------------
-final case class AND(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BinaryVectorLogic("and", width)
+final case class AND(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("and", 1)
 
-object AND {
-  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val andComp = AND(width)
-    op1 --> andComp.OP1
-    op2 --> andComp.OP2
-    andComp.RES
-  }
-}
+final case class OR(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("or", 1)
 
-final case class OR(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BinaryVectorLogic("or", width)
+final case class XOR(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("xor", 1)
 
-object OR {
-  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val orComp = OR(width)
-    op1 --> orComp.OP1
-    op2 --> orComp.OP2
-    orComp.RES
-  }
-}
-
-final case class XOR(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BinaryVectorLogic("xor", width)
-
-
-object XOR {
-  def apply(width: Int, op1: => DrivesNet, op2: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val xorComp = XOR(width)
-    op1 --> xorComp.OP1
-    op2 --> xorComp.OP2
-    xorComp.RES
-  }
-}
-
-final case class NOT(width: Int)(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends InlineVectorLogic("not", width)
-
-object NOT {
-  def apply(width: Int, op: => DrivesNet)(implicit bd: SOCTBdBuilder, p: Parameters): DrivesNet = {
-    val notComp = NOT(width)
-    op --> notComp.OP1
-    notComp.RES
-  }
-}
+final case class NOT(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("not", 1)
