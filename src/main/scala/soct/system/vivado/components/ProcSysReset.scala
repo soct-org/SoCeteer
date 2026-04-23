@@ -10,7 +10,7 @@ import scala.collection.mutable
  * Proc Sys Reset IP core from Xilinx.
  * Documentation: https://docs.amd.com/v/u/en-US/pg164-proc-sys-reset
  */
-case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
+case class ProcSysReset(autoSlice: Boolean = true)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with Finalizable {
 
   override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
@@ -97,6 +97,9 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
   object EXT_RESET_IN extends BdPinIn("ext_reset_in", ProcSysReset.this)
 
   override def defaultProperties: Map[String, String] = {
+    if (!autoSlice) {
+      return Map.empty
+    }
     Map(
       "CONFIG.C_NUM_PERP_ARESETN" -> PeripheralAResetN.dinWidth.toString,
       "CONFIG.C_NUM_PERP_RST" -> PeripheralReset.dinWidth.toString,
@@ -106,6 +109,9 @@ case class ProcSysReset()(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 
   override protected def finalizeBdImpl(): Unit = {
+    if (!autoSlice) {
+      return // skip slicing if autoSlice is disabled
+    }
     // Ensure slicing is done for all output ports
     PeripheralAResetN.createSlices()
     PeripheralReset.createSlices()

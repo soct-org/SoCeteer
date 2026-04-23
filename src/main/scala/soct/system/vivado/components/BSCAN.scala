@@ -7,7 +7,7 @@ import soct.system.vivado.abstracts._
 import scala.collection.mutable
 
 
-case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
+case class BSCAN(debugMode: Int = 7)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp // 7 = JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge
   with Xip with ConnectOps with HasIndexedPins {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
@@ -24,7 +24,7 @@ case class BSCAN()(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
     // Count number of M_BSCAN sources
     val nSlaves = M_BSCAN.all.size
     Map(
-      "CONFIG.C_DEBUG_MODE" -> "7", // JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge
+      "CONFIG.C_DEBUG_MODE" -> debugMode.toString,
       "CONFIG.C_USER_SCAN_CHAIN" -> "1", // One user scan chain
       "CONFIG.C_NUM_BS_MASTER" -> nSlaves.toString // Number of BSCAN slaves
     )
