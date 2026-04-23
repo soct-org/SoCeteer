@@ -3,7 +3,7 @@
 // Must be aligned by 0x10000
 // Assuming at least 16M of memory
 #define BOOT_MEM_ADDR    0x80000000
-#define BOOT_MEM_END     0x81000000
+#define BOOT_MEM_END     0x82000000  /* 32MB window; was 0x81000000 (16MB), increased for -O0 debug builds */
 
 // Define reg_t type if not assembly
 #ifndef __ASSEMBLY__
