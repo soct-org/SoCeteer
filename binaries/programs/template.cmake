@@ -42,16 +42,15 @@ else ()
     message(FATAL_ERROR "Unknown SOCT_TARGET: ${SOCT_TARGET}.")
 endif ()
 
-target_compile_options(${SOCT_PROGRAM} PRIVATE
+
+# Common options for both C and C++
+set(_common_compile_opts
         -march=${SOCT_ARCH}
         -mabi=${SOCT_ABI}
         -mcmodel=medany
         -nostartfiles
         -nodefaultlibs
         -fno-common
-        -fno-exceptions
-        -fno-rtti
-        -fno-use-cxa-atexit
         -ffunction-sections
         -fdata-sections
         -Wall
@@ -59,10 +58,7 @@ target_compile_options(${SOCT_PROGRAM} PRIVATE
         -g0
 )
 
-target_compile_definitions(${SOCT_PROGRAM} PRIVATE BAREMETAL)
-
-
-target_link_options(${SOCT_PROGRAM} PRIVATE
+set(_common_link_opts
         -march=${SOCT_ARCH}
         -mabi=${SOCT_ABI}
         -T ${LD_SCRIPT}
@@ -71,14 +67,29 @@ target_link_options(${SOCT_PROGRAM} PRIVATE
         -nostartfiles
         -nodefaultlibs
         -fno-common
-        -fno-exceptions
-        -fno-rtti
-        -fno-use-cxa-atexit
         -Wall
         -Wextra
 )
 
-set(LIBS_TO_LINK ${LGLOSS} ${LIBC} supc++ stdc++ m gcc)
+target_compile_options(${SOCT_PROGRAM} PRIVATE ${_common_compile_opts})
+target_link_options(${SOCT_PROGRAM} PRIVATE ${_common_link_opts})
+target_compile_definitions(${SOCT_PROGRAM} PRIVATE BAREMETAL)
+
+if (SOCT_PROGRAM_IS_CXX)
+    set(LIBS_TO_LINK ${LGLOSS} ${LIBC} supc++ stdc++ m gcc)
+    target_compile_options(${SOCT_PROGRAM} PRIVATE
+            -fno-exceptions
+            -fno-rtti
+            -fno-use-cxa-atexit
+    )
+    target_link_options(${SOCT_PROGRAM} PRIVATE
+            -fno-exceptions
+            -fno-rtti
+            -fno-use-cxa-atexit
+    )
+else ()
+    set(LIBS_TO_LINK ${LGLOSS} ${LIBC} m gcc)
+endif ()
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
     target_link_libraries(${SOCT_PROGRAM} PRIVATE

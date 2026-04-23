@@ -4,7 +4,7 @@ ENTRY(_hang)
 MEMORY {
   error_mem (rw)   : ORIGIN = 0x00003000, LENGTH = 0x00001000
   maskrom_mem (rx) : ORIGIN = 0x00010000, LENGTH = 0x00010000
-  memory_mem (rwx) : ORIGIN = 0x80000000, LENGTH = 0x00002000
+  memory_mem (rwx) : ORIGIN = 0x80000000, LENGTH = 0x00008000  /* 32KB; was 8KB, increased for -O0 debug builds */
 }
 
 PHDRS {
@@ -44,7 +44,9 @@ SECTIONS {
     . = ALIGN(8);
     PROVIDE(_ebss = .);
   } >memory_mem
-  ASSERT(SIZEOF(.bss) <= 0x1000, "BootROM .bss section must be less than 0x1000 bytes")
+  ASSERT(SIZEOF(.bss) <= 0x4000, "BootROM .bss section must be less than 0x4000 bytes")
+  /* Ensure at least 8KB of stack between BSS end and BOOTROM_MEM_END (0x80008000) */
+  ASSERT(_ebss + 0x2000 <= 0x80008000, "BootROM stack overflow: BSS too large for debug build")
 
   .note (INFO) : {
     *(.note .note.*)
