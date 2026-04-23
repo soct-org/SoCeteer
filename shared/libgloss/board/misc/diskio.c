@@ -118,9 +118,7 @@ struct sdc_regs {
 
 #define MAX_BLOCK_CNT 0x1000
 
-// FIXME: This must be checked as it was copied from the bootrom. We could also use the device tree to obtain this address.
-// TODO: Maybe we cant write because we are in .rodata section?
-static struct sdc_regs * const regs __attribute__((section(".rodata"))) = (struct sdc_regs *)0x60000000;
+static struct sdc_regs * const regs = (struct sdc_regs *)0x60000000;
 
 static int errno __attribute__((section(".bss")));
 static DSTATUS drv_status __attribute__((section(".bss")));
@@ -283,7 +281,16 @@ static int send_data_cmd(unsigned cmd, unsigned arg, void * buf, unsigned blocks
     }
 
     if (blocks) {
-        command |= 1 << 5;
+        command |= 1 << 5; // data transfer enable
+        // Set write direction bit for write commands
+        switch (cmd) {
+        case CMD24: case CMD25: case CMD27:
+        case CMD28: case CMD29: case CMD38:
+            command |= 1 << 6; // write direction
+            break;
+        default:
+            break;
+        }
         if ((intptr_t)buf & 3) {
             errno = ERR_BUF_ALIGNMENT;
             return -1;
