@@ -108,6 +108,11 @@ object SOCTSystemGenerator {
          |# The directory where compiled ELF files for this system are stored
          |set(SOCT_ELFS_DIR "${rel(paths.elfsDir)}")
          |
+         |# Whether this system needs the FatFS library for filesystem support
+         |# For example, an FPGA design that includes an SD card interface would need FatFS, while a simple Verilator simulation without storage peripherals might not.
+         |# It is used for the soctglue library to conditionally include FatFS source files and headers (thus increasing compilation time and binary size only when needed).
+         |set(SOCT_NEEDS_FATFS ${if (config.params(NeedsFatFS)) "ON" else "OFF"})
+         |
          |# A build directory that can be used for temporary files during the build process (e.g., when building the bootrom with CMake).
          |set(SOCT_BUILD_DIR "${rel(paths.buildDir)}")
          |""".stripMargin

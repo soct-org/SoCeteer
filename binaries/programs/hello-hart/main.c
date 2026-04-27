@@ -88,7 +88,7 @@ static void wakeup_other_harts() {
  *  4. waits until all harts have printed
  *  5. returns
  */
-void __main(void) {
+int __main(int argc, char** argv, char* envp[])  {
     uint32_t hart_id;
     asm volatile ("csrr %0, mhartid" : "=r"(hart_id));
 
@@ -106,6 +106,7 @@ void __main(void) {
      * No print order is enforced; only completion is synchronized.
      */
     barrier();
+    return 0;
 }
 
 /**
@@ -114,7 +115,7 @@ void __main(void) {
  * Hart 0 prints, wakes the other harts, waits until every hart has printed,
  * then returns.
  */
-int main(void) {
+int main(int argc, char** argv, char* envp[]) {
     uint32_t hart_id = 0;
 
     safe_print_hart(hart_id);

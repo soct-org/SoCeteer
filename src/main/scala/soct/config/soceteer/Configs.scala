@@ -119,8 +119,11 @@ class WithDDR4ExtMem extends Config((_, _, _) => {
  */
 case object HasSDCardPMOD extends Field[Option[Int]](None)
 
+case object NeedsFatFS extends Field[Boolean](false)
+
 class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
   case HasSDCardPMOD => Some(pmodIdx)
+  case NeedsFatFS => true
 }
 )
 

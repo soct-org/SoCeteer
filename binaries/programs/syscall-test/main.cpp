@@ -10,6 +10,9 @@
 #include <string_view>
 #include <string>
 
+#include "soct/soct_ff.h"
+
+
 #ifdef TEST_CXX_IO
 #include <iostream>
 #endif
@@ -17,14 +20,6 @@
 using std::string_view_literals::operator""sv;
 using std::string_literals::operator ""s;
 
-// override flags to match host system. You must verify these flags are correct for your system.
-#undef O_CREAT
-#undef O_DIRECTORY
-#undef O_RDWR
-
-#define O_CREAT 0100
-#define O_DIRECTORY 0200000
-#define O_RDWR 02
 
 int main(int argc, char** argv) {
     /******************************************************************************************************/
@@ -41,7 +36,7 @@ int main(int argc, char** argv) {
     printf("[Testing open syscall]\n");
     // Open a file descriptor
     const char* dir = argv[1];
-    const int dir_fd = open(dir, O_DIRECTORY, 0);
+    const int dir_fd = open(dir, SOCT_O_DIRECTORY, 0);
     if (dir_fd < 0) {
         printf("Failed to open directory \"%s\" with error: %s\n", dir, strerror(errno));
         return 1;
@@ -51,7 +46,7 @@ int main(int argc, char** argv) {
     printf("[Testing openat syscall]\n");
     // use openat to open a file in the directory
     constexpr auto filename = "syscall-test.txt"sv;
-    const int file_fd = openat(dir_fd, filename.data(), O_RDWR | O_CREAT, 0644);
+    const int file_fd = openat(dir_fd, filename.data(), SOCT_O_RDWR | SOCT_O_CREAT, 0644);
     if (file_fd < 0) {
         printf("Failed to open file \"%s\" with error: %s\n", filename.data(), strerror(errno));
         return 1;

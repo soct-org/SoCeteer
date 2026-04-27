@@ -44,9 +44,8 @@ file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}"
         "${CMAKE_CURRENT_LIST_DIR}/programs/*/"
 )
 
-# Add libgloss
-set(LIBGLOSS_DIR ${SOCETEER_ROOT}/shared/libgloss)
-add_subdirectory(${LIBGLOSS_DIR} ${CMAKE_BINARY_DIR}/libgloss)
+set(SOCTGLUE_DIR ${SOCETEER_ROOT}/shared/soctglue)
+add_subdirectory(${SOCTGLUE_DIR} ${CMAKE_BINARY_DIR}/soctglue)
 
 
 # Add each program and bootrom as a subdirectory

@@ -48,7 +48,7 @@ message(STATUS "RV_ISA_SIM_DIR: ${RV_ISA_SIM_DIR}")
 set(RV_ISA_SIM_INCLUDE_DIRS
         ${RV_ISA_SIM_DIR}/riscv
         ${RV_ISA_SIM_DIR}/softfloat
-        ${SOCETEER_ROOT}/shared/libgloss/include/htif
+        ${SOCETEER_ROOT}/shared/soctglue/include
         ${RV_ISA_SIM_DIR}/fesvr
 )
 file(GLOB DISASM_SRCS "${RV_ISA_SIM_DIR}/disasm/*.cc")

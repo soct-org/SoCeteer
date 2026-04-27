@@ -22,25 +22,17 @@ else ()
     message(STATUS "Adding C++ program ${SOCT_PROGRAM}")
 endif ()
 
-if (SOCT_TARGET STREQUAL "verilator")
-    set(LD_SCRIPT ${LIBGLOSS_DIR}/htif/util/htif.ld)
-    set(LGLOSS gloss_htif)
-    # This calls the frontend server at the start of the program to fetch arguments for the target available in (argc, argv)
-    target_link_options(${SOCT_PROGRAM} PRIVATE
-            "LINKER:--defsym=_start_main=_start_main_argv"
-            "LINKER:--defsym=_start_secondary=_start_secondary_argv"
-            "LINKER:--wrap=puts"
-            "LINKER:--wrap=printf"
-            "LINKER:--wrap=sprintf"
-            "LINKER:--wrap=snprintf"
-            "LINKER:--gc-sections"
-    )
-elseif (SOCT_TARGET STREQUAL "vivado")
-    set(LD_SCRIPT ${LIBGLOSS_DIR}/board/util/board.ld)
-    set(LGLOSS gloss_board)
-else ()
-    message(FATAL_ERROR "Unknown SOCT_TARGET: ${SOCT_TARGET}.")
-endif ()
+set(LD_SCRIPT ${SOCTGLUE_DIR}/soct.ld)
+
+target_link_options(${SOCT_PROGRAM} PRIVATE
+        # Remove unused sections to reduce the final binary size
+        "LINKER:--gc-sections"
+        # Wrap standard library functions to enable float printing etc.
+        "LINKER:--wrap=puts"
+        "LINKER:--wrap=printf"
+        "LINKER:--wrap=sprintf"
+        "LINKER:--wrap=snprintf"
+)
 
 
 # Common options for both C and C++
@@ -76,7 +68,7 @@ target_link_options(${SOCT_PROGRAM} PRIVATE ${_common_link_opts})
 target_compile_definitions(${SOCT_PROGRAM} PRIVATE BAREMETAL)
 
 if (SOCT_PROGRAM_IS_CXX)
-    set(LIBS_TO_LINK ${LGLOSS} ${LIBC} supc++ stdc++ m gcc)
+    set(LIBS_TO_LINK soctglue ${LIBC} supc++ stdc++ m gcc)
     target_compile_options(${SOCT_PROGRAM} PRIVATE
             -fno-exceptions
             -fno-rtti
@@ -88,7 +80,7 @@ if (SOCT_PROGRAM_IS_CXX)
             -fno-use-cxa-atexit
     )
 else ()
-    set(LIBS_TO_LINK ${LGLOSS} ${LIBC} m gcc)
+    set(LIBS_TO_LINK soctglue ${LIBC} m gcc)
 endif ()
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")

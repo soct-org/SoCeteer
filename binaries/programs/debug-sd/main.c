@@ -1,15 +1,15 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <ff.h>
 #include <string.h>
 
+#include "soct/soct_ff.h"
 
 void dump_fatfs_directory(void) {
     DIR dir;
     FILINFO fno;
 
-    FRESULT res = f_opendir(&dir, "/");
+    FRESULT res = f_opendir(&dir, SOCT_SD_PATH);
     if (res != FR_OK) {
         printf("f_opendir failed: %d\n", res);
         return;
@@ -32,13 +32,13 @@ int main(void) {
 
     // Fill buf with dummy data
     for (int i = 0; i < (int)sizeof(buf); i++) buf[i] = (uint8_t)(i & 0xFF);
-
     dump_fatfs_directory();
+    const char* path = SOCT_SD_PATH "/TEST.TXT";
 
     // Create file on SD card
-    FRESULT res = f_open(&fil, "TEST.TXT", FA_WRITE | FA_CREATE_ALWAYS);
+    FRESULT res = f_open(&fil, path, FA_WRITE | FA_CREATE_ALWAYS);
     if (res != FR_OK) { printf("Open failed: %d\n", res); return 1; }
-    printf("Opened TEST.TXT OK\n");
+    printf("Opened file %s for writing\n", path);
     res = f_write(&fil, buf, sizeof(buf), &br);
     if (res != FR_OK) { printf("Write failed: %d\n", res); return 1; }
     printf("Written %u bytes\n", br);
@@ -47,7 +47,7 @@ int main(void) {
     dump_fatfs_directory();
 
     // Read back data from file
-    res = f_open(&fil, "TEST.TXT", FA_READ);
+    res = f_open(&fil, path, FA_READ);
     if (res != FR_OK) { printf("Open failed: %d\n", res); return 1; }
     res = f_read(&fil, buf2, sizeof(buf2), &br);
     if (res != FR_OK) { printf("Read failed: %d\n", res); return 1; }
@@ -72,7 +72,7 @@ int main(void) {
     }
 
     // Delete file and show dir
-    res = f_unlink("TEST.TXT");
+    res = f_unlink(path);
     if (res != FR_OK) { printf("Unlink failed: %d\n", res); return 1; }
     printf("Deleted TEST.TXT\n");
 

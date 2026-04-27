@@ -1,6 +1,0 @@
-#include "syscall.h"
-
-ssize_t _write(int fd, const void *ptr, size_t len) {
-    long ret = htif_syscall_3(FESVR_write, fd, (uintptr_t)ptr, len);
-    return (ssize_t)htif_check_ret(ret);
-}
