@@ -21,14 +21,21 @@ namespace {
         s.st_gid = st.st_gid;
         s.st_rdev = st.st_rdev;
         s.st_size = st.st_size;
+#if defined(__APPLE__) || defined(__MACH__)
         s.st_blksize = st.st_blksize;
         s.st_blocks = st.st_blocks;
-#if defined(__APPLE__) || defined(__MACH__)
         s.st_atime_sec = st.st_atimespec.tv_sec;
         s.st_mtime_sec = st.st_mtimespec.tv_sec;
         s.st_ctime_sec = st.st_ctimespec.tv_sec;
+#elif defined(_WIN32) || defined(__MINGW32__)
+        s.st_blksize = 512;
+        s.st_blocks = (s.st_size + s.st_blksize - 1) / s.st_blksize;
+        s.st_atime_sec = st.st_atime;
+        s.st_mtime_sec = st.st_mtime;
+        s.st_ctime_sec = st.st_ctime;
 #else
-        // Most Unix-like systems (glibc, etc.) expose times as st_atim/st_mtim/st_ctim
+        s.st_blksize = st.st_blksize;
+        s.st_blocks = st.st_blocks;
         s.st_atime_sec = st.st_atim.tv_sec;
         s.st_mtime_sec = st.st_mtim.tv_sec;
         s.st_ctime_sec = st.st_ctim.tv_sec;
@@ -52,16 +59,46 @@ namespace {
                 break;
         }
 
-        if (guest_flags & SOCT_O_APPEND) host_flags |= O_APPEND;
-        if (guest_flags & SOCT_O_CREAT) host_flags |= O_CREAT;
-        if (guest_flags & SOCT_O_TRUNC) host_flags |= O_TRUNC;
-        if (guest_flags & SOCT_O_EXCL) host_flags |= O_EXCL;
-        if (guest_flags & SOCT_O_SYNC) host_flags |= O_SYNC;
-        if (guest_flags & SOCT_O_NONBLOCK) host_flags |= O_NONBLOCK;
-        if (guest_flags & SOCT_O_NOFOLLOW) host_flags |= O_NOFOLLOW;
-        if (guest_flags & SOCT_O_CLOEXEC) host_flags |= O_CLOEXEC;
-        if (guest_flags & SOCT_O_DIRECTORY) host_flags |= O_DIRECTORY;
-        if (guest_flags & SOCT_O_NOCTTY) host_flags |= O_NOCTTY;
+        if (guest_flags & SOCT_O_APPEND)
+#ifdef O_APPEND
+            host_flags |= O_APPEND;
+#endif
+        if (guest_flags & SOCT_O_CREAT)
+#ifdef O_CREAT
+            host_flags |= O_CREAT;
+#endif
+        if (guest_flags & SOCT_O_TRUNC)
+#ifdef O_TRUNC
+            host_flags |= O_TRUNC;
+#endif
+        if (guest_flags & SOCT_O_EXCL)
+#ifdef O_EXCL
+            host_flags |= O_EXCL;
+#endif
+        if (guest_flags & SOCT_O_SYNC)
+#ifdef O_SYNC
+            host_flags |= O_SYNC;
+#endif
+        if (guest_flags & SOCT_O_NONBLOCK)
+#ifdef O_NONBLOCK
+            host_flags |= O_NONBLOCK;
+#endif
+        if (guest_flags & SOCT_O_NOFOLLOW)
+#ifdef O_NOFOLLOW
+            host_flags |= O_NOFOLLOW;
+#endif
+        if (guest_flags & SOCT_O_CLOEXEC)
+#ifdef O_CLOEXEC
+            host_flags |= O_CLOEXEC;
+#endif
+        if (guest_flags & SOCT_O_DIRECTORY)
+#ifdef O_DIRECTORY
+            host_flags |= O_DIRECTORY;
+#endif
+        if (guest_flags & SOCT_O_NOCTTY)
+#ifdef O_NOCTTY
+            host_flags |= O_NOCTTY;
+#endif
 
         return host_flags;
     }
