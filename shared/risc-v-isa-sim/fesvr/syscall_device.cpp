@@ -23,9 +23,16 @@ namespace {
         s.st_size = st.st_size;
         s.st_blksize = st.st_blksize;
         s.st_blocks = st.st_blocks;
+#if defined(__APPLE__) || defined(__MACH__)
         s.st_atime_sec = st.st_atimespec.tv_sec;
         s.st_mtime_sec = st.st_mtimespec.tv_sec;
         s.st_ctime_sec = st.st_ctimespec.tv_sec;
+#else
+        // Most Unix-like systems (glibc, etc.) expose times as st_atim/st_mtim/st_ctim
+        s.st_atime_sec = st.st_atim.tv_sec;
+        s.st_mtime_sec = st.st_mtim.tv_sec;
+        s.st_ctime_sec = st.st_ctim.tv_sec;
+#endif
         return s;
     }
 
