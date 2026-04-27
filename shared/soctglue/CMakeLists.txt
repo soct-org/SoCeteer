@@ -18,7 +18,6 @@ set(SOCTGLUE_SRC ${SOCTGLUE_DIR}/src)
 set(INCLUDE_DIRS ${SOCTGLUE_DIR}/include)
 
 file(GLOB SOCTGLUE_C_SRCS ${SOCTGLUE_SRC}/stdio/*.c  ${SOCTGLUE_SRC}/posix/*.c ${SOCTGLUE_SRC}/*.c)
-message(STATUS "SOCTGLUE_C_SRCS: ${SOCTGLUE_C_SRCS}")
 file(GLOB_RECURSE SOCTGLUE_ASM_SRCS ${SOCTGLUE_SRC}/**/*.S ${SOCTGLUE_SRC}/*.S)
 
 set(ASMFLAGS
@@ -29,11 +28,15 @@ set(ASMFLAGS
         -nostartfiles
         -fno-common
         -fPIC
-        -x assembler-with-cpp)
+        -x assembler-with-cpp
+)
 
 set(CFLAGS
         -march=${SOCT_ARCH}
         -mabi=${SOCT_ABI}
+        -g3
+        -g0
+        -Os
         -mcmodel=medany
         -fno-builtin
         -nostartfiles
@@ -41,9 +44,8 @@ set(CFLAGS
         -fno-common
         -fPIC
         -Wall
-        -Wextra)
-
-
+        -Wextra
+)
 
 add_library(soctglue STATIC ${SOCTGLUE_C_SRCS} ${SOCTGLUE_ASM_SRCS})
 
@@ -57,6 +59,7 @@ else ()
 endif()
 
 target_include_directories(soctglue PUBLIC ${INCLUDE_DIRS} ${SOCTGLUE_SRC})
+
 target_compile_options(soctglue PRIVATE
         $<$<COMPILE_LANGUAGE:C>:${CFLAGS}>
         $<$<COMPILE_LANGUAGE:ASM>:${ASMFLAGS}>

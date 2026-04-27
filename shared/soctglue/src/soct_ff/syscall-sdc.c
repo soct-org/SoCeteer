@@ -1,8 +1,10 @@
 #include <errno.h>
 #include <string.h>
-#include "syscall-handler.h"
 #include "ff.h"
 #include "diskio.h"
+
+#include "syscall-sdc.h"
+#include "syscall-handler.h"
 #include "soct/defaults.h"
 #include "soct/smoldtb.h"
 #include "soct/common.h"
@@ -493,6 +495,5 @@ void soct_handle_sdc(
     const uint64_t a4,
     const uint64_t a5,
     const uint64_t a6) {
-    printf("Received SD card syscall: %d\n", syscall);
     resp->status = SOCT_HANDLER_PASS;
 }

@@ -1,6 +1,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "syscall-handler.h"
+
 void __init_tls(void) {
     register char *__thread_self __asm__ ("tp");
     extern char __tdata_start[];
@@ -14,6 +16,9 @@ void __init_tls(void) {
 
 
 void __attribute__((weak)) handle_trap(uintptr_t epc, uintptr_t cause, uintptr_t tval, uintptr_t regs[32]) {
+    (void) epc;
+    (void) tval;
+    (void) regs;
     /* Extract low-order bits of exception code as positive int */
     int code = cause & ((1UL << ((sizeof(int) << 3) - 1)) - 1);
     /* Encode interrupt as negative value */
@@ -29,6 +34,9 @@ void __attribute__((weak)) handle_trap(uintptr_t epc, uintptr_t cause, uintptr_t
  * Multi-threaded programs should provide their own implementation.
  */
 int __attribute__ ((weak)) __main(int argc, char **argv, char *envp[]) {
+    (void) argc;
+    (void) argv;
+    (void) envp;
     for (;;) {
         __asm__ __volatile__ ("wfi");
     }

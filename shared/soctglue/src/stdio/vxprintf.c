@@ -212,7 +212,7 @@ void __vxprintf(putc_t putfn, void *putarg, const char *fmt, va_list ap) {
                 lflag = 1;
                 putfn('0', putarg);
                 putfn('x', putarg);
-                /* fall through to 'x' */
+                [[fallthrough]]; /* fall through to 'x' */
             }
 
                 // (unsigned) hexadecimal
