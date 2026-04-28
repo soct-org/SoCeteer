@@ -12,7 +12,6 @@
 
 static uintptr_t s_uart_base = SOCT_DEFAULT_UART_ADDR;
 
-
 struct uart_regs {
     volatile uint32_t rx_fifo;
     volatile uint32_t tx_fifo;
@@ -59,10 +58,12 @@ static char kgetc() {
 static bool soct_init_from_dtb_uart() {
     dtb_node *node = dtb_find_compatible(NULL, SOCT_UART_NAME_DTS);
     if (!node) {
+        soct_add_setup_msg("No UART node found in DTB - UART handler disabled");
         return false;
     }
     dtb_prop *reg_prop = dtb_find_prop(node, "reg");
     if (!reg_prop) {
+        soct_add_setup_msg("UART node found in DTB but it has no 'reg' property");
         return false;
     }
     const size_t addr_cells = dtb_get_addr_cells_for(node);
@@ -70,8 +71,12 @@ static bool soct_init_from_dtb_uart() {
     const size_t n = dtb_read_prop_1(reg_prop, addr_cells, regs);
     if (n > 1) {
         s_uart_base = regs[0];
+        char msg[128];
+        snprintf(msg, sizeof(msg), "UART node found in DTB with base address 0x%jx", s_uart_base);
+        soct_add_setup_msg(msg);
         return true;
     }
+    soct_add_setup_msg("UART node found in DTB but failed to read base address from 'reg' property");
     return false;
 }
 

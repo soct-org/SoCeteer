@@ -3,18 +3,13 @@
 
 #include "syscall-handler.h"
 
-void __init_tls(void) {
-    register char *__thread_self __asm__ ("tp");
-    extern char __tdata_start[];
-    extern char __tbss_offset[];
-    extern char __tdata_size[];
-    extern char __tbss_size[];
-
-    memcpy(__thread_self, __tdata_start, (size_t) __tdata_size);
-    memset(__thread_self + (size_t) __tbss_offset, 0, (size_t) __tbss_size);
-}
-
-
+/**
+ * Default trap handler
+ * @param epc The program counter at the time of the trap.
+ * @param cause The cause of the trap, encoded as a RISC-V mcause value. The low-order bits contain the exception code, and the high-order bit indicates whether it was an interrupt (1) or an exception (0).
+ * @param tval The trap value, which may contain additional information about the trap (e.g. faulting address for a page fault).
+ * @param regs The values of the 32 general-purpose registers at the time of the trap.
+ */
 void __attribute__((weak)) handle_trap(uintptr_t epc, uintptr_t cause, uintptr_t tval, uintptr_t regs[32]) {
     (void) epc;
     (void) tval;
@@ -43,5 +38,5 @@ int __attribute__ ((weak)) __main(int argc, char **argv, char *envp[]) {
 }
 
 
-// provide __dso_handle for C++ global destructors
+/// provide __dso_handle for C++ global destructors
 void *__dso_handle = 0;

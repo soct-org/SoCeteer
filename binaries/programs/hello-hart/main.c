@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "encoding.h"
 
-#define CLINT_BASE 0x02000000UL
-#define CLINT_MSIP(hart) ((volatile uint32_t *)(CLINT_BASE + 4UL * (hart)))
+#ifdef SOCT_CLINT_BASE
+#define CLINT_MSIP(hart) ((volatile uint32_t *)(SOCT_CLINT_BASE + 4UL * (hart)))
+#else
+#error "SOCT_CLINT_BASE is not defined. Please define it to the base address of the CLINT in your system."
+#endif
 
 const char* hello_str = "Hello from hart %u\n";
 

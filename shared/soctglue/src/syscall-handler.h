@@ -2,9 +2,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
+#include <stdio.h> // Not needed but used in posix compat layer
+
 #include "soct/syscalls.h"
 
+void soct_add_setup_msg(const char *msg);
 
 typedef enum {
     SOCT_HANDLER_PASS, // Not handled, pass to next handler

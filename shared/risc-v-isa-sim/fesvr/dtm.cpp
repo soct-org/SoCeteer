@@ -13,14 +13,24 @@ void dtm_t::idle() {
 void dtm_t::reset() {
     massert(m_rv_info.has_value(), "System info has not been initialized");
     const auto num_harts = m_rv_info.value().num_harts;
+
+    // First, sync instruction memory for all harts
     for (int hartsel = 0; hartsel < num_harts; hartsel++) {
         select_hart(hartsel);
-        // this command also does a halt and resume
         fence_i();
-        // after this command, the hart will run from _start.
+#ifndef SOCT_CLINT_BASE
+        // No clint - just jump to the entry point
         write_csr(0x7b1, entry());
+#endif
     }
-    // In theory any hart can handle the memory accesses, this will enforce that hart 0 handles them.
+
+#ifdef SOCT_CLINT_BASE
+    // Next, wake up the BootROM by writing to the MSIP registers via memory mapped CLINT
+    uint32_t msip = 1;
+    for (int hartsel = 0; hartsel < num_harts; hartsel++) {
+        write(SOCT_CLINT_BASE + hartsel * 4, sizeof(msip), reinterpret_cast<uint8_t*>(&msip));
+    }
+#endif
     select_hart(0);
     read_dtm(DM_DMSTATUS);
 }

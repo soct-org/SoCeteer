@@ -180,6 +180,7 @@ target_include_directories(${SOCT_SIM_EXE} PRIVATE
 target_compile_definitions(${SOCT_SIM_EXE} PRIVATE
         VL_VERILATED_INCLUDE="custom-verilated.h" # Overrides the default verilated.h
         VL_PREFIX=${VL_PREFIX} # So we can include VL_PREFIX.h
+        ${SOCT_COMPILE_DEFS}
 )
 
 if (WIN32)

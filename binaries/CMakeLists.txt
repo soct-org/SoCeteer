@@ -46,6 +46,7 @@ file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}"
 
 set(SOCTGLUE_DIR ${SOCETEER_ROOT}/shared/soctglue)
 add_subdirectory(${SOCTGLUE_DIR} ${CMAKE_BINARY_DIR}/soctglue)
+add_compile_definitions(${SOCT_COMPILE_DEFS})
 
 
 # Add each program and bootrom as a subdirectory

@@ -2,6 +2,7 @@
 #define TOSTRING(x) STRINGIFY(x)
 
 #include <fstream>
+#include <memory>
 #include <utility>
 #include "verilated.h"
 #include "logging.hpp"
@@ -59,9 +60,9 @@ int main(const int argc, char* argv[]) {
     logging::globals::all2console = false; // Disable dumping all output to the console
     logging::init_logging("log.txt"s); // Initialize logging to a file
     logging::globals::log_cores.emplace_back("0"); // Log only core 0
-    logging::globals::log_level = logging::LogLevel::DEBUG;
+    logging::globals::log_level = logging::LogLevel::INFO;
 
-    const std::unique_ptr<VerilatedContext> contextp{new VerilatedContext};
+    const auto contextp = std::make_unique<VerilatedContext>();
 
     contextp->commandArgs(argc, argv);
     const std::unique_ptr<SystemType> topp{new SystemType{contextp.get()}};

@@ -49,13 +49,13 @@ set(CFLAGS
 
 add_library(soctglue STATIC ${SOCTGLUE_C_SRCS} ${SOCTGLUE_ASM_SRCS})
 
-if(SOCT_NEEDS_FATFS)
-    message(STATUS "SOCT_NEEDS_FATFS is defined, including FatFS sources in soctglue")
-    target_compile_definitions(soctglue PUBLIC SOCT_NEEDS_FATFS)
+target_compile_definitions(soctglue PUBLIC ${SOCT_COMPILE_DEFS})
+
+if(DEFINED SOCT_NEEDS_FATFS)
     file(GLOB_RECURSE SOCTGLUE_SOCT_FF_SRCS ${SOCTGLUE_SRC}/soct_ff/*.c)
     target_sources(soctglue PRIVATE ${SOCTGLUE_SOCT_FF_SRCS})
 else ()
-    message(STATUS "SOCT_NEEDS_FATFS is not defined, skipping FatFS sources in soctglue")
+    target_sources(soctglue PRIVATE ${SOCTGLUE_SRC}/stubs/soct_ff.c)
 endif()
 
 target_include_directories(soctglue PUBLIC ${INCLUDE_DIRS} ${SOCTGLUE_SRC})

@@ -1,6 +1,9 @@
 #pragma once
 #include <stdint.h>
 
+#include "ff.h"
+#include "diskio.h"
+
 // RISC-V / Linux open(2) flags (guest-side, architecture-independent Linux ABI)
 #define SOCT_O_ACCMODE    0x0003
 #define SOCT_O_RDONLY     0x0000
@@ -25,8 +28,6 @@
 
 /**
  * Fixed-layout stat structure.
- * Both the host simulator and the target libgloss must use this layout.
- * All fields are explicitly sized to avoid any host/target ABI mismatch.
  */
 struct soct_stat {
     uint64_t st_dev; /* ID of device containing file */
@@ -43,11 +44,6 @@ struct soct_stat {
     int64_t st_mtime_sec; /* time of last modification (seconds) */
     int64_t st_ctime_sec; /* time of last status change (seconds) */
 }; /* total: 88 bytes */
-
-
-#ifdef SOCT_NEEDS_FATFS
-#include "ff.h"
-#include "diskio.h"
 
 // Builds a volume path according to FF_STR_VOLUME_ID:
 //   0: path unused - errors
@@ -106,4 +102,3 @@ typedef struct {
  * The caller retains ownership of the pointer and must ensure it remains valid for the lifetime of the mount.
  */
 void soct_set_mount_ops(const soct_disk_ops_t *ops);
-#endif // SOCT_NEEDS_FATFS

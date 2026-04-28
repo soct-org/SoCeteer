@@ -61,3 +61,4 @@ boot_core_hart0:      // begin executing code at DRAM_BASE
 
 .align 3
 _dtb:
+  .incbin DEVICE_TREE
