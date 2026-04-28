@@ -459,10 +459,12 @@ DRESULT sdc_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
 bool soct_init_from_dtb_sdc() {
     dtb_node *node = dtb_find_compatible(NULL, SOCT_SDC_NAME_DTS);
     if (!node) {
+        soct_add_setup_msg("No SD card node found in DTB - SD card handler disabled");
         return false;
     }
     dtb_prop *reg_prop = dtb_find_prop(node, "reg");
     if (!reg_prop) {
+        soct_add_setup_msg("SD card node found in DTB but it has no 'reg' property");
         return false;
     }
     const size_t addr_cells = dtb_get_addr_cells_for(node);
@@ -470,6 +472,7 @@ bool soct_init_from_dtb_sdc() {
     const size_t n = dtb_read_prop_1(reg_prop, addr_cells, regs);
 
     if (n < 1) {
+        soct_add_setup_msg("SD card node found in DTB but failed to read base address from 'reg' property");
         return false;
     }
 
@@ -477,10 +480,14 @@ bool soct_init_from_dtb_sdc() {
     soct_set_mount_ops(&s_sdc_ops);
     const FRESULT res = f_mount(&s_fs, SOCT_SD_PATH, 1);
     if (res != FR_OK) {
-        printf("Failed to mount filesystem: Error %d\n", res);
+        char msg[128];
+        snprintf(msg, sizeof(msg), "SD card filesystem mount failed with error %d", res);
+        soct_add_setup_msg(msg);
         return false;
     }
-    printf("Successfully mounted filesystem on SD card\n");
+    char msg[128];
+    snprintf(msg, sizeof(msg), "SD card node found in DTB with base address 0x%jx", regs[0]);
+    soct_add_setup_msg(msg);
     return true;
 }
 
