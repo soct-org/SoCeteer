@@ -52,15 +52,15 @@ object SOCTLauncher {
     log.info("Generating design for Vivado synthesis")
 
     if (args.xlen == 32) {
-      config.params = config.params.alter(new ExtMem32Bit)
+      config.params = config.params.orElse(new ExtMem32Bit)
     } else {
-      config.params = config.params.alter(new ExtMem64Bit)
+      config.params = config.params.orElse(new ExtMem64Bit)
     }
     if (args.board.isEmpty) {
       throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
     }
-    config.params = config.params.alter(new WithXilinxFPGA(args.board.get))
-    config.params = config.params.alter(new soct.RocketVivadoBaseConfig)
+    config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
+    config.params = config.params.orElse(new soct.RocketVivadoBaseConfig)
 
     Transpiler.evalDesign(config, boardPaths)
 
@@ -88,7 +88,7 @@ object SOCTLauncher {
   private def generateSimDesign(args: SOCTArgs, simPaths: SimSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for simulation")
 
-    config.params = config.params.alter(new soct.RocketSimBaseConfig)
+    config.params = config.params.orElse(new soct.RocketSimBaseConfig)
 
     Transpiler.evalDesign(config, simPaths)
 
@@ -120,7 +120,7 @@ object SOCTLauncher {
 
       // Modify the params:
       val config = SOCTConfig(args)
-      config.params = config.params.alter(new WithSOCTConfig(config))
+      config.params = config.params.orElse(new WithSOCTConfig(config))
       if (args.xlen == 32) {
         config.params = config.params.alter(new freechips.rocketchip.rocket.WithRV32)
       }
@@ -134,7 +134,7 @@ object SOCTLauncher {
           new YosysSOCTPaths(args, config)
       }
 
-      config.params = config.params.alter(new WithSOCTPaths(paths))
+      config.params = config.params.orElse(new WithSOCTPaths(paths))
 
       if (paths.systemDir.toFile.exists()) {
         paths.systemDir.toFile.deleteRecursively()
