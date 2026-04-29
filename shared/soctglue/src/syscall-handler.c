@@ -18,16 +18,16 @@ bool soct_register_handler(const soct_handler_t handler) {
 
 long soct_syscall(
     const uint32_t syscall,
-    const uint64_t arg0,
-    const uint64_t arg1,
-    const uint64_t arg2,
-    const uint64_t arg3,
-    const uint64_t arg4,
-    const uint64_t arg5,
-    const uint64_t arg6) {
+    const sc_arg_t a0,
+    const sc_arg_t a1,
+    const sc_arg_t a2,
+    const sc_arg_t a3,
+    const sc_arg_t a4,
+    const sc_arg_t a5,
+    const sc_arg_t a6) {
     for (size_t i = 0; i < s_syscall_handler_count; i++) {
         soct_handler_resp_t resp = {.status = SOCT_HANDLER_PASS, .ret = 0};
-        s_syscall_handlers[i].handle(&resp, syscall, arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+        s_syscall_handlers[i].handle(&resp, syscall, a0, a1, a2, a3, a4, a5, a6);
         switch (resp.status) {
             case SOCT_HANDLER_PASS:
                 continue; // Try next handler

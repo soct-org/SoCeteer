@@ -347,14 +347,14 @@ private:
         return result;
     }
 
-    void restore_reg(const uint32_t regno, const reg_t val) {
+    void restore_reg(const uint32_t regno, const uint64_t val) {
         massert(m_rv_info.has_value(), "System info has not been initialized");
         const auto xlen = m_rv_info.value().xlen;
 
         uint32_t data[xlen / (8 * 4)];
-        data[0] = (uint32_t)val;
+        data[0] = static_cast<uint32_t>(val);
         if (xlen > 32) {
-            data[1] = (uint32_t)(val >> 32);
+            data[1] = static_cast<uint32_t>(val >> 32);
         }
 
         uint32_t command = AC_ACCESS_REGISTER_TRANSFER |

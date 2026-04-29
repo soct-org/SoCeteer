@@ -53,7 +53,7 @@ namespace {
         return s;
     }
 
-    int translate_open_flags(const uint64_t guest_flags) {
+    int translate_open_flags(const sc_arg_t guest_flags) {
         int host_flags = 0;
 
         switch (guest_flags & SOCT_O_ACCMODE) {
@@ -124,9 +124,10 @@ namespace {
         return ret == -1 ? -errno : ret;
     }
 
-    uint64_t syscall_any(const uint32_t sysno, const uint64_t a0, const uint64_t a1, const uint64_t a2,
-                         const uint64_t a3, const uint64_t a4, const uint64_t a5, const uint64_t a6) {
-        soct::logging::fesvr::debug << "Unknown syscall " << sysno << " with args " << a0 << " " << a1 << " " << a2 << " "
+    sc_resp_t syscall_any(const sc_type_t sysno, const sc_arg_t a0, const sc_arg_t a1, const sc_arg_t a2,
+                          const sc_arg_t a3, const sc_arg_t a4, const sc_arg_t a5, const sc_arg_t a6) {
+        soct::logging::fesvr::debug << "Unknown syscall " << sysno << " with args " << a0 << " " << a1 << " " << a2 <<
+                " "
                 << a3 << " " << a4 << " " << a5 << " " << a6 << "\n";
 #ifdef _WIN32
         return -ENOSYS;
@@ -142,7 +143,7 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
     : device_t(htif, cmemif) {
     using namespace std::literals;
 
-    register_syscall(SOCT_READ, [this](uint64_t fd, uint64_t pbuf, uint64_t len) -> uint64_t {
+    register_syscall(SOCT_READ, [this](sc_arg_t fd, sc_arg_t pbuf, sc_arg_t len) -> sc_resp_t {
         soct::logging::fesvr::debug << "Reading " << len << " bytes from fd " << fd << " to " << pbuf << "\n";
         std::vector<char> buf(len);
         const ssize_t ret = sysret_errno(read(fd, buf.data(), len));
@@ -151,7 +152,7 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
         return ret;
     });
 
-    register_syscall(SOCT_WRITE, [this](uint64_t fd, uint64_t pbuf, uint64_t len) -> uint64_t {
+    register_syscall(SOCT_WRITE, [this](sc_arg_t fd, sc_arg_t pbuf, sc_arg_t len) -> sc_resp_t {
         soct::logging::fesvr::debug << "Writing " << len << " bytes to fd " << fd << " from " << pbuf << "\n";
         std::vector<char> buf(len);
         m_cmemif->read(pbuf, len, reinterpret_cast<uint8_t *>(buf.data()));
@@ -167,7 +168,7 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
         return sysret_errno(write(fd, buf.data(), len));
     });
 
-    register_syscall(SOCT_FSTAT, [this](uint64_t fd, uint64_t pbuf) -> uint64_t {
+    register_syscall(SOCT_FSTAT, [this](sc_arg_t fd, sc_arg_t pbuf) -> sc_resp_t {
         soct::logging::fesvr::debug << "fstat on fd " << fd << " to " << pbuf << "\n";
 
         soct_stat s{};
@@ -193,9 +194,9 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
         return ret;
     });
 
-    register_syscall(SOCT_OPEN, [this](uint64_t pname, uint64_t flags, uint64_t mode) -> uint64_t {
+    register_syscall(SOCT_OPEN, [this](sc_arg_t pname, sc_arg_t flags, sc_arg_t mode) -> sc_resp_t {
         auto host_mode = mode;
-        auto host_flags = static_cast<uint64_t>(translate_open_flags(flags));
+        auto host_flags = static_cast<int>(translate_open_flags(flags));
 
         const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
         soct::logging::fesvr::debug << "Opening file " << name << " with flags " << host_flags << " and mode "
@@ -207,26 +208,26 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
 #endif
     });
 
-    register_syscall(SOCT_CLOSE, [](uint64_t fd) -> uint64_t {
+    register_syscall(SOCT_CLOSE, [](sc_arg_t fd) -> sc_resp_t {
         soct::logging::fesvr::debug << "Closing fd " << fd << "\n";
         if (fd == 0 || fd == 1 || fd == 2)
             return 0;
         return sysret_errno(close(fd));
     });
 
-    register_syscall(SOCT_LSEEK, [](uint64_t fd, uint64_t ptr, uint64_t whence) -> uint64_t {
+    register_syscall(SOCT_LSEEK, [](sc_arg_t fd, sc_arg_t ptr, sc_arg_t whence) -> sc_resp_t {
         soct::logging::fesvr::debug << "Seeking fd " << fd << " to " << ptr << " with whence " << whence << "\n";
         return sysret_errno(lseek(fd, ptr, whence));
     });
 
-    register_syscall(SOCT_EXIT, [this](uint64_t code) -> uint64_t {
+    register_syscall(SOCT_EXIT, [this](sc_arg_t code) -> sc_resp_t {
         soct::logging::fesvr::info << "Elf is exiting with code " << code << "\n";
         m_htif->set_exitcode(static_cast<int32_t>(code));
         return 0;
     });
 
-    register_syscall(SOCT_OPENAT, [this](uint64_t dirfd, uint64_t pname, uint64_t flags, uint64_t mode) -> uint64_t {
-        int host_dirfd = (int)dirfd;
+    register_syscall(SOCT_OPENAT, [this](sc_arg_t dirfd, sc_arg_t pname, sc_arg_t flags, sc_arg_t mode) -> sc_resp_t {
+        int host_dirfd = (int) dirfd;
         const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
         const auto host_flags = translate_open_flags(flags);
         soct::logging::fesvr::debug << "Opening file " << name << " with flags " << flags << " and mode " << mode
@@ -245,7 +246,7 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
 #endif
     });
 
-    register_syscall(SOCT_PATHCONF, [this](uint64_t path, uint64_t param) -> uint64_t {
+    register_syscall(SOCT_PATHCONF, [this](sc_arg_t path, sc_arg_t param) -> sc_resp_t {
         soct::logging::fesvr::debug << "Getting pathconf for " << path << " with param " << param << "\n";
 #ifdef _WIN32
         // Windows does not implement pathconf natively.
@@ -262,23 +263,23 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
     });
 
     // TODO implement SOCT_FOPEN
-    register_syscall(SOCT_GET_MAINVARS, [this](uint64_t pbuf, uint64_t limit) -> uint64_t {
+    register_syscall(SOCT_GET_MAINVARS, [this](sc_arg_t pbuf, sc_arg_t limit) -> sc_resp_t {
         soct::logging::fesvr::debug << "Getting main vars" << "\n";
         const auto &args = m_htif->target_args();
-        using chunk_t = uint64_t; // TODO Why 64 bit?
-        std::vector<chunk_t> words(args.size() + 3);
+
+        std::vector<guest_reg_t> words(args.size() + 3);
         words[0] = args.size();
         words[args.size() + 1] = 0; // argv[argc] = NULL
         words[args.size() + 2] = 0; // envp[0] = NULL
 
-        size_t sz = words.size() * sizeof(chunk_t);
+        size_t sz = words.size() * sizeof(guest_reg_t);
         for (size_t i = 0; i < args.size(); i++) {
             words[i + 1] = pbuf + sz;
             sz += args[i].length() + 1;
         }
 
         std::vector<char> bytes(sz);
-        std::memcpy(bytes.data(), words.data(), sizeof(chunk_t) * words.size());
+        std::memcpy(bytes.data(), words.data(), sizeof(guest_reg_t) * words.size());
         for (size_t i = 0; i < args.size(); i++)
             std::strcpy(&bytes[words[i + 1] - pbuf], args[i].c_str());
 
@@ -289,24 +290,24 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
         return 0;
     });
 
-    register_syscall(SOCT_HTIF_DEV_TEST, []() -> uint64_t { return 0; });
+    register_syscall(SOCT_HTIF_DEV_TEST, []() -> sc_resp_t { return 0; });
 
     register_command(0, [this](const cmd_t &command) { handle_syscall(command); }, "syscall"sv);
 }
 
 void syscall_device_t::handle_syscall(const cmd_t &cmd) {
-    std::array<uint64_t, 8> htif_mem{};
+    std::array<sc_arg_t, 8> htif_mem{};
     const auto mm = cmd.payload();
     m_cmemif->read(mm, sizeof(htif_mem), reinterpret_cast<uint8_t *>(htif_mem.data()));
 
     const uint32_t syscall = htif_mem[0];
-    const uint64_t a0 = htif_mem[1];
-    const uint64_t a1 = htif_mem[2];
-    const uint64_t a2 = htif_mem[3];
-    const uint64_t a3 = htif_mem[4];
-    const uint64_t a4 = htif_mem[5];
-    const uint64_t a5 = htif_mem[6];
-    const uint64_t a6 = htif_mem[7];
+    const sc_arg_t a0 = htif_mem[1];
+    const sc_arg_t a1 = htif_mem[2];
+    const sc_arg_t a2 = htif_mem[3];
+    const sc_arg_t a3 = htif_mem[4];
+    const sc_arg_t a4 = htif_mem[5];
+    const sc_arg_t a5 = htif_mem[6];
+    const sc_arg_t a6 = htif_mem[7];
 
     if (syscall >= m_table.size() || !m_table[syscall]) {
 #ifdef PASS_UNKNOWN_SYSCALLS

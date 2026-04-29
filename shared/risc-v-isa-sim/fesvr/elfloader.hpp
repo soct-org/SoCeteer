@@ -12,8 +12,8 @@
 
 inline std::map<std::string, uint64_t> load_elf(const std::filesystem::path& filename,
                                                 std::shared_ptr<memif_t> memif,
-                                                reg_t* entry_point,
-                                                reg_t load_offset) {
+                                                addr_t& entry_point, // Sets the entry point
+                                                off_t load_offset) {
     if (!exists(filename)) {
         throw std::invalid_argument("ELF file does not exist: " + filename.string());
     }
@@ -58,7 +58,7 @@ inline std::map<std::string, uint64_t> load_elf(const std::filesystem::path& fil
         load_offset = 0;
     }
 
-    *entry_point = elf_header->e_entry + load_offset;
+    entry_point = elf_header->e_entry + load_offset;
 
     std::vector<uint8_t> zero_padding;
     std::map<std::string, uint64_t> symbols;
@@ -68,7 +68,7 @@ inline std::map<std::string, uint64_t> load_elf(const std::filesystem::path& fil
         for (unsigned i = 0; i < e_phnum; i++) {
             soct::logging::fesvr::debug << "Loading program headers (" << i << "/" << e_phnum << ")\n";
             if (auto& ph = program_headers[i]; ph.p_type == PT_LOAD && ph.p_memsz > 0) {
-                reg_t segment_load_addr = ph.p_paddr + load_offset;
+                addr_t segment_load_addr = ph.p_paddr + load_offset;
 
                 if (ph.p_filesz > 0) {
                     memif->write(segment_load_addr, ph.p_filesz,

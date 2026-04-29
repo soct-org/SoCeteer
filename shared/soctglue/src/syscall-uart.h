@@ -83,20 +83,18 @@ static bool soct_init_from_dtb_uart() {
 
 static void soct_handle_uart(
     soct_handler_resp_t *resp,
-    const uint32_t syscall,
-    const uint64_t a0,
-    const uint64_t a1,
-    const uint64_t a2,
-    const uint64_t a3,
-    const uint64_t a4,
-    const uint64_t a5,
-    const uint64_t a6) {
-
+    const sc_type_t syscall,
+    const sc_arg_t a0,
+    const sc_arg_t a1,
+    const sc_arg_t a2,
+    const sc_arg_t a3,
+    const sc_arg_t a4,
+    const sc_arg_t a5,
+    const sc_arg_t a6) {
     (void) a3;
     (void) a4;
     (void) a5;
     (void) a6;
-
     switch (syscall) {
         case SOCT_READ:
             if (a0 == SOCT_STDIN) {

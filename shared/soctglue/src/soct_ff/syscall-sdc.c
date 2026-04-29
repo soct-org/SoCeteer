@@ -494,13 +494,21 @@ bool soct_init_from_dtb_sdc() {
 
 void soct_handle_sdc(
     soct_handler_resp_t *resp,
-    const uint32_t syscall,
-    const uint64_t a0,
-    const uint64_t a1,
-    const uint64_t a2,
-    const uint64_t a3,
-    const uint64_t a4,
-    const uint64_t a5,
-    const uint64_t a6) {
+    const sc_type_t syscall,
+    const sc_arg_t a0,
+    const sc_arg_t a1,
+    const sc_arg_t a2,
+    const sc_arg_t a3,
+    const sc_arg_t a4,
+    const sc_arg_t a5,
+    const sc_arg_t a6) {
+    (void) syscall;
+    (void) a0;
+    (void) a1;
+    (void) a2;
+    (void) a3;
+    (void) a4;
+    (void) a5;
+    (void) a6;
     resp->status = SOCT_HANDLER_PASS;
 }

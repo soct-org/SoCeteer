@@ -129,8 +129,8 @@ void dtm_t::read_chunk(const uint64_t taddr, const size_t len, uint8_t* dst) {
 
     halt(m_current_hart);
 
-    const reg_t s0 = save_reg(RV_S0);
-    const reg_t s1 = save_reg(RV_S1);
+    const uint64_t s0 = save_reg(RV_S0);
+    const uint64_t s1 = save_reg(RV_S1);
 
     prog[0] = rv_load(m_rv_info->xlen, RV_S1, RV_S0, 0);
     prog[1] = rv_addi(RV_S0, RV_S0, xlen_bytes);
@@ -187,8 +187,8 @@ void dtm_t::write_chunk(const addr_t taddr, const size_t len, const uint8_t* src
 
     halt(m_current_hart);
 
-    const reg_t s0 = save_reg(RV_S0);
-    const reg_t s1 = save_reg(RV_S1);
+    const uint64_t s0 = save_reg(RV_S0);
+    const uint64_t s1 = save_reg(RV_S1);
 
     prog[0] = rv_store(m_rv_info->xlen, RV_S1, RV_S0, 0);
     prog[1] = rv_addi(RV_S0, RV_S0, xlen_bytes);
@@ -263,8 +263,8 @@ void dtm_t::clear_chunk(addr_t taddr, size_t len) {
     uint32_t data[data_words];
 
     halt(m_current_hart);
-    const reg_t s0 = save_reg(RV_S0);
-    const reg_t s1 = save_reg(RV_S1);
+    const uint64_t s0 = save_reg(RV_S0);
+    const uint64_t s1 = save_reg(RV_S1);
 
     // S0 = Addr
     data[0] = static_cast<uint32_t>(taddr);

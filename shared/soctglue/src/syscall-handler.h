@@ -16,7 +16,7 @@ typedef enum {
 
 typedef struct {
     soct_handler_status_t status;
-    long ret;
+    sc_resp_t ret;
 } soct_handler_resp_t;
 
 
@@ -27,22 +27,15 @@ typedef struct {
 typedef struct {
     void (*handle)(
         soct_handler_resp_t *resp,
-        uint32_t syscall,
-        uint64_t arg0,
-        uint64_t arg1,
-        uint64_t arg2,
-        uint64_t arg3,
-        uint64_t arg4,
-        uint64_t arg5,
-        uint64_t arg6);
+        sc_type_t syscall,
+        sc_arg_t a0,
+        sc_arg_t a1,
+        sc_arg_t a2,
+        sc_arg_t a3,
+        sc_arg_t a4,
+        sc_arg_t a5,
+        sc_arg_t a6);
 } soct_handler_t;
-
-
-/**
- * @param handler The handler to register. The handler will be called for every syscall in the order they were registered until one of them handles the syscall, the syscall becomes invalid or there are no handlers left.
- * @return Whether the registration was successful. Registration can fail if the maximum number of handlers has been reached.
- */
-bool soct_register_handler(soct_handler_t handler);
 
 
 /**
@@ -50,11 +43,17 @@ bool soct_register_handler(soct_handler_t handler);
  * The return value can be checked using check_ptr or check_ret depending on the expected type.
  */
 long soct_syscall(
-    uint32_t syscall,
-    uint64_t arg0,
-    uint64_t arg1,
-    uint64_t arg2,
-    uint64_t arg3,
-    uint64_t arg4,
-    uint64_t arg5,
-    uint64_t arg6);
+    sc_type_t syscall,
+    sc_arg_t a0,
+    sc_arg_t a1,
+    sc_arg_t a2,
+    sc_arg_t a3,
+    sc_arg_t a4,
+    sc_arg_t a5,
+    sc_arg_t a6);
+
+/**
+ * @param handler The handler to register. The handler will be called for every syscall in the order they were registered until one of them handles the syscall, the syscall becomes invalid or there are no handlers left.
+ * @return Whether the registration was successful. Registration can fail if the maximum number of handlers has been reached.
+ */
+bool soct_register_handler(soct_handler_t handler);

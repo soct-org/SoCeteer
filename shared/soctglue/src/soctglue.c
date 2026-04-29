@@ -17,9 +17,10 @@ static size_t s_dtb_parsed_len = 0;
 static volatile int __boot_sync = 0;
 
 
-volatile uint64_t tohost __attribute__((section(SOCT_HTIF_SECTION))) = 0;
-volatile uint64_t fromhost __attribute__((section(SOCT_HTIF_SECTION))) = 0;
+volatile sc_htif_slot_t tohost __attribute__((section(SOCT_HTIF_SECTION))) = 0;
+volatile sc_htif_slot_t fromhost __attribute__((section(SOCT_HTIF_SECTION))) = 0;
 spinlock_t htif_lock = SOCT_SPINLOCK_INIT;
+
 extern char **environ;
 
 extern int main(int argc, char *argv[], char *envp[]);

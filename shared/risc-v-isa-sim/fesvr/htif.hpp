@@ -26,24 +26,24 @@ public:
     int32_t run() {
         start();
         // Contains the data to be sent to the target
-        std::queue<reg_t> fromhost_queue;
-        const auto fromhost_func = [&fromhost_queue](const reg_t x) {
+        std::queue<sc_htif_slot_t> fromhost_queue;
+        const auto fromhost_func = [&fromhost_queue](const sc_htif_slot_t x) {
             soct::logging::fesvr::debug << "Responding " << x << '\n';
             fromhost_queue.push(x);
         };
         while (!stopped()) {
-            const auto to_host = m_cmemif->read_int<reg_t>(m_tohost_addr);
+            const auto to_host = m_cmemif->read_int<sc_htif_slot_t>(m_tohost_addr);
             if (to_host != 0) {
-                m_cmemif->write_int<reg_t>(m_tohost_addr, 0); // clear tohost
+                m_cmemif->write_int<sc_htif_slot_t>(m_tohost_addr, 0); // clear tohost
                 m_device_list.handle_command({to_host, fromhost_func});
                 m_device_list.tick();
             } else {
                 idle();
             }
             // write the next block to the target if it's ready (from_host is zero)
-            const auto from_host = m_cmemif->read_int<reg_t>(m_fromhost_addr);
+            const auto from_host = m_cmemif->read_int<sc_htif_slot_t>(m_fromhost_addr);
             if (!fromhost_queue.empty() && from_host == 0) {
-                m_cmemif->write_int<reg_t>(m_fromhost_addr, fromhost_queue.front());
+                m_cmemif->write_int<sc_htif_slot_t>(m_fromhost_addr, fromhost_queue.front());
                 fromhost_queue.pop();
             }
         }
@@ -55,8 +55,11 @@ public:
         return m_exitcode.has_value();
     }
 
-    [[nodiscard]] reg_t entry() const {
-        return m_entry;
+    [[nodiscard]] addr_t entry() const {
+        if (!m_entry.has_value()) {
+            throw std::runtime_error("Entry point not set");
+        }
+        return m_entry.value();
     }
 
     [[nodiscard]] std::vector<std::string> target_args() const {
@@ -103,9 +106,11 @@ private:
         if (std::filesystem::is_directory(m_path_to_elf)) {
             throw std::runtime_error("payload " + m_path_to_elf + " is a directory");
         }
+        addr_t entry = 0;
         m_cmemif->log_rw_progress(true);
-        const std::map<std::string, uint64_t> symbols = load_elf(m_path_to_elf, m_cmemif, &m_entry, m_load_offset);
+        const std::map<std::string, uint64_t> symbols = load_elf(m_path_to_elf, m_cmemif, entry, DRAM_BASE);
         m_cmemif->log_rw_progress(false);
+        m_entry = entry;
         if (symbols.contains("tohost") && symbols.contains("fromhost")) {
             m_tohost_addr = symbols.at("tohost");
             m_fromhost_addr = symbols.at("fromhost");
@@ -133,23 +138,20 @@ private:
     ///@brief Contains the .elf file to be loaded
     std::string m_path_to_elf;
 
-    /// The address of the entry point of the target
-    reg_t m_entry = DRAM_BASE;
-
-    /// The offset at which the target binary should be loaded
-    reg_t m_load_offset = DRAM_BASE;
-
     /// The address of the tohost symbol which is used to send data to the host
-    reg_t m_tohost_addr = 0;
+    addr_t m_tohost_addr = 0;
 
     /// The address of the fromhost symbol which is used to receive data from the host
-    reg_t m_fromhost_addr = 0;
+    addr_t m_fromhost_addr = 0;
+
+    /// The address of the entry point of the target
+    std::optional<addr_t> m_entry = std::nullopt;
 
     /// The address of the begin_signature symbol which is used to detect torture tests
-    std::optional<reg_t> m_torture_sig_addr = std::nullopt;
+    std::optional<addr_t> m_torture_sig_addr = std::nullopt;
 
     /// The length of the signature
-    std::optional<reg_t> m_torture_sig_len = std::nullopt;
+    std::optional<size_t> m_torture_sig_len = std::nullopt;
 
     /// Contains the devices
     device_list_t m_device_list;

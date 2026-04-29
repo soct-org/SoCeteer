@@ -1,4 +1,7 @@
 #pragma once
+
+#include <stdint.h>
+
 /*
  * Frontend system calls supported by SOCT. They equal the linux syscall numbers.
  * See also https://filippo.io/linux-syscall-table/
@@ -18,3 +21,10 @@
 #define SOCT_GET_MAINVARS 2011
 #define SOCT_HTIF_DEV_TEST 2012 // Test whether the HTIF device is present by sending a command and waiting for a response
 
+typedef uint64_t sc_htif_slot_t;
+
+typedef uint64_t sc_arg_t;
+
+typedef int64_t sc_resp_t; // Can be signed
+
+typedef uint32_t sc_type_t;

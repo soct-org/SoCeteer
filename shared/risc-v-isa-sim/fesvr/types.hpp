@@ -1,21 +1,17 @@
 #pragma once
 #include <cinttypes>
 #include <functional>
-#include <debug_defines.h>
+#include "debug_defines.h"
 #include "asserts.hpp"
-#include <semaphore>
-
-/// A register type
-using reg_t = uint64_t;
-
-/// A signed register type
-using sreg_t = int64_t;
 
 /// An address type
-using addr_t = reg_t;
+using addr_t = uint64_t;
 
-/// A function pointer to a syscall function
-using syscall_func_t = std::function<reg_t(reg_t, reg_t, reg_t, reg_t, reg_t, reg_t, reg_t)>;
+#if SOCT_XLEN == 32
+typedef uint32_t guest_reg_t;
+#else
+typedef uint64_t guest_reg_t;
+#endif
 
 /// The maximum path size
 inline constexpr size_t MAX_PATH_SIZE = 4096;
@@ -150,7 +146,7 @@ constexpr uint32_t rv_encode_stype_imm(uint32_t x) {
  */
 constexpr uint32_t rv_encode_sbtype_imm(uint32_t x) {
     return (rv_extract(x, 1, 4) << 8) | (rv_extract(x, 5, 6) << 25) | (rv_extract(x, 11, 1) << 7) | (
-        rv_extract(x, 12, 1) << 31);
+               rv_extract(x, 12, 1) << 31);
 }
 
 /**
@@ -179,7 +175,7 @@ constexpr uint32_t rv_encode_utype_imm(uint32_t x) {
  */
 constexpr uint32_t rv_encode_ujtype_imm(uint32_t x) {
     return (rv_extract(x, 1, 10) << 21) | (rv_extract(x, 11, 1) << 20) | (rv_extract(x, 12, 8) << 12) | (
-        rv_extract(x, 20, 1) << 31);
+               rv_extract(x, 20, 1) << 31);
 }
 
 
@@ -203,7 +199,7 @@ constexpr uint32_t rv_encode_ujtype_imm(uint32_t x) {
  */
 constexpr uint32_t rv_load(uint32_t xlen, uint32_t dst, uint32_t base, uint32_t imm) {
     return ((xlen == 64 ? 0x00003003 : 0x00002003) |
-        (dst << 7) | (base << 15) | rv_encode_itype_imm(imm));
+            (dst << 7) | (base << 15) | rv_encode_itype_imm(imm));
 }
 
 /**
@@ -226,7 +222,7 @@ constexpr uint32_t rv_load(uint32_t xlen, uint32_t dst, uint32_t base, uint32_t 
  */
 constexpr uint32_t rv_store(uint32_t xlen, uint32_t src, uint32_t base, uint32_t imm) {
     return ((xlen == 64 ? 0x00003023 : 0x00002023) |
-        (src << 20) | (base << 15) | rv_encode_stype_imm(imm));
+            (src << 20) | (base << 15) | rv_encode_stype_imm(imm));
 }
 
 /**
