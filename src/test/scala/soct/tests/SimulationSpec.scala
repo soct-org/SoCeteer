@@ -65,7 +65,7 @@ class SimulationSpec extends AnyFlatSpec {
   //***********
   // QUICK TEST
   //***********
-  val defaultTest: Test = Test(classOf[soct.RocketB4], XLEN_64)
+  val defaultTest: Test = Test(classOf[soct.RocketB1], XLEN_64)
   "Fast test" should "run without errors" in {
     val xlen = defaultTest.xlens.head
     val outDir = testWorkspace.resolve(SOCTUtils.configName(defaultTest.config, xlen))
@@ -150,18 +150,10 @@ class SimulationSpec extends AnyFlatSpec {
     val simOutput = scala.io.Source.fromInputStream(simProcess.getInputStream).mkString
     val simExitCode = simProcess.waitFor()
 
-    val simLogFile = simBuildDir.resolve("log.txt") // TODO change once simulator is updated to have a real argparser
-    val simLog =
-      if (simLogFile.toFile.exists()) Files.readString(simLogFile)
-      else "<log.txt not found>"
-
     withClue(
       s"""Expected simulator to exit with code 0.
          |Simulator stdout/stderr:
          |$simOutput
-         |
-         |Simulator log.txt:
-         |$simLog
          |""".stripMargin
     ) {
       simExitCode shouldBe 0
