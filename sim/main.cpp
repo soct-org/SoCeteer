@@ -65,7 +65,7 @@ int main(const int argc, char* argv[]) {
     const auto contextp = std::make_unique<VerilatedContext>();
 
     contextp->commandArgs(argc, argv);
-    const std::unique_ptr<SystemType> topp{new SystemType{contextp.get()}};
+    const auto topp = std::make_unique<SystemType>(contextp.get());
 
     timepush("Total simulation time");
 #ifdef VL_TRACE
