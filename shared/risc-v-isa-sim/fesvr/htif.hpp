@@ -126,7 +126,10 @@ private:
             m_torture_sig_addr = symbols.at("begin_signature");
             m_torture_sig_len = symbols.at("end_signature") - m_torture_sig_addr.value();
         }
+        soct::logging::fesvr::debug << "Entry point: 0x" << std::hex << m_entry.value() << std::dec << '\n';
+        soct::logging::fesvr::debug << "Starting target\n";
         reset();
+        soct::logging::fesvr::debug << "Target started\n";
     }
 
     /// The exit code of the target

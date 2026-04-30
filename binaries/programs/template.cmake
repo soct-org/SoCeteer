@@ -4,7 +4,14 @@ cmake_minimum_required(VERSION 3.20)
 # Input sources: CMAKE_CXX_SRCS, CMAKE_C_SRCS
 # Requires SOCT_SYSTEM
 
-set(LIBC c_nano)
+################################################################################################
+if(NOT DEFINED SOCT_LIBC)
+    set(SOCT_LIBC c_nano)
+endif ()
+
+if (NOT DEFINED SOCT_LIBCXX)
+    set(SOCT_LIBCXX supc++ stdc++)
+endif ()
 
 get_filename_component(SOCT_PROGRAM ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 
@@ -63,12 +70,14 @@ set(_common_link_opts
         -Wextra
 )
 
+
+
 target_compile_options(${SOCT_PROGRAM} PRIVATE ${_common_compile_opts})
 target_link_options(${SOCT_PROGRAM} PRIVATE ${_common_link_opts})
 target_compile_definitions(${SOCT_PROGRAM} PRIVATE BAREMETAL)
 
 if (SOCT_PROGRAM_IS_CXX)
-    set(LIBS_TO_LINK soctglue ${LIBC} supc++ stdc++ m gcc)
+    set(LIBS_TO_LINK soctglue ${SOCT_LIBC} ${SOCT_LIBCXX} m gcc)
     target_compile_options(${SOCT_PROGRAM} PRIVATE
             -fno-exceptions
             -fno-rtti
@@ -80,7 +89,7 @@ if (SOCT_PROGRAM_IS_CXX)
             -fno-use-cxa-atexit
     )
 else ()
-    set(LIBS_TO_LINK soctglue ${LIBC} m gcc)
+    set(LIBS_TO_LINK soctglue ${SOCT_LIBC} m gcc)
 endif ()
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")

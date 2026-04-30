@@ -148,6 +148,6 @@ inline std::map<std::string, uint64_t> load_elf(const std::filesystem::path& fil
         soct::logging::fesvr::info << "Loading symbol table\n";
         process_symbol_table(header, section_headers, section_strtab);
     }
-
+    soct::logging::fesvr::info << "Finished loading ELF file: " << filename << "\n";
     return symbols;
 }

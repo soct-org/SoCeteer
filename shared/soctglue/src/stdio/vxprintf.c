@@ -121,6 +121,11 @@ void __vxprintf(putc_t putfn, void *putarg, const char *fmt, va_list ap) {
             case '#':
                 goto reswitch;
 
+                // size_t flag
+            case 'z':
+                lflag = (sizeof(size_t) == sizeof(long long)) ? 2 : 1;
+                goto reswitch;
+
                 // long flag (doubled for long long)
             case 'l':
                 lflag++;

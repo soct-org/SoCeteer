@@ -19,8 +19,8 @@ void dtm_t::reset() {
         select_hart(hartsel);
         fence_i();
 #ifndef SOCT_CLINT_BASE
-        // No clint - just jump to the entry point
-        write_csr(0x7b1, entry());
+        // No clint - just set program counter to entry point
+        write_csr(CSR_DPC, entry());
 #endif
     }
 
