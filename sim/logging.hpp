@@ -1,13 +1,8 @@
 #pragma once
 
-#include "disasm.h"
-#include "isa_parser.h"
-
 #include <string>
 #include <fstream>
-#include <iostream>
 #include <optional>
-#include <platform.h>
 
 #ifndef TRACE
 #ifdef ENABLE_TRACE
@@ -23,22 +18,17 @@ namespace soct::logging {
     /// Global variables and functions
     namespace globals {
         /// The global log level
-        inline int log_level = 0;
+        extern int log_level;
 
         /// Whether to dump all output to the console (useful for debugging)
-        inline bool all2console;
+        extern bool all2console;
 
         /// Which cores to log. Only log the cores in the list.
-        inline std::vector<std::string> log_cores{};
+        extern std::vector<std::string> log_cores;
 
         /// The log file stream
-        inline std::optional<std::ofstream> log_stream = std::nullopt;
+        extern std::optional<std::ofstream> log_stream;
 
-        /// The ISA parser
-        inline isa_parser_t isa_parser{DEFAULT_ISA, DEFAULT_PRIV};
-
-        /// The disassembler
-        inline disassembler_t disasm{&isa_parser};
 
         inline constexpr std::string_view debug_prefix = "[DEBUG]";
         inline constexpr std::string_view info_prefix = "[INFO]";
@@ -63,117 +53,53 @@ namespace soct::logging {
     };
 
     ///@brief  Returns the current state of the global flag for logging to a file
-    inline bool is_log_file_enabled() {
-        return globals::log_stream.has_value();
-    }
+    bool is_log_file_enabled();
 
     ///@brief  Sets the global log level
-    inline void set_log_level(const int level) {
-        globals::log_level = level;
-    }
+    void set_log_level(int level);
 
     ///@brief Initializes the log file
-    inline void init_logging(const std::string& file = "log.txt") {
-        globals::log_stream = std::ofstream(file);
-    }
+    void init_logging(const std::string& file = "log.txt");
 
     ///@brief Closes the log file
-    inline void close_logging() {
-        if (globals::log_stream.has_value()) {
-            globals::log_stream->close();
-        }
-    }
+    void close_logging();
 
     ///@brief Checks if the log file is open
-    inline bool is_log_file_open() {
-        return globals::log_stream.has_value() && globals::log_stream->is_open();
-    }
-
+    bool is_log_file_open();
 
     /// Checks if the given message is from a RocketChip core that is being logged (configured in soct::log_cores). Checks if string starts with C<core_id>
-    inline bool is_rocketchip_log(const std::string_view& s) {
-        if (s.at(0) != 'C' || s.size() != globals::rocket_chip_message_len) {
-            return false;
-        }
-        return std::ranges::any_of(globals::log_cores, [&](const std::string_view& core) {
-            return s.substr(1, core.size()) == core;
-        });
-    }
+    bool is_rocketchip_log(const std::string_view& s);
 
     /// Extracts the disassembly message from a RocketChip core log message
-    inline std::string_view get_rocket_chip_dasm(const std::string_view& s) {
-        return s.substr(globals::rocket_chip_dasm_start, globals::rocket_chip_dasm_len);
-    }
+    std::string_view get_rocket_chip_dasm(const std::string_view& s);
 
     ///@brief  Checks if the given message is a debug message
-    inline bool is_debug_msg(const std::string_view& s) {
-        return s.substr(0, globals::debug_prefix.size()) == globals::debug_prefix;
-    }
+    bool is_debug_msg(const std::string_view& s);
 
     ///@brief  Checks if the given message is an info message
-    inline bool is_info_msg(const std::string_view& s) {
-        return s.substr(0, globals::info_prefix.size()) == globals::info_prefix;
-    }
+    bool is_info_msg(const std::string_view& s);
 
     ///@brief  Checks if the given message is a warning message
-    inline bool is_warning_msg(const std::string_view& s) {
-        return s.substr(0, globals::warning_prefix.size()) == globals::warning_prefix;
-    }
+    bool is_warning_msg(const std::string_view& s);
 
     ///@brief  Checks if the given message is an error message
-    inline bool is_error_msg(const std::string_view& s) {
-        return s.substr(0, globals::error_prefix.size()) == globals::error_prefix;
-    }
+    bool is_error_msg(const std::string_view& s);
 
     ///@brief Checks if the given message is within the current log level
-    inline bool prefix_within_log_level(const std::string_view& s, const int level = globals::log_level) {
-        switch (level) {
-        case DEBUG:
-            return is_error_msg(s) || is_warning_msg(s) || is_info_msg(s) || is_debug_msg(s);
-        case INFO:
-            return is_error_msg(s) || is_warning_msg(s) || is_info_msg(s);
-        case WARN:
-            return is_error_msg(s) || is_warning_msg(s);
-        case ERR:
-            return is_error_msg(s);
-        default:
-            return false;
-        }
-    }
+    bool prefix_within_log_level(const std::string_view& s, int level = globals::log_level);
 
     /// A simple logger class that can be used to log messages to the console or a file
     class logger_t {
     public:
         explicit logger_t(const LogLevel& level,
                           const std::string_view& prefix = "",
-                          const bool log_to_file = false,
-                          const bool log_to_console = true) : m_level(level),
-                                                              m_prefix(prefix),
-                                                              m_log_to_file(log_to_file),
-                                                              m_log_to_console(log_to_console),
-                                                              m_console_out(
-                                                                  level == ERR || level == WARN
-                                                                      ? std::cerr
-                                                                      : std::cout) {
-        }
+                          bool log_to_file = false,
+                          bool log_to_console = true);
 
-        void flush() const {
-            if (m_log_to_file && is_log_file_enabled()) {
-                globals::log_stream.value().flush();
-            }
-            if (m_log_to_console) {
-                m_console_out.flush();
-            }
-        }
+        void flush() const;
 
         /// Initializes the progress bar with a prefix and suffix. You can then update the progress bar with the update_progress_bar function
-        void init_progress_bar(const std::string& prefix, const std::string& suffix) {
-            if (m_log_to_console) {
-                m_pb_prefix = prefix;
-                m_pb_suffix = suffix;
-            }
-        }
-
+        void init_progress_bar(const std::string& prefix, const std::string& suffix);
 
         void update_progress_bar(const auto progress) {
             if (m_pb_prefix.has_value() && m_pb_suffix.has_value() && m_log_to_console) {
@@ -181,13 +107,7 @@ namespace soct::logging {
             }
         }
 
-        void close_progress_bar() {
-            m_pb_prefix = std::nullopt;
-            m_pb_suffix = std::nullopt;
-            if (m_log_to_console) {
-                m_console_out << "\n";
-            }
-        }
+        void close_progress_bar();
 
         template <typename T>
         logger_t& operator<<(const T& value) {
@@ -284,36 +204,34 @@ namespace soct::logging {
         std::optional<std::string> m_pb_suffix = std::nullopt;
 
         /// Checks if the level of the message is within the current log level
-        [[nodiscard]] bool within_log_level() const {
-            return m_level >= globals::log_level;
-        }
+        [[nodiscard]] bool within_log_level() const;
     };
 
     namespace elf {
         // Color green
-        inline logger_t to_stderr(ANY, "\033[32m[ELF]\033[0m ");
-        inline logger_t to_stdout(ANY, "\033[32m[ELF]\033[0m ");
+        extern logger_t to_stderr;
+        extern logger_t to_stdout;
     }
 
     namespace rocketchip {
         // No color
-        inline logger_t console(INFO, "[ROC] ");
-        inline logger_t file(ANY, "", true, false);
+        extern logger_t console;
+        extern logger_t file;
     }
 
     namespace circuit {
         // Color yellow
-        inline logger_t console(ANY, "\033[33m[CIR]\033[0m ");
-        inline logger_t file(ANY, "", true, false);
+        extern logger_t console;
+        extern logger_t file;
     }
 
     namespace fesvr {
         // Trace has color blue
-        TRACE(inline logger_t trace(TRACE1, "\033[34m[FES]\033[0m ");)
+        TRACE(extern logger_t trace;)
         // The rest have color cyan
-        inline logger_t debug(DEBUG, "\033[36m[FES]\033[0m ");
-        inline logger_t info(INFO, "\033[36m[FES]\033[0m ");
-        inline logger_t warn(WARN, "\033[36m[FES]\033[0m ");
-        inline logger_t error(ERR, "\033[36m[FES]\033[0m ");
+        extern logger_t debug;
+        extern logger_t info;
+        extern logger_t warn;
+        extern logger_t error;
     }
 }

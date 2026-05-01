@@ -1,6 +1,7 @@
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
+#include <disasm.h>
 #include <fstream>
 #include <memory>
 #include <utility>
@@ -23,10 +24,21 @@ constexpr bool use_vl_prefix = false;
 
 using SystemType = std::conditional_t<use_vl_prefix, VL_PREFIX, SystemTop>;
 
+isa_parser_t s_isa_parser{SOCT_ARCH, DEFAULT_PRIV};
+disassembler_t s_disasm{&s_isa_parser};
+
+extern "C" {
+const char *disassemble(uint64_t bits) {
+    static thread_local std::string dasm_str;
+    dasm_str = s_disasm.disassemble(bits);
+    return dasm_str.c_str();
+}
+}
+
 #ifdef VL_TRACE
-void tic_toc(const std::unique_ptr<SystemTop>& topp,
-             const std::unique_ptr<VerilatedContext>& contextp,
-             const std::unique_ptr<VerilatedVcdC>& tfp) {
+void tic_toc(const std::unique_ptr<SystemTop> &topp,
+             const std::unique_ptr<VerilatedContext> &contextp,
+             const std::unique_ptr<VerilatedVcdC> &tfp) {
     topp->clock = 0;
     topp->eval();
     tfp->dump(contextp->time());
@@ -37,8 +49,8 @@ void tic_toc(const std::unique_ptr<SystemTop>& topp,
     contextp->timeInc(1);
 }
 #else
-void tic_toc(const std::unique_ptr<SystemType>& topp,
-             const std::unique_ptr<VerilatedContext>& contextp) {
+void tic_toc(const std::unique_ptr<SystemType> &topp,
+             const std::unique_ptr<VerilatedContext> &contextp) {
     topp->clock = 0;
     topp->eval();
     topp->clock = 1;
@@ -48,7 +60,7 @@ void tic_toc(const std::unique_ptr<SystemType>& topp,
 
 #endif
 
-int main(const int argc, char* argv[]) {
+int main(const int argc, char *argv[]) {
     using namespace soct;
     Verilated::debug(0);
 

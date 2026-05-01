@@ -1,10 +1,8 @@
 #pragma once
 
-#include <cassert>
-#include <cstdint>
 #include <thread>
 #include <condition_variable>
-#include <mutex>
+#include <decode.h>
 
 #include "verilated.h"
 #include "debug_defines.h"
