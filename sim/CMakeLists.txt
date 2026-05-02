@@ -118,6 +118,7 @@ file(GLOB COLLATERAL_CXX_SRCS "${SOCT_VSRCS}/*.cc" "${SOCT_VSRCS}/*.cpp")
 
 # The C++ sources for the config
 set(COMMON_CXX_SRCS
+        ${CMAKE_CURRENT_LIST_DIR}/argparse.cpp
         ${CMAKE_CURRENT_LIST_DIR}/dpi-c.cpp
         ${CMAKE_CURRENT_LIST_DIR}/logging.cpp
         ${CMAKE_CURRENT_LIST_DIR}/custom-verilated.cpp

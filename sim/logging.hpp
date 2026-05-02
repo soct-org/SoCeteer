@@ -15,20 +15,28 @@
 #endif
 
 namespace soct::logging {
+
+    /// The different log levels
+    enum log_level_t {
+        TRACE(TRACE1 = 9,)
+        DEBUG = 10,
+        INFO = 11,
+        WARN = 12,
+        ERR = 13,
+        ANY = 14
+    };
+
     /// Global variables and functions
     namespace globals {
-        /// The global log level
-        extern int log_level;
+        /// The global log level (default: INFO)
+        extern log_level_t log_level;
 
         /// Whether to dump all output to the console (useful for debugging)
         extern bool all2console;
 
-        /// Which cores to log. Only log the cores in the list.
-        extern std::vector<std::string> log_cores;
 
         /// The log file stream
         extern std::optional<std::ofstream> log_stream;
-
 
         inline constexpr std::string_view debug_prefix = "[DEBUG]";
         inline constexpr std::string_view info_prefix = "[INFO]";
@@ -42,21 +50,11 @@ namespace soct::logging {
     }
 
 
-    /// The different log levels
-    enum LogLevel {
-        TRACE(TRACE1 = 9,)
-        DEBUG = 10,
-        INFO = 11,
-        WARN = 12,
-        ERR = 13,
-        ANY = 14
-    };
-
     ///@brief  Returns the current state of the global flag for logging to a file
     bool is_log_file_enabled();
 
     ///@brief  Sets the global log level
-    void set_log_level(int level);
+    void set_log_level(log_level_t level);
 
     ///@brief Initializes the log file
     void init_logging(const std::string& file = "log.txt");
@@ -86,12 +84,15 @@ namespace soct::logging {
     bool is_error_msg(const std::string_view& s);
 
     ///@brief Checks if the given message is within the current log level
-    bool prefix_within_log_level(const std::string_view& s, int level = globals::log_level);
+    bool prefix_within_log_level(const std::string_view& s, log_level_t level = static_cast<log_level_t>(globals::log_level));
+
+    /// Parses log level from a string ("trace", "debug", "info", "warn", "err", "any")
+    log_level_t parse_log_level(std::string_view s);
 
     /// A simple logger class that can be used to log messages to the console or a file
     class logger_t {
     public:
-        explicit logger_t(const LogLevel& level,
+        explicit logger_t(const log_level_t& level,
                           const std::string_view& prefix = "",
                           bool log_to_file = false,
                           bool log_to_console = true);
@@ -122,9 +123,9 @@ namespace soct::logging {
             return *this;
         }
 
-        using Manipulator = std::ostream& (*)(std::ostream&);
+        using manipulator_t = std::ostream& (*)(std::ostream&);
 
-        logger_t& operator<<(const Manipulator manip) {
+        logger_t& operator<<(const manipulator_t manip) {
             if (within_log_level()) {
                 if (m_log_to_file && is_log_file_enabled()) {
                     globals::log_stream.value() << manip;
@@ -180,7 +181,7 @@ namespace soct::logging {
         }
 
         /// The current log level
-        const LogLevel m_level;
+        const log_level_t m_level;
 
         /// The prefix for the log message
         const std::string m_prefix;

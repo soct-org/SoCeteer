@@ -9,6 +9,7 @@
 #include "logging.hpp"
 #include "device.hpp"
 #include "syscall_device.hpp"
+#include "argparse.hpp"
 
 class command_handler_t;
 
@@ -19,7 +20,7 @@ public:
     htif_t(const int argc, char** argv, std::shared_ptr<chunked_memif_t> cmemif) :
     m_cmemif(std::move(cmemif)),
     m_syscall_proxy(std::shared_ptr<htif_t>(this), m_cmemif) {
-        parse_arguments(argc, argv);
+        parse_arguments();
         register_devices();
     }
 
@@ -169,28 +170,19 @@ private:
     }
 
     /// Parses the arguments passed to the program and stores them in the m_targs vector
-    void parse_arguments(const int argc, char* argv[]) {
-        using namespace std::literals::string_view_literals;
+    void parse_arguments() {
         using namespace soct;
 
-        std::vector<std::string_view> args(argv + 1, argv + argc);
-
-        const std::string program_name = argv[0];
-
-        if (std::ranges::any_of(args, [](const std::string_view arg) { return arg == "-h" || arg == "--help"; })) {
-            usage(program_name);
+        if (globals::args.has_flag("h") || globals::args.has_flag("help")) {
+            usage(globals::args.program_name());
             exit(0);
         }
 
-        // Parse target arguments of the form --tgt="arg1" --tgt="arg2" ...
-        constexpr auto tgt_key = "--tgt="sv;
-        for (auto arg : args) {
-            if (arg.starts_with(tgt_key)) {
-                m_targs.emplace_back(arg.substr(tgt_key.size()));
-                args.erase(std::ranges::find(args, arg));
-            } else {
-                m_path_to_elf = arg;
-            }
+        m_targs = globals::args.get_values("tgt");
+
+        const auto& positionals = globals::args.positionals();
+        if (!positionals.empty()) {
+            m_path_to_elf = positionals.front();
         }
 
         // insert at 0 to ensure that the main payload is the first element

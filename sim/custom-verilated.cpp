@@ -1,7 +1,8 @@
 #include "custom-verilated.h"
 #include <cstdarg>
+#include <cstdint>
 
-extern "C" const char* disassemble(uint64_t);
+extern "C" const char* disassemble(uint64_t bits);
 
 void vl_stop_maybe(const char* filename, int linenum, const char* hier, bool maybe) {
     if (__builtin_expect(soct::logging::globals::all2console, 0))

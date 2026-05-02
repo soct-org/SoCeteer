@@ -6,9 +6,8 @@
 namespace soct::logging {
 
     namespace globals {
-        int log_level = 0;
+        log_level_t log_level = INFO;
         bool all2console = false;
-        std::vector<std::string> log_cores{};
         std::optional<std::ofstream> log_stream = std::nullopt;
     }
 
@@ -16,7 +15,7 @@ namespace soct::logging {
         return globals::log_stream.has_value();
     }
 
-    void set_log_level(const int level) {
+    void set_log_level(const log_level_t level) {
         globals::log_level = level;
     }
 
@@ -35,35 +34,33 @@ namespace soct::logging {
     }
 
     bool is_rocketchip_log(const std::string_view& s) {
-        if (s.at(0) != 'C' || s.size() != globals::rocket_chip_message_len) {
-            return false;
-        }
-        return std::ranges::any_of(globals::log_cores, [&](const std::string_view& core) {
-            return s.substr(1, core.size()) == core;
-        });
+        return !s.empty() && s.front() == 'C' && s.size() == globals::rocket_chip_message_len;
     }
 
     std::string_view get_rocket_chip_dasm(const std::string_view& s) {
+        if (s.size() < globals::rocket_chip_dasm_start + globals::rocket_chip_dasm_len) {
+            return {};
+        }
         return s.substr(globals::rocket_chip_dasm_start, globals::rocket_chip_dasm_len);
     }
 
     bool is_debug_msg(const std::string_view& s) {
-        return s.substr(0, globals::debug_prefix.size()) == globals::debug_prefix;
+        return s.starts_with(globals::debug_prefix);
     }
 
     bool is_info_msg(const std::string_view& s) {
-        return s.substr(0, globals::info_prefix.size()) == globals::info_prefix;
+        return s.starts_with(globals::info_prefix);
     }
 
     bool is_warning_msg(const std::string_view& s) {
-        return s.substr(0, globals::warning_prefix.size()) == globals::warning_prefix;
+        return s.starts_with(globals::warning_prefix);
     }
 
     bool is_error_msg(const std::string_view& s) {
-        return s.substr(0, globals::error_prefix.size()) == globals::error_prefix;
+        return s.starts_with(globals::error_prefix);
     }
 
-    bool prefix_within_log_level(const std::string_view& s, const int level) {
+    bool prefix_within_log_level(const std::string_view& s, const log_level_t level) {
         switch (level) {
         case DEBUG:
             return is_error_msg(s) || is_warning_msg(s) || is_info_msg(s) || is_debug_msg(s);
@@ -78,7 +75,19 @@ namespace soct::logging {
         }
     }
 
-    logger_t::logger_t(const LogLevel& level, const std::string_view& prefix, const bool log_to_file, const bool log_to_console)
+    log_level_t parse_log_level(const std::string_view s) {
+        if (s == "debug") return DEBUG;
+        if (s == "info")  return INFO;
+        if (s == "warn")  return WARN;
+        if (s == "err" || s == "error") return ERR;
+        if (s == "any")   return ANY;
+#ifdef ENABLE_TRACE
+        if (s == "trace") return TRACE1;
+#endif
+        return INFO; // default
+    }
+
+    logger_t::logger_t(const log_level_t& level, const std::string_view& prefix, const bool log_to_file, const bool log_to_console)
         : m_level(level),
           m_prefix(prefix),
           m_log_to_file(log_to_file),

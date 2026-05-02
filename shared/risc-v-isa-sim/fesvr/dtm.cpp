@@ -303,8 +303,8 @@ size_t dtm_t::chunk_align() const {
 }
 
 size_t dtm_t::chunk_max_size() const {
-    // Arbitrary choice. 4k Page size seems reasonable.
-    return 4096;
+    const auto v = soct::globals::args.get_value("chunk-size");
+    return v ? static_cast<size_t>(std::stoul(*v)) : 4096;
 }
 
 std::shared_ptr<chunked_memif_t> dtm_t::init_chunked_memif() {

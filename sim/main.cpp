@@ -4,11 +4,11 @@
 #include <disasm.h>
 #include <fstream>
 #include <memory>
-#include <utility>
 #include "verilated.h"
 #include "logging.hpp"
 #include "dpi-c.hpp"
 #include "timepp.hpp"
+#include "argparse.hpp"
 
 #ifdef VL_TRACE
 #include "verilated_vcd_c.h"
@@ -22,7 +22,7 @@ constexpr bool use_vl_prefix = true;
 constexpr bool use_vl_prefix = false;
 #endif
 
-using SystemType = std::conditional_t<use_vl_prefix, VL_PREFIX, SystemTop>;
+using system_t = std::conditional_t<use_vl_prefix, VL_PREFIX, SystemTop>;
 
 isa_parser_t s_isa_parser{SOCT_ARCH, DEFAULT_PRIV};
 disassembler_t s_disasm{&s_isa_parser};
@@ -36,9 +36,9 @@ const char *disassemble(uint64_t bits) {
 }
 
 #ifdef VL_TRACE
-void tic_toc(const std::unique_ptr<SystemTop> &topp,
-             const std::unique_ptr<VerilatedContext> &contextp,
-             const std::unique_ptr<VerilatedVcdC> &tfp) {
+void tic_toc(system_t *topp,
+             VerilatedContext *contextp,
+             VerilatedVcdC *tfp) {
     topp->clock = 0;
     topp->eval();
     tfp->dump(contextp->time());
@@ -49,8 +49,8 @@ void tic_toc(const std::unique_ptr<SystemTop> &topp,
     contextp->timeInc(1);
 }
 #else
-void tic_toc(const std::unique_ptr<SystemType> &topp,
-             const std::unique_ptr<VerilatedContext> &contextp) {
+void tic_toc(system_t *topp,
+             VerilatedContext *contextp) {
     topp->clock = 0;
     topp->eval();
     topp->clock = 1;
@@ -64,41 +64,55 @@ int main(const int argc, char *argv[]) {
     using namespace soct;
     Verilated::debug(0);
 
-    // Make argv and argc available to the debug_tick function:
+    // Initialize global argument parser first — everything else reads from it
+    globals::args.parse(argc, argv);
     globals::argc = argc;
     globals::argv = argv;
 
-    // Repository-specific configuration:
-    logging::globals::all2console = false; // Disable dumping all output to the console
-    logging::init_logging("log.txt"s); // Initialize logging to a file
-    logging::globals::log_cores.emplace_back("0"); // Log only core 0
-    logging::globals::log_level = logging::LogLevel::INFO;
+    // --- Logging configuration (from args) ---
+    // All options are optional; logging to file is disabled unless --log-file is given.
+    // Run with --help to see all available options.
+    logging::globals::all2console = globals::args.has_flag("all2console");
+
+    if (const auto log_file = globals::args.get_value("log-file")) {
+        logging::init_logging(*log_file);
+    }
+
+    const std::string log_level_str = globals::args.get_value("log-level").value_or("info");
+    logging::globals::log_level = logging::parse_log_level(log_level_str);
+
+
+    // --- Simulation configuration (from args, with sane defaults) ---
+    // --reset-cycles=<n>     : number of reset cycles (default: 100)
+    const int reset_cycles = [&] {
+        const auto v = globals::args.get_value("reset-cycles");
+        return v ? std::stoi(*v) : 100;
+    }();
 
     const auto contextp = std::make_unique<VerilatedContext>();
-
     contextp->commandArgs(argc, argv);
-    const auto topp = std::make_unique<SystemType>(contextp.get());
+    const auto topp = std::make_unique<system_t>(contextp.get());
 
     timepush("Total simulation time");
 #ifdef VL_TRACE
-    // Initialize VCD tracing
-    const std::string vcd_filename = "dump.vcd";
-    logging::fesvr::info << "Initializing VCD tracing with depth " << VL_TRACE_DEPTH << " to " << vcd_filename << "\n";
+    // --vcd-file=<path>      : VCD output file path (default: dump.vcd)
+    const std::string vcd_file = globals::args.get_value("vcd-file").value_or("dump.vcd");
+    logging::fesvr::info << "Initializing VCD tracing with depth " << VL_TRACE_DEPTH << " to " << vcd_file << "\n";
     Verilated::traceEverOn(true);
-    const std::unique_ptr<VerilatedVcdC> tfp{new VerilatedVcdC};
+    const auto tfp = std::make_unique<VerilatedVcdC>();
     topp->trace(tfp.get(), VL_TRACE_DEPTH);
-    tfp->open(vcd_filename.c_str());
+    tfp->open(vcd_file.c_str());
     auto tic_toc_impl = [&] {
-        tic_toc(topp, contextp, tfp);
+        tic_toc(topp.get(), contextp.get(), tfp.get());
     };
 #else
     auto tic_toc_impl = [&] {
-        tic_toc(topp, contextp);
+        tic_toc(topp.get(), contextp.get());
     };
 #endif
 
     topp->reset = 1;
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < reset_cycles; i++) {
         tic_toc_impl();
     }
     topp->reset = 0;
