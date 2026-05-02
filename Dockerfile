@@ -46,7 +46,7 @@ RUN set -eux; \
 
 # Verilator Build Stage
 FROM base AS verilator-builder
-ARG VERILATOR_TAG=v5.042
+ARG VERILATOR_TAG=v5.048
 COPY --chown=soct:soct /shared/cmake/install-verilator.cmake ${SCRIPTS_DIR}/install-verilator.cmake
 
 RUN git clone --branch ${VERILATOR_TAG} --depth=1 https://github.com/verilator/verilator.git ${VERILATOR_ROOT} \
