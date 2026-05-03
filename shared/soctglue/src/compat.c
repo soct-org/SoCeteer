@@ -1,7 +1,4 @@
-#include <string.h>
 #include <unistd.h>
-
-#include "syscall-handler.h"
 
 /**
  * Default trap handler

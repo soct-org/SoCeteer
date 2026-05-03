@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
+
+#include "soct/syscall-handler.h"
 
 #ifdef SOCT_CLINT_BASE
 #define CLINT_MSIP(hart) ((volatile uint32_t *)(SOCT_CLINT_BASE + 4UL * (hart)))
@@ -8,7 +11,7 @@
 #error "SOCT_CLINT_BASE is not defined. Please define it to the base address of the CLINT in your system."
 #endif
 
-const char* hello_str = "Hello from hart %u\n";
+const char *hello_str = "Hello from hart %u\n";
 
 /**
  * Reusable sense-reversing barrier.
@@ -90,7 +93,7 @@ static void wakeup_other_harts() {
  *  4. waits until all harts have printed
  *  5. returns
  */
-int __main(int argc, char** argv, char* envp[])  {
+int __main(int argc, char **argv, char *envp[]) {
     uint32_t hart_id;
     asm volatile ("csrr %0, mhartid" : "=r"(hart_id));
 
@@ -111,14 +114,42 @@ int __main(int argc, char** argv, char* envp[])  {
     return 0;
 }
 
+static void handle_exit(
+    soct_handler_resp_t *resp,
+    const sc_type_t syscall,
+    const sc_arg_t a0,
+    const sc_arg_t a1,
+    const sc_arg_t a2,
+    const sc_arg_t a3,
+    const sc_arg_t a4,
+    const sc_arg_t a5,
+    const sc_arg_t a6) {
+    (void) a1;
+    (void) a2;
+    (void) a3;
+    (void) a4;
+    (void) a5;
+    (void) a6;
+    if (syscall == SOCT_EXIT) {
+         printf("Intercepted SOCT_EXIT with code %d - passing it on to other handlers\n", (int) a0);
+    }
+    resp->status = SOCT_HANDLER_PASS;
+}
+
+
 /**
  * Primary hart entry point.
  *
  * Hart 0 prints, wakes the other harts, waits until every hart has printed,
  * then returns.
  */
-int main(int argc, char** argv, char* envp[]) {
+int main(int argc, char **argv, char *envp[]) {
     uint32_t hart_id = 0;
+
+    // This is how you can add custom syscall handlers:
+    soct_register_handler((soct_handler_t){
+        .handle = handle_exit,
+    });
 
     safe_print_hart(hart_id);
 

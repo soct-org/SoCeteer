@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "syscall-handler.h"
+#include "soctglue.h"
+#include "soct/syscall-handler.h"
 #include "soct/smoldtb.h"
 #include "soct/defaults.h"
 
@@ -122,20 +123,20 @@ void _soct_start_main(int hartid, void *dtb_blob) {
     dtb_init((uintptr_t) dtb_blob, ops);
 
     if (soct_init_from_dtb_uart()) {
-        soct_register_handler((soct_handler_t){
+        soct_register_default_handler((soct_handler_t){
             .handle = soct_handle_uart,
         });
     }
 
     if (soct_init_from_dtb_sdc()) {
-        soct_register_handler((soct_handler_t){
+        soct_register_default_handler((soct_handler_t){
             .handle = soct_handle_sdc,
         });
     }
 
     if (soct_htif_present()) {
         soct_add_setup_msg("HTIF device detected, registering handler");
-        soct_register_handler((soct_handler_t){
+        soct_register_default_handler((soct_handler_t){
             .handle = soct_handle_htif,
         });
 

@@ -2,7 +2,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "syscall-handler.h"
+#include "soct/syscall-handler.h"
 #include "soct/soct_ff.h"
 #include "soct/syscalls.h"
 

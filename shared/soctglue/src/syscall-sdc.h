@@ -1,5 +1,5 @@
 #pragma once
-#include "syscall-handler.h"
+#include "soct/syscall-handler.h"
 
 void soct_handle_sdc(
     soct_handler_resp_t *resp,

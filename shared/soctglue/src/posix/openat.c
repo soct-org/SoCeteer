@@ -1,7 +1,7 @@
 #include <errno.h>
 #include <stdarg.h>
 
-#include "syscall-handler.h"
+#include "soct/syscall-handler.h"
 #include "soct/soct_ff.h"
 
 int openat(int dirfd, const char *pname, int flags, ...) {

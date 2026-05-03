@@ -3,11 +3,11 @@
 #include "ff.h"
 #include "diskio.h"
 
+#include "soctglue.h"
 #include "syscall-sdc.h"
-#include "syscall-handler.h"
+#include "soct/syscall-handler.h"
 #include "soct/defaults.h"
 #include "soct/smoldtb.h"
-#include "soct/common.h"
 #include "soct/soct_ff.h"
 
 /* Card type flags (card_type) */
@@ -146,6 +146,15 @@ static const soct_disk_ops_t s_sdc_ops = {
     .ioctl = sdc_ioctl,
 };
 
+static void soct_usleep(unsigned us) {
+    uintptr_t cycles0;
+    uintptr_t cycles1;
+    __asm__ volatile ("csrr %0, 0xB00" : "=r" (cycles0));
+    for (;;) {
+        __asm__ volatile ("csrr %0, 0xB00" : "=r" (cycles1));
+        if (cycles1 - cycles0 >= us * 100) break;
+    }
+}
 
 int _sdc_cmd_finish(unsigned cmd) {
     while (1) {

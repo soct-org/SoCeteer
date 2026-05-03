@@ -1,5 +1,7 @@
 #pragma once
-#include "syscall-handler.h"
+
+#include "soctglue.h"
+#include "soct/syscall-handler.h"
 #include "syscall-uart.h"
 #include "soct/smoldtb.h"
 #include "soct/defaults.h"

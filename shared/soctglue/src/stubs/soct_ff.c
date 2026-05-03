@@ -1,7 +1,8 @@
 #include <stdint.h>
 
+#include "soctglue.h"
 #include "soct/soct_ff.h"
-#include "syscall-handler.h"
+#include "soct/syscall-handler.h"
 
 
 void soct_handle_sdc(

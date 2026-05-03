@@ -6,14 +6,18 @@
 
 #include "soct/syscalls.h"
 
-void soct_add_setup_msg(const char *msg);
-
+/**
+ * The status of a syscall handler, indicating whether the syscall was handled or not. If a handler returns SOCT_HANDLER_HANDLED, the syscall is considered handled and will not be passed on to any further handlers. If it returns SOCT_HANDLER_PASS, the next handler in the chain will be tried.
+ */
 typedef enum {
     SOCT_HANDLER_PASS, // Not handled, pass to next handler
     SOCT_HANDLER_HANDLED, // Handled, dont pass on to next handler
 } soct_handler_status_t;
 
 
+/**
+ * The response of a syscall handler, containing the status and the return value of the syscall. The return value is only valid if the status is SOCT_HANDLER_HANDLED.
+ */
 typedef struct {
     soct_handler_status_t status;
     sc_resp_t ret;
@@ -52,8 +56,18 @@ long soct_syscall(
     sc_arg_t a5,
     sc_arg_t a6);
 
+
 /**
- * @param handler The handler to register. The handler will be called for every syscall in the order they were registered until one of them handles the syscall, the syscall becomes invalid or there are no handlers left.
- * @return Whether the registration was successful. Registration can fail if the maximum number of handlers has been reached.
+ * Register a user handler with high priority. User handlers are tried before default handlers.
+ * @return true on success, false if the handler table is full.
  */
 bool soct_register_handler(soct_handler_t handler);
+
+
+/**
+ * Register a default (low-priority) handler. Default handlers are tried only after all user
+ * handlers have passed. Intended for use by soctglue internals (UART, SDC, HTIF).
+ * @return true on success, false if the handler table is full.
+ */
+bool soct_register_default_handler(soct_handler_t handler);
+

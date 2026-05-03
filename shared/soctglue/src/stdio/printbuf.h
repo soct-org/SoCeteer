@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
-#include "syscall-handler.h"
+#include "soct/syscall-handler.h"
 #include "syscall-uart.h"
 #include "soct/defaults.h"
 
