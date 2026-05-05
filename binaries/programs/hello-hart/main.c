@@ -108,7 +108,10 @@ static void wakeup_other_harts(void) {
  *  4. Waits at the barrier until all harts have printed
  *  5. Wait for interrupt
  */
-int __attribute__ ((noreturn)) __main(int argc, char **argv, char *envp[]) {
+int __attribute__ ((noreturn)) __main(const int argc, char **argv, char *envp[]) {
+    (void) argc;
+    (void) argv;
+    (void) envp;
     const size_t hart_id = soct_hart_id();
 
     /* Wait until hart 0 raises our MSIP via wakeup_other_harts() */
@@ -153,8 +156,11 @@ static void handle_exit(
  * Hart 0 prints, wakes the other harts, waits until every hart has printed,
  * then returns.
  */
-int main(int argc, char **argv, char *envp[]) {
-    uint32_t hart_id = 0;
+int main(const int argc, char **argv, char *envp[]) {
+    const uint32_t hart_id = 0;
+    (void) argc;
+    (void) argv;
+    (void) envp;
 
     const int n_harts_opt = soct_n_harts();
     if (n_harts_opt < 0) {
