@@ -5,12 +5,17 @@ cmake_minimum_required(VERSION 3.20)
 # Requires SOCT_SYSTEM
 
 ################################################################################################
-if(NOT DEFINED SOCT_LIBC)
+
+if (NOT DEFINED SOCT_LIBC)
     set(SOCT_LIBC c_nano)
 endif ()
 
 if (NOT DEFINED SOCT_LIBCXX)
     set(SOCT_LIBCXX supc++ stdc++)
+endif ()
+
+if (NOT DEFINED SOCT_LD_SCRIPT)
+    set(SOCT_LD_SCRIPT ${SOCTGLUE_DIR}/soct.ld)
 endif ()
 
 get_filename_component(SOCT_PROGRAM ${CMAKE_CURRENT_SOURCE_DIR} NAME)
@@ -29,14 +34,13 @@ else ()
     message(STATUS "Adding C++ program ${SOCT_PROGRAM}")
 endif ()
 
-set(LD_SCRIPT ${SOCTGLUE_DIR}/soct.ld)
-
 target_link_options(${SOCT_PROGRAM} PRIVATE
         # Remove unused sections to reduce the final binary size
         "LINKER:--gc-sections"
         # Wrap standard library functions to enable float printing etc.
         "LINKER:--wrap=puts"
         "LINKER:--wrap=printf"
+        "LINKER:--wrap=vprintf"
         "LINKER:--wrap=sprintf"
         "LINKER:--wrap=snprintf"
 )
@@ -60,7 +64,7 @@ set(_common_compile_opts
 set(_common_link_opts
         -march=${SOCT_ARCH}
         -mabi=${SOCT_ABI}
-        -T ${LD_SCRIPT}
+        -T ${SOCT_LD_SCRIPT}
         -mcmodel=medany
         -static
         -nostartfiles
@@ -69,7 +73,6 @@ set(_common_link_opts
         -Wall
         -Wextra
 )
-
 
 
 target_compile_options(${SOCT_PROGRAM} PRIVATE ${_common_compile_opts})
@@ -109,10 +112,11 @@ target_include_directories(${SOCT_PROGRAM} PRIVATE ${LIBGLOSS_DIR}/include)
 
 set_target_properties(${SOCT_PROGRAM} PROPERTIES OUTPUT_NAME ${SOCT_PROGRAM}.elf RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR})
 
-add_custom_target(objdump-${SOCT_PROGRAM} ALL
+add_custom_target(${SOCT_PROGRAM}-info ALL
         COMMAND ${CMAKE_OBJDUMP} -D -M numeric,no-aliases $<TARGET_FILE:${SOCT_PROGRAM}> > ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.objdump
+        COMMAND ${CMAKE_NM} --size-sort --print-size $<TARGET_FILE:${SOCT_PROGRAM}> > ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.nm
         DEPENDS ${SOCT_PROGRAM}
-        BYPRODUCTS ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.objdump
-        COMMENT "Generating objdump for ${SOCT_PROGRAM} at ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.objdump"
+        BYPRODUCTS ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.objdump ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.nm
+        COMMENT "Generating objdump and nm info for ${SOCT_PROGRAM} at ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.{objdump,nm}"
         VERBATIM
 )

@@ -1,9 +1,10 @@
 #include <stdint.h>
 
-#include "soctglue.h"
+#include "soct/soctglue.h"
 #include "soct/soct_ff.h"
 #include "soct/syscall-handler.h"
 
+extern void soct_add_setup_msg(const char *msg);
 
 void soct_handle_sdc(
     soct_handler_resp_t *resp,

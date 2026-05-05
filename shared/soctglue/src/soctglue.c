@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "soctglue.h"
+#include "soct/soctglue.h"
 #include "soct/syscall-handler.h"
 #include "soct/smoldtb.h"
 #include "soct/defaults.h"
@@ -66,6 +66,10 @@ void dtb_free(void *ptr, const size_t length) {
     s_dtb_parsed_len -= length;
 }
 
+/**
+ * Add a message to the setup log. The setup log is a list of messages that are printed at the end of the setup phase, before entering main. This can be used by handlers to report errors during setup, such as DTB parsing errors.
+ * @param msg A message to add to the setup log.
+ */
 void soct_add_setup_msg(const char *msg) {
     if (s_setup_msgs_cnt >= SOCT_N_SETUP_MSGS) {
         return; // No more slots left, just drop the error
@@ -162,3 +166,31 @@ void _soct_start_main(int hartid, void *dtb_blob) {
 
     exit(main(s_argc, s_argv, environ));
 }
+
+
+size_t soct_hart_id(void) {
+    size_t hart_id;
+    asm volatile ("csrr %0, mhartid" : "=r"(hart_id));
+    return hart_id;
+}
+
+
+int soct_n_harts(void) {
+    dtb_node *cpus = dtb_find("/cpus");
+    if (!cpus)
+        return 1;
+
+    size_t count = 0;
+    dtb_node *child = dtb_get_child(cpus);
+    while (child) {
+        dtb_prop *dtype = dtb_find_prop(child, "device_type");
+        if (dtype) {
+            const char *val = dtb_read_prop_string(dtype, 0);
+            if (val && __builtin_strcmp(val, "cpu") == 0)
+                count++;
+        }
+        child = dtb_get_sibling(child);
+    }
+    return count > 0 ? (int) count : -1;
+}
+

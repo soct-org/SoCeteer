@@ -3,7 +3,7 @@
 #include "ff.h"
 #include "diskio.h"
 
-#include "soctglue.h"
+#include "soct/soctglue.h"
 #include "syscall-sdc.h"
 #include "soct/syscall-handler.h"
 #include "soct/defaults.h"
@@ -121,6 +121,8 @@ struct sdc_regs {
     volatile uint32_t res_5c;
     volatile uint64_t dma_addres;
 };
+
+extern void soct_add_setup_msg(const char *msg);
 
 DSTATUS sdc_initialize(BYTE pdrv);
 

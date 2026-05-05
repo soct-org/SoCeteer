@@ -1,5 +1,7 @@
 #include <unistd.h>
 
+#include "soct/soctglue.h"
+
 /**
  * Default trap handler
  * @param epc The program counter at the time of the trap.
@@ -25,13 +27,11 @@ void __attribute__((weak)) handle_trap(uintptr_t epc, uintptr_t cause, uintptr_t
  *
  * Multi-threaded programs should provide their own implementation.
  */
-int __attribute__ ((weak)) __main(int argc, char **argv, char *envp[]) {
+int __attribute__ ((weak, noreturn)) __main(int argc, char **argv, char *envp[]) {
     (void) argc;
     (void) argv;
     (void) envp;
-    for (;;) {
-        __asm__ __volatile__ ("wfi");
-    }
+    for (;;) wfi();
 }
 
 

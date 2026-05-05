@@ -2,8 +2,13 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdarg.h>
+
 
 #include "soct/syscall-handler.h"
+#include "soct/defaults.h"
+#include "soct/soctglue.h"
+#include "atomic.h"
 
 #ifdef SOCT_CLINT_BASE
 #define CLINT_MSIP(hart) ((volatile uint32_t *)(SOCT_CLINT_BASE + 4UL * (hart)))
@@ -20,66 +25,76 @@ const char *hello_str = "Hello from hart %u\n";
  * The last hart to arrive resets the count and flips the global sense,
  * releasing everyone else.
  *
- * Assumes hart IDs are dense in [0, N_CORES - 1].
+ * Assumes hart IDs are dense in [0, soct_get_num_harts() - 1].
  */
 static volatile uint32_t barrier_count = 0;
 static volatile uint32_t barrier_sense = 0;
-static volatile uint32_t local_sense[N_CORES] = {0};
+static volatile uint32_t local_sense[SOCT_MAX_HARTS] = {0};
+static size_t n_harts = 0;
 
-static void __attribute__((noinline)) barrier(void) {
-    uint32_t hart_id;
-    asm volatile ("csrr %0, mhartid" : "=r"(hart_id));
-
-    local_sense[hart_id] ^= 1U;
-    __sync_synchronize();
-
-    if (__sync_add_and_fetch(&barrier_count, 1) == N_CORES) {
-        barrier_count = 0;
-        __sync_synchronize();
-        barrier_sense = local_sense[hart_id];
-    } else {
-        while (barrier_sense != local_sense[hart_id]) {
-            asm volatile ("" ::: "memory");
-        }
-    }
-
-    __sync_synchronize();
-}
-
-/**
- * Global console lock.
+/*
+ * Global console lock logic:
  *
  * printf is typically not multicore-safe on bare-metal, so every hart must
  * serialize access to it.
  */
-static volatile uint32_t print_lock = 0;
+static atomic_t print_lock = 0;
 
 static void lock_print(void) {
-    while (__sync_lock_test_and_set(&print_lock, 1)) {
-        asm volatile ("" ::: "memory");
+    while (atomic_swap_acquire(&print_lock, 1)) {
+        rmb();
     }
-    __sync_synchronize();
 }
 
 static void unlock_print(void) {
-    __sync_synchronize();
-    __sync_lock_release(&print_lock);
+    atomic_clear_release(&print_lock);
 }
 
-static void safe_print_hart(uint32_t hart_id) {
+// multithreaded printf
+int mprintf(const char *format, ...) {
     lock_print();
-    printf(hello_str, hart_id);
+    va_list args;
+    va_start(args, format);
+    const int res = vprintf(format, args);
+    va_end(args);
     unlock_print();
+    return res;
 }
+
+/**
+ * A reusable sense-reversing barrier.
+ * Each hart toggles its local sense and increments a shared arrival count.
+ * The last hart to arrive resets the count and flips the global sense,
+ * releasing everyone else.
+ */
+static void __attribute__((noinline)) barrier(void) {
+    const size_t hart_id = soct_hart_id();
+
+    local_sense[hart_id] ^= 1U;
+    mb();
+
+    if (__sync_add_and_fetch(&barrier_count, 1) == (uint32_t) n_harts) {
+        barrier_count = 0;
+        mb();
+        barrier_sense = local_sense[hart_id];
+    } else {
+        while (barrier_sense != local_sense[hart_id]) {
+            rmb();
+        }
+    }
+
+    mb();
+}
+
 
 /**
  * Wake all secondary harts by raising their software interrupt.
  * Hart 0 is the primary hart, so we start at hart 1.
  */
-static void wakeup_other_harts() {
-    for (size_t hart = 1; hart < N_CORES; ++hart) {
+static void wakeup_other_harts(void) {
+    for (size_t hart = 1; hart < n_harts; ++hart) {
         *CLINT_MSIP(hart) = 1;
-        __sync_synchronize();
+        wmb();
     }
 }
 
@@ -87,31 +102,26 @@ static void wakeup_other_harts() {
  * Entry point for secondary harts.
  *
  * Each secondary hart:
- *  1. reads its hart ID
- *  2. clears its own pending software interrupt
- *  3. prints safely
- *  4. waits until all harts have printed
- *  5. returns
+ *  1. Waits until the primary hart raises its MSIP via wakeup_other_harts()
+ *  2. Clears its MSIP to acknowledge the wakeup
+ *  3. Prints a message
+ *  4. Waits at the barrier until all harts have printed
+ *  5. Wait for interrupt
  */
-int __main(int argc, char **argv, char *envp[]) {
-    uint32_t hart_id;
-    asm volatile ("csrr %0, mhartid" : "=r"(hart_id));
+int __attribute__ ((noreturn)) __main(int argc, char **argv, char *envp[]) {
+    const size_t hart_id = soct_hart_id();
 
-    /*
-     * Clear our MSIP bit now that we have woken up.
-     * Leaving it set may keep the software interrupt pending.
-     */
+    /* Wait until hart 0 raises our MSIP via wakeup_other_harts() */
+    while (!*CLINT_MSIP(hart_id)) rmb();
+
+    /* Clear MSIP now that we've observed it */
     *CLINT_MSIP(hart_id) = 0;
-    __sync_synchronize();
+    mb();
 
-    safe_print_hart(hart_id);
-
-    /*
-     * Do not return until every hart has completed its print.
-     * No print order is enforced; only completion is synchronized.
-     */
-    barrier();
-    return 0;
+    mprintf(hello_str, (unsigned) hart_id);
+    barrier(); // All harts arrive here, hart 0 exits, all others wfi
+    for (;;)
+        wfi();
 }
 
 static void handle_exit(
@@ -131,7 +141,7 @@ static void handle_exit(
     (void) a5;
     (void) a6;
     if (syscall == SOCT_EXIT) {
-         printf("Intercepted SOCT_EXIT with code %d - passing it on to other handlers\n", (int) a0);
+        mprintf("Hart %u exiting with code %u\n", (unsigned) soct_hart_id(), (unsigned) a0);
     }
     resp->status = SOCT_HANDLER_PASS;
 }
@@ -146,12 +156,21 @@ static void handle_exit(
 int main(int argc, char **argv, char *envp[]) {
     uint32_t hart_id = 0;
 
+    const int n_harts_opt = soct_n_harts();
+    if (n_harts_opt < 0) {
+        mprintf("Failed to get number of harts from Soctglue\n");
+        return -1;
+    }
+    n_harts = (size_t) n_harts_opt;
+    mprintf("Detected %zu harts\n", n_harts);
+
+
     // This is how you can add custom syscall handlers:
     soct_register_handler((soct_handler_t){
         .handle = handle_exit,
     });
 
-    safe_print_hart(hart_id);
+    mprintf(hello_str, (unsigned) hart_id);
 
     wakeup_other_harts();
 

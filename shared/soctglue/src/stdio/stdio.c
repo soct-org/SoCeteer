@@ -49,3 +49,9 @@ int __wrap_snprintf(char *str, size_t size, const char *fmt, ...) {
     va_start(ap, fmt); __vxprintf(__snprintf_putc, &d, fmt, ap); va_end(ap);
     *d.str = '\0'; return (int)(d.str - str);
 }
+
+int __wrap_vprintf(const char *fmt, va_list ap) {
+    int len = 0;
+    __vxprintf(__printf_char, &len, fmt, ap);
+    return len;
+}

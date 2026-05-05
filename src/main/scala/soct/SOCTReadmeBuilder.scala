@@ -108,7 +108,7 @@ object SOCTReadmeBuilder {
        |git clone --recurse-submodules $gitUrl
        |
        |# Clone the latest release with submodules:
-       |git clone --recurse-submodules --branch v${info.version} $gitUrl
+       |git clone --recurse-submodules --branch v<latest-version> $gitUrl
        |
        |# If already cloned without --recurse-submodules:
        |git submodule update --init --recursive

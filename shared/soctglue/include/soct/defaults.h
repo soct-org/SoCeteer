@@ -5,6 +5,7 @@
 #define SOCT_UART_NAME_DTS "riscv,axi-uart-1.0"
 #define SOCT_SDC_NAME_DTS "riscv,axi-sd-card-1.0"
 #define SOCT_N_SYSCALL_HANDLERS 64
+#define SOCT_MAX_HARTS 64 // Maximum number of harts supported; used for static array sizing
 #define SOCT_N_SETUP_MSGS 16
 #define SOCT_ARG_MAX 128
 

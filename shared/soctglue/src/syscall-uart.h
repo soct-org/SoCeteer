@@ -1,6 +1,6 @@
 #pragma once
 
-#include "soctglue.h"
+#include "soct/soctglue.h"
 #include "soct/syscall-handler.h"
 #include "syscall-uart.h"
 #include "soct/smoldtb.h"
@@ -11,6 +11,8 @@
 #define SR_RX_FIFO_FULL         (1 << 1) /* receive FIFO full */
 #define SR_TX_FIFO_EMPTY        (1 << 2) /* transmit FIFO empty */
 #define SR_TX_FIFO_FULL         (1 << 3) /* transmit FIFO full */
+
+extern void soct_add_setup_msg(const char *msg);
 
 static uintptr_t s_uart_base = SOCT_DEFAULT_UART_ADDR;
 
