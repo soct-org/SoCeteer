@@ -36,8 +36,9 @@ class SOCTBdBuilder extends SOCTBd {
 
   private val portMappingsGens = mutable.ListBuffer.empty[() => Map[String, Seq[String]]]
 
-
   private val timingConstraintsGens = mutable.ListBuffer.empty[() => TCLCommands]
+
+  private val configTCLGens = mutable.ListBuffer.empty[() => TCLCommands]
 
   /**
    * Add Vivado port mappings to the given lines
@@ -162,6 +163,10 @@ class SOCTBdBuilder extends SOCTBd {
     portMappingsGens += portMapping
   }
 
+  def addConfigTcl(configTcl: () => TCLCommands): Unit = {
+    configTCLGens += configTcl
+  }
+
   def emitCollaterals(outDir: Path): Unit = {
     checkFinalized()
     nodes.collect {
@@ -222,6 +227,8 @@ class SOCTBdBuilder extends SOCTBd {
     val addrConnects = nodes.collect {
       case c: HasBdAddr => c.assignAddrTcl
     }.flatten.toSeq
+
+    val configTCLs = configTCLGens.flatMap(gen => gen()).toSeq
 
     val xips, xinlines = mutable.ListBuffer.empty[IsXilinx]
     val modules = mutable.ListBuffer.empty[IsModule]
@@ -344,6 +351,9 @@ class SOCTBdBuilder extends SOCTBd {
        |# Assign addresses
        |${addrConnects.sorted.mkString("\n")}
        |
+       |# Add config TCL commands (Commands emitted based on the current design configuration)
+       |${configTCLs.sorted.mkString("\n")}
+       |
        |# Regenerate layout once - usually improves readability significantly
        |regenerate_bd_layout
        |
@@ -439,6 +449,7 @@ class SOCTBdBuilder extends SOCTBd {
 
   /**
    * Generate a TCL script to add timing constraints for the block design. Assumes the project is already set up and the block design is already generated.
+   *
    * @return TCL script as string
    */
   def generateTimingConstraintsTcl(): String = {

@@ -27,8 +27,9 @@ void dump_fatfs_directory(void) {
 int main(void) {
     FIL fil;
     UINT br;
-    static uint8_t buf[512];
-    static uint8_t buf2[512];
+#define BUF_LEN 512
+    static uint8_t buf[BUF_LEN];
+    static uint8_t buf2[BUF_LEN];
 
     // Fill buf with dummy data
     for (int i = 0; i < (int)sizeof(buf); i++) buf[i] = (uint8_t)(i & 0xFF);
@@ -58,16 +59,11 @@ int main(void) {
         printf("Data matches!\n");
     } else {
         printf("Data does NOT match!\n");
-        // Print both buffers for debugging
-        printf("Written data:\n");
-        for (size_t i = 0; i < sizeof(buf); i++) {
-            printf("%02x ", buf[i]);
-            if ((i & 0x0F) == 0x0F) printf("\n");
-        }
-        printf("\nRead data:\n");
-        for (size_t i = 0; i < sizeof(buf2); i++) {
-            printf("%02x ", buf2[i]);
-            if ((i & 0x0F) == 0x0F) printf("\n");
+        // Print where they dont match
+        for (size_t i = 0; i < BUF_LEN; i++) {
+            if (buf[i] != buf2[i]) {
+                printf("  Byte %zu: wrote %02x, read back %02x\n", i, buf[i], buf2[i]);
+            }
         }
     }
 

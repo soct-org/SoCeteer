@@ -8,7 +8,7 @@ import scala.collection.mutable
 
 
 case class BSCAN(debugMode: Int = 7)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp // 7 = JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge
-  with Xip with ConnectOps with HasIndexedPins {
+  with Xip with ConnectOps with HasIndexedPins with Finalizable {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"
 
@@ -51,6 +51,10 @@ case class BSCAN(debugMode: Int = 7)(implicit bd: SOCTBdBuilder, p: Parameters) 
        |""".stripMargin.tcl)
   }
 
+  override protected def finalizeBdImpl(): Unit = {
+    // Demote Chipscope 16-336 to warning
+    bd.addConfigTcl(() => Seq("set_msg_config -id {Chipscope 16-336} -new_severity WARNING".tcl))
+  }
 }
 
 object BSCAN {

@@ -138,7 +138,7 @@ case class SDCardPMOD(
        |set sdio_clock_period [get_property -min PERIOD $$sdio_clock]
        |
        |set_max_delay -from $$sdio_clock -to $$$clockVar -datapath_only $$$clockPeriodVar
-       |set_max_delay -from $$$clockVar -to $$sdio_clock -datapath_only $$$clockPeriodVar
+       |set_max_delay -from $$$clockVar -to $$sdio_clock -datapath_only $$sdio_clock_period
        |
        |set_max_delay -from $$sdio_clock -to [get_ports {${sdioClk.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -datapath_only 8.0
        |set_max_delay -from [get_ports {${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock -datapath_only 8.0

@@ -114,8 +114,6 @@ trait Finalizable {
   /**
    * Implementation of finalizeBd, to be provided by inheriting classes.
    * You must not instantiate Finalizable subcomponents here as order of finalization is not guaranteed.
-   *
-   * @return A sequence of BdComp subcomponents and TCLCommands to be added to the design.
    */
   protected def finalizeBdImpl(): Unit
 

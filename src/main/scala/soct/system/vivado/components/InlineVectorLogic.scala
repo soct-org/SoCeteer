@@ -29,7 +29,7 @@ abstract class InlineVectorLogic(op: String, width: Int, connectOnInit: Boolean 
   case class OP_I(idx: Int) extends BdPinIn(s"Op$idx", this)
 
   object OP extends SimpleIndexedPinFactory[OP_I](
-    indexRange = (1, 64), // TODO how many inputs can we support?
+    indexRange = (1, 2), // Only supports 1 or 2 inputs
     pinConstructor = idx => OP_I(idx)
   )
 
