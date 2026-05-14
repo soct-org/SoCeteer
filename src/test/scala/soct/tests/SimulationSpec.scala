@@ -3,7 +3,7 @@ package soct.tests
 import org.chipsalliance.cde.config.Config
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
-import soct.SOCTNames.{DEFAULT_EXAMPLE_BINARY, SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_KEY}
+import soct.SOCTNames.{SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_KEY, SYSCALL_TEST_BINARY}
 import soct.{SOCTLauncher, SOCTPaths, SOCTPathsBase, SOCTUtils}
 
 import java.nio.file.Files
@@ -134,27 +134,43 @@ class SimulationSpec extends AnyFlatSpec {
 
       val (binBuildStdout, binBuildStderr) =
         SOCTUtils.runCMakeCommand(
-          Seq("--build", binBuildDir.toString, "--target", DEFAULT_EXAMPLE_BINARY),
+          Seq("--build", binBuildDir.toString, "--target", SYSCALL_TEST_BINARY),
           Map.empty
         )
       soct.log.info(s"CMake build stdout (Test Binary):\n$binBuildStdout")
       soct.log.info(s"CMake build stderr (Test Binary):\n$binBuildStderr")
 
-      val testElf = paths.elfsDir.resolve(s"$DEFAULT_EXAMPLE_BINARY.elf")
+      val testElf = paths.elfsDir.resolve(s"$SYSCALL_TEST_BINARY.elf")
       withClue(s"Expected test ELF `${testElf}` to exist after building. ") {
         testElf.toFile.exists() shouldBe true
       }
 
-      soct.log.info(s"Running simulator at `${simBinary}` with test ELF `${testElf}`...")
+      // The syscall test writes and reads files; give it a dedicated scratch directory
+      val tgtDir = simBuildDir.resolve("syscall-test-tgt")
+      tgtDir.toFile.mkdirs()
 
-      // Run the simulator with the test ELF in build directory as the working directory
-      val simProcess = new ProcessBuilder(simBinary.toString, testElf.toString)
+      soct.log.info(s"Running simulator at `${simBinary}` with test ELF `${testElf}` and tgt dir `${tgtDir}`...")
+
+      // Run the simulator; --tgt=<dir> is forwarded to the ELF as argv[1]
+      val simProcess = new ProcessBuilder(simBinary.toString, testElf.toString, s"--tgt=$tgtDir")
         .directory(simBuildDir.toFile)
         .redirectErrorStream(true) // Merge stdout and stderr
         .start()
 
+      // The syscall test blocks on fgets(stdin). Feed it one line then close stdin so
+      // it gets EOF — done in a separate thread to avoid deadlocking against the stdout read below.
+      val stdinFeeder = new Thread(() => {
+        val writer = new java.io.PrintWriter(simProcess.getOutputStream)
+        writer.println("Hello from SoCeteer!\n")
+        writer.flush()
+        writer.close()
+      })
+      stdinFeeder.setDaemon(true)
+      stdinFeeder.start()
+
       val simOutput = scala.io.Source.fromInputStream(simProcess.getInputStream).mkString
       val simExitCode = simProcess.waitFor()
+      stdinFeeder.join()
 
       withClue(
         s"""Expected simulator to exit with code 0.

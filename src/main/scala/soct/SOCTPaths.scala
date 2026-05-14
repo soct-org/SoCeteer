@@ -14,7 +14,8 @@ object SOCTNames {
   val SOCT_SYSTEM_CMAKE_KEY: String = "SOCT_SYSTEM"
   val LATEST_SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem-latest.cmake"
   val SOCT_SIMULATOR_EXE = "simulator"
-  val DEFAULT_EXAMPLE_BINARY = "hello-hart" // Default example binary to build for tests and in README
+  val SYSCALL_TEST_BINARY = "syscall-test"
+  val DEFAULT_EXAMPLE_BINARY = "hello-hart" // Default example binary to build in README
 }
 
 

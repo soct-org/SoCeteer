@@ -1,3 +1,5 @@
+#include <errno.h>
+
 #include "default-syscalls.h"
 
 #include "soct/syscall-handler.h"

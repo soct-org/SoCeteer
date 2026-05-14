@@ -7,6 +7,7 @@
 
 #ifdef _WIN32
 #include <io.h>
+#include <windows.h>
 #define read _read
 #define write _write
 #define close _close
@@ -195,13 +196,31 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
     });
 
     register_syscall(SOCT_OPEN, [this](sc_arg_t pname, sc_arg_t flags, sc_arg_t mode) -> sc_resp_t {
-        auto host_mode = mode;
-        auto host_flags = static_cast<int>(translate_open_flags(flags));
-
         const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
-        soct::logging::fesvr::debug << "Opening file " << name << " with flags " << host_flags << " and mode "
-                << host_mode << "\n";
+        auto host_flags = static_cast<int>(translate_open_flags(flags));
+        auto host_mode = mode;
+
 #ifdef _WIN32
+        if (flags & SOCT_O_DIRECTORY) {
+            HANDLE h = CreateFileA(
+                name.c_str(),
+                GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                nullptr,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS, // the magic flag for directory handles
+                nullptr);
+            if (h == INVALID_HANDLE_VALUE) {
+                _dosmaperr(GetLastError()); // maps Win32 error → errno
+                return -errno;
+            }
+            int fd = _open_osfhandle(reinterpret_cast<intptr_t>(h), _O_RDONLY);
+            if (fd < 0) {
+                CloseHandle(h);
+                return -EIO;
+            }
+            return fd;
+        }
         return sysret_errno(_open(name.c_str(), host_flags, host_mode));
 #else
         return sysret_errno(open(name.c_str(), host_flags, host_mode));
@@ -227,21 +246,30 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
     });
 
     register_syscall(SOCT_OPENAT, [this](sc_arg_t dirfd, sc_arg_t pname, sc_arg_t flags, sc_arg_t mode) -> sc_resp_t {
-        int host_dirfd = (int) dirfd;
+        int host_dirfd = static_cast<int>(dirfd);
         const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
         const auto host_flags = translate_open_flags(flags);
-        soct::logging::fesvr::debug << "Opening file " << name << " with flags " << flags << " and mode " << mode
-                << " in directory " << dirfd << "\n";
 
 #ifdef _WIN32
         if (host_dirfd == RV_AT_FDCWD || host_dirfd == -100) {
             return sysret_errno(_open(name.c_str(), host_flags, mode));
         }
-        return -ENOSYS;
+        HANDLE dir_h = reinterpret_cast<HANDLE>(_get_osfhandle(host_dirfd));
+        if (dir_h == INVALID_HANDLE_VALUE)
+            return -EBADF;
+        char dir_path[MAX_PATH];
+        DWORD len = GetFinalPathNameByHandleA(dir_h, dir_path, MAX_PATH, FILE_NAME_NORMALIZED);
+        if (len == 0 || len >= MAX_PATH) {
+            _dosmaperr(GetLastError());
+            return -errno;
+        }
+        // GetFinalPathNameByHandle prepends \\?\  — strip it
+        const char *base = (strncmp(dir_path, "\\\\?\\", 4) == 0) ? dir_path + 4 : dir_path;
+        const std::string full_path = std::string(base) + "\\" + name;
+        return sysret_errno(_open(full_path.c_str(), host_flags, mode));
 #else
         if (host_dirfd == RV_AT_FDCWD)
             host_dirfd = AT_FDCWD;
-
         return sysret_errno(openat(host_dirfd, name.c_str(), host_flags, mode));
 #endif
     });
