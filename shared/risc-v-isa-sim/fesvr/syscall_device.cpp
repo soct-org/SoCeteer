@@ -6,8 +6,8 @@
 #include <fcntl.h>
 
 #ifdef _WIN32
-#include <io.h>
 #include <windows.h>
+#include <io.h>
 #define read _read
 #define write _write
 #define close _close
@@ -22,6 +22,29 @@
 #include "htif.hpp"
 
 namespace {
+#ifdef _WIN32
+    // _dosmaperr is MSVC-only; MinGW doesn't provide it.
+    // Map the Win32 errors we can actually generate to POSIX errno values.
+    static void win32_to_errno() {
+        switch (GetLastError()) {
+            case ERROR_FILE_NOT_FOUND:
+            case ERROR_PATH_NOT_FOUND:      errno = ENOENT;    break;
+            case ERROR_ACCESS_DENIED:
+            case ERROR_SHARING_VIOLATION:   errno = EACCES;    break;
+            case ERROR_INVALID_HANDLE:      errno = EBADF;     break;
+            case ERROR_NOT_ENOUGH_MEMORY:
+            case ERROR_OUTOFMEMORY:         errno = ENOMEM;    break;
+            case ERROR_INVALID_PARAMETER:   errno = EINVAL;    break;
+            case ERROR_TOO_MANY_OPEN_FILES: errno = EMFILE;    break;
+            case ERROR_NOT_SUPPORTED:       errno = ENOSYS;    break;
+            case ERROR_DIR_NOT_EMPTY:       errno = ENOTEMPTY; break;
+            case ERROR_ALREADY_EXISTS:
+            case ERROR_FILE_EXISTS:         errno = EEXIST;    break;
+            default:                        errno = EIO;       break;
+        }
+    }
+#endif
+
     soct_stat to_soct_stat(const struct stat &st) {
         soct_stat s{};
         s.st_dev = st.st_dev;
@@ -70,46 +93,59 @@ namespace {
                 break;
         }
 
-        if (guest_flags & SOCT_O_APPEND)
+        // Each flag is wrapped in braces so that when the #ifdef is absent (e.g.
+        // O_SYNC on Windows) the if-body is an empty compound statement rather than
+        // the next if-statement, which would otherwise make `return` unreachable.
+        if (guest_flags & SOCT_O_APPEND) {
 #ifdef O_APPEND
             host_flags |= O_APPEND;
 #endif
-        if (guest_flags & SOCT_O_CREAT)
+        }
+        if (guest_flags & SOCT_O_CREAT) {
 #ifdef O_CREAT
             host_flags |= O_CREAT;
 #endif
-        if (guest_flags & SOCT_O_TRUNC)
+        }
+        if (guest_flags & SOCT_O_TRUNC) {
 #ifdef O_TRUNC
             host_flags |= O_TRUNC;
 #endif
-        if (guest_flags & SOCT_O_EXCL)
+        }
+        if (guest_flags & SOCT_O_EXCL) {
 #ifdef O_EXCL
             host_flags |= O_EXCL;
 #endif
-        if (guest_flags & SOCT_O_SYNC)
+        }
+        if (guest_flags & SOCT_O_SYNC) {
 #ifdef O_SYNC
             host_flags |= O_SYNC;
 #endif
-        if (guest_flags & SOCT_O_NONBLOCK)
+        }
+        if (guest_flags & SOCT_O_NONBLOCK) {
 #ifdef O_NONBLOCK
             host_flags |= O_NONBLOCK;
 #endif
-        if (guest_flags & SOCT_O_NOFOLLOW)
+        }
+        if (guest_flags & SOCT_O_NOFOLLOW) {
 #ifdef O_NOFOLLOW
             host_flags |= O_NOFOLLOW;
 #endif
-        if (guest_flags & SOCT_O_CLOEXEC)
+        }
+        if (guest_flags & SOCT_O_CLOEXEC) {
 #ifdef O_CLOEXEC
             host_flags |= O_CLOEXEC;
 #endif
-        if (guest_flags & SOCT_O_DIRECTORY)
+        }
+        if (guest_flags & SOCT_O_DIRECTORY) {
 #ifdef O_DIRECTORY
             host_flags |= O_DIRECTORY;
 #endif
-        if (guest_flags & SOCT_O_NOCTTY)
+        }
+        if (guest_flags & SOCT_O_NOCTTY) {
 #ifdef O_NOCTTY
             host_flags |= O_NOCTTY;
 #endif
+        }
 
         return host_flags;
     }
@@ -200,18 +236,21 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
         auto host_flags = static_cast<int>(translate_open_flags(flags));
         auto host_mode = mode;
 
+        soct::logging::fesvr::debug << "Opening file " << name << " with flags " << host_flags << " and mode "
+                << host_mode << "\n";
 #ifdef _WIN32
         if (flags & SOCT_O_DIRECTORY) {
+            // _open cannot open directories; use CreateFile with FILE_FLAG_BACKUP_SEMANTICS.
             HANDLE h = CreateFileA(
                 name.c_str(),
                 GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 nullptr,
                 OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS, // the magic flag for directory handles
+                FILE_FLAG_BACKUP_SEMANTICS,
                 nullptr);
             if (h == INVALID_HANDLE_VALUE) {
-                _dosmaperr(GetLastError()); // maps Win32 error → errno
+                win32_to_errno();
                 return -errno;
             }
             int fd = _open_osfhandle(reinterpret_cast<intptr_t>(h), _O_RDONLY);
@@ -249,21 +288,25 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
         int host_dirfd = static_cast<int>(dirfd);
         const auto name = m_cmemif->read_string(pname, MAX_PATH_SIZE);
         const auto host_flags = translate_open_flags(flags);
+        soct::logging::fesvr::debug << "Opening file " << name << " with flags " << flags << " and mode " << mode
+                << " in directory " << dirfd << "\n";
 
 #ifdef _WIN32
         if (host_dirfd == RV_AT_FDCWD || host_dirfd == -100) {
             return sysret_errno(_open(name.c_str(), host_flags, mode));
         }
+        // Resolve the directory fd to a path using GetFinalPathNameByHandleA,
+        // then concatenate the relative name to form an absolute path.
         HANDLE dir_h = reinterpret_cast<HANDLE>(_get_osfhandle(host_dirfd));
         if (dir_h == INVALID_HANDLE_VALUE)
             return -EBADF;
         char dir_path[MAX_PATH];
         DWORD len = GetFinalPathNameByHandleA(dir_h, dir_path, MAX_PATH, FILE_NAME_NORMALIZED);
         if (len == 0 || len >= MAX_PATH) {
-            _dosmaperr(GetLastError());
+            win32_to_errno();
             return -errno;
         }
-        // GetFinalPathNameByHandle prepends \\?\  — strip it
+        // GetFinalPathNameByHandleA may prepend \\?\ — strip it.
         const char *base = (strncmp(dir_path, "\\\\?\\", 4) == 0) ? dir_path + 4 : dir_path;
         const std::string full_path = std::string(base) + "\\" + name;
         return sysret_errno(_open(full_path.c_str(), host_flags, mode));
@@ -290,7 +333,6 @@ syscall_device_t::syscall_device_t(const std::shared_ptr<htif_t> &htif, const st
 #endif
     });
 
-    // TODO implement SOCT_FOPEN
     register_syscall(SOCT_GET_MAINVARS, [this](sc_arg_t pbuf, sc_arg_t limit) -> sc_resp_t {
         soct::logging::fesvr::debug << "Getting main vars" << "\n";
         const auto &args = m_htif->target_args();
