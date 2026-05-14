@@ -5,11 +5,15 @@
 
 #include "soct/soct_ff.h"
 
+static const char* s_sdc_root = SOCT_SD_PATH;
+static const char* s_test_file = SOCT_SD_PATH "/TEST.TXT";
+
+
 void dump_fatfs_directory(void) {
     DIR dir;
     FILINFO fno;
 
-    FRESULT res = f_opendir(&dir, SOCT_SD_PATH);
+    FRESULT res = f_opendir(&dir, s_sdc_root);
     if (res != FR_OK) {
         printf("f_opendir failed: %d\n", res);
         return;
@@ -19,57 +23,67 @@ void dump_fatfs_directory(void) {
         res = f_readdir(&dir, &fno);
         if (res != FR_OK || fno.fname[0] == 0) break;
         printf("  [%s] size=%lu attr=%02x\n",
-                fno.fname, (unsigned long)fno.fsize, fno.fattrib);
+               fno.fname, (unsigned long) fno.fsize, fno.fattrib);
     }
     f_closedir(&dir);
 }
 
 int main(void) {
-    FIL fil;
-    UINT br;
 #define BUF_LEN 512
     static uint8_t buf[BUF_LEN];
     static uint8_t buf2[BUF_LEN];
 
-    // Fill buf with dummy data
-    for (int i = 0; i < (int)sizeof(buf); i++) buf[i] = (uint8_t)(i & 0xFF);
-    dump_fatfs_directory();
-    const char* path = SOCT_SD_PATH "/TEST.TXT";
-
-    // Create file on SD card
-    FRESULT res = f_open(&fil, path, FA_WRITE | FA_CREATE_ALWAYS);
-    if (res != FR_OK) { printf("Open failed: %d\n", res); return 1; }
-    printf("Opened file %s for writing\n", path);
-    res = f_write(&fil, buf, sizeof(buf), &br);
-    if (res != FR_OK) { printf("Write failed: %d\n", res); return 1; }
-    printf("Written %u bytes\n", br);
-    f_close(&fil);
-
+    for (int i = 0; i < (int) sizeof(buf); i++) buf[i] = (uint8_t) (i & 0xFF);
     dump_fatfs_directory();
 
-    // Read back data from file
-    res = f_open(&fil, path, FA_READ);
-    if (res != FR_OK) { printf("Open failed: %d\n", res); return 1; }
-    res = f_read(&fil, buf2, sizeof(buf2), &br);
-    if (res != FR_OK) { printf("Read failed: %d\n", res); return 1; }
-    printf("Read back %u bytes\n", br);
-    f_close(&fil);
+    FILE *f = fopen(s_test_file, "w+");
+    if (!f) {
+        printf("Open failed\n");
+        return 1;
+    }
+    printf("Opened file %s for writing\n", s_test_file);
+
+    size_t bw = fwrite(buf, 1, sizeof(buf), f);
+    if (ferror(f)) {
+        printf("Write failed\n");
+        fclose(f);
+        return 1;
+    }
+    printf("Written %zu bytes\n", bw);
+    fclose(f);
+
+    dump_fatfs_directory();
+
+    f = fopen(s_test_file, "r");
+    if (!f) {
+        printf("Open failed\n");
+        return 1;
+    }
+
+    size_t br = fread(buf2, 1, sizeof(buf2), f);
+    if (ferror(f)) {
+        printf("Read failed\n");
+        fclose(f);
+        return 1;
+    }
+    printf("Read back %zu bytes\n", br);
+    fclose(f);
 
     if (memcmp(buf, buf2, sizeof(buf)) == 0) {
         printf("Data matches!\n");
     } else {
         printf("Data does NOT match!\n");
-        // Print where they dont match
         for (size_t i = 0; i < BUF_LEN; i++) {
-            if (buf[i] != buf2[i]) {
+            if (buf[i] != buf2[i])
                 printf("  Byte %zu: wrote %02x, read back %02x\n", i, buf[i], buf2[i]);
-            }
         }
     }
 
-    // Delete file and show dir
-    res = f_unlink(path);
-    if (res != FR_OK) { printf("Unlink failed: %d\n", res); return 1; }
+    FRESULT res = f_unlink(s_test_file);
+    if (res != FR_OK) {
+        printf("Unlink failed: %d\n", res);
+        return 1;
+    }
     printf("Deleted TEST.TXT\n");
 
     dump_fatfs_directory();

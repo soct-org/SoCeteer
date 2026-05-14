@@ -7,9 +7,8 @@
 #include "soct/smoldtb.h"
 #include "soct/defaults.h"
 
-#include "syscall-uart.h"
-#include "syscall-sdc.h"
-#include "syscall-htif.h"
+#include "default-syscalls.h"
+#include "spinlock.h"
 
 static uint8_t s_dtb_tree[SOCT_DTB_MAX_SIZE];
 static size_t s_dtb_parsed_len = 0;
@@ -27,6 +26,8 @@ extern char **environ;
 extern int main(int argc, char *argv[], char *envp[]);
 
 extern int __main(int argc, char *argv[], char *envp[]);
+
+extern void init_soct_ff(void);
 
 static uintptr_t s_args[SOCT_ARG_MAX];
 static int s_argc = 0;
@@ -132,11 +133,7 @@ void _soct_start_main(int hartid, void *dtb_blob) {
         });
     }
 
-    if (soct_init_from_dtb_sdc()) {
-        soct_register_default_handler((soct_handler_t){
-            .handle = soct_handle_sdc,
-        });
-    }
+    init_soct_ff();
 
     if (soct_htif_present()) {
         soct_add_setup_msg("HTIF device detected, registering handler");
@@ -193,4 +190,3 @@ int soct_n_harts(void) {
     }
     return count > 0 ? (int) count : -1;
 }
-

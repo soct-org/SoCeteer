@@ -43,6 +43,10 @@ target_link_options(${SOCT_PROGRAM} PRIVATE
         "LINKER:--wrap=vprintf"
         "LINKER:--wrap=sprintf"
         "LINKER:--wrap=snprintf"
+        "LINKER:--wrap=fopen"
+        "LINKER:--wrap=fopen64"
+        "LINKER:--wrap=freopen"
+        "LINKER:--wrap=freopen64"
 )
 
 

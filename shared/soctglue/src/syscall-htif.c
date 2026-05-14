@@ -1,5 +1,8 @@
-#pragma once
+#include <stdbool.h>
+
 #include "spinlock.h"
+#include "soct/defaults.h"
+#include "soct/syscall-handler.h"
 #include "soct/syscalls.h"
 
 extern volatile sc_htif_slot_t tohost;
@@ -12,7 +15,7 @@ sc_htif_slot_t htif_tohost(const uint8_t dev, const uint8_t cmd, const uintptr_t
            (payload & SOCT_HTIF_PAYLOAD_MASK);
 }
 
-static bool htif_syscall(volatile sc_arg_t buf[8], bool wait) {
+bool htif_syscall(volatile sc_arg_t buf[8], bool wait) {
     // Note: The pointer value must not exceed SOCT_HTIF_PAYLOAD_MASK. There is no real way to react to this not being the case.
     sc_htif_slot_t sc = htif_tohost(0, 0, (uintptr_t) buf);
     uint64_t start;
@@ -36,12 +39,12 @@ static bool htif_syscall(volatile sc_arg_t buf[8], bool wait) {
     return true;
 }
 
-static bool soct_htif_present(void) {
+bool soct_htif_present(void) {
     volatile sc_arg_t buf[8] = {SOCT_HTIF_DEV_TEST, 0, 0, 0, 0, 0, 0, 0};
     return htif_syscall(buf, false);
 }
 
-static void soct_handle_htif(soct_handler_resp_t *resp,
+void soct_handle_htif(soct_handler_resp_t *resp,
                              const sc_type_t syscall,
                              const sc_arg_t a0,
                              const sc_arg_t a1,

@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-
+#include <stdio.h>
 #include "ff.h"
 #include "diskio.h"
 
@@ -96,9 +96,40 @@ typedef struct {
 } soct_disk_ops_t;
 
 
+static const char *const s_vol_str[FF_VOLUMES] = {FF_VOLUME_STRS};
+
+
 /**
  * Set the ops used for mounting subsequent devices.
  * @param ops The disk ops to use for subsequent mounts.
  * The caller retains ownership of the pointer and must ensure it remains valid for the lifetime of the mount.
  */
 void soct_set_mount_ops(const soct_disk_ops_t *ops);
+
+
+/**
+ * Converts a POSIX fopen mode string to SOCT open flags.
+ *
+ * "r"  -> O_RDONLY
+ * "r+" -> O_RDWR
+ * "w"  -> O_WRONLY | O_CREAT | O_TRUNC
+ * "w+" -> O_RDWR   | O_CREAT | O_TRUNC
+ * "a"  -> O_WRONLY | O_CREAT | O_APPEND
+ * "a+" -> O_RDWR   | O_CREAT | O_APPEND
+ *
+ * @param mode  fopen-style mode string; 'b' suffix is ignored.
+ * @return      Combination of SOCT_O_* flags, or -1 if mode is unrecognized.
+ */
+int mode_to_soct_flags(const char *mode);
+
+
+FILE *soct_fopen(const char *path, const char *mode);
+
+
+FILE *soct_fopen64(const char *path, const char *mode);
+
+
+FILE *soct_freopen(const char *path, const char *mode, FILE *stream);
+
+
+FILE *soct_freopen64(const char *path, const char *mode, FILE *stream);

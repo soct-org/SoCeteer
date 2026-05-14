@@ -1,37 +1,11 @@
 #include <stdint.h>
+#include <fcntl.h>
+#include <string.h>
 
-#include "soct/soctglue.h"
 #include "soct/soct_ff.h"
-#include "soct/syscall-handler.h"
 
-extern void soct_add_setup_msg(const char *msg);
-
-void soct_handle_sdc(
-    soct_handler_resp_t *resp,
-    const sc_type_t syscall,
-    const sc_arg_t a0,
-    const sc_arg_t a1,
-    const sc_arg_t a2,
-    const sc_arg_t a3,
-    const sc_arg_t a4,
-    const sc_arg_t a5,
-    const sc_arg_t a6) {
-    (void) syscall;
-    (void) a0;
-    (void) a1;
-    (void) a2;
-    (void) a3;
-    (void) a4;
-    (void) a5;
-    (void) a6;
-    resp->status = SOCT_HANDLER_PASS;
-}
-
-bool soct_init_from_dtb_sdc() {
-    soct_add_setup_msg("Soctglue build with ff stubs - no SD-card support");
-    return false;
-}
-
+#include <stdbool.h>
+#include <stdio.h>
 
 FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode) {
     (void) fp;
@@ -243,4 +217,29 @@ TCHAR *f_gets(TCHAR *buff, int len, FIL *fp) {
     (void) len;
     (void) fp;
     return NULL;
+}
+
+
+FILE *__wrap_fopen(const char *path, const char *mode) {
+    return soct_fopen(path, mode);
+}
+
+
+FILE *__wrap_fopen64(const char *path, const char *mode) {
+    return soct_fopen64(path, mode);
+}
+
+
+FILE *__wrap_freopen(const char *path, const char *mode, FILE *stream) {
+    return soct_freopen(path, mode, stream);
+}
+
+
+FILE *__wrap_freopen64(const char *path, const char *mode, FILE *stream) {
+    return soct_freopen64(path, mode, stream);
+}
+
+
+void init_soct_ff(void) {
+    // No initialization needed for the stub implementation
 }

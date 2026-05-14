@@ -4,7 +4,6 @@
 #include "diskio.h"
 
 #include "soct/soctglue.h"
-#include "syscall-sdc.h"
 #include "soct/syscall-handler.h"
 #include "soct/defaults.h"
 #include "soct/smoldtb.h"
@@ -134,19 +133,36 @@ DRESULT sdc_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count);
 
 DRESULT sdc_ioctl(BYTE pdrv, BYTE cmd, void *buff);
 
+/* Volume names that are treated as SD card slots, in priority order */
+static const char *const s_sd_vol_names[] = { SOCT_SD, SOCT_SD2 };
+static const char *const s_sd_path_names[] = { SOCT_SD_PATH, SOCT_SD2_PATH };
+#define SDC_MAX_DRIVES ((int)(sizeof(s_sd_vol_names) / sizeof(s_sd_vol_names[0])))
 
-extern FATFS s_fs;
-static struct sdc_regs *s_regs = (struct sdc_regs *) SOCT_DEFAULT_SDC_ADDR;
-static BYTE s_card_type = 0;
-static uint32_t s_response[4] = {0};
-static DSTATUS s_drv_status;
+extern FATFS s_fs[FF_VOLUMES];
+
+static struct sdc_regs *s_regs[FF_VOLUMES];
+static BYTE s_card_type[FF_VOLUMES];
+static uint32_t s_response[FF_VOLUMES][4];
+static DSTATUS s_drv_status[FF_VOLUMES] = {
+    [0 ... (FF_VOLUMES - 1)] = STA_NOINIT
+};
+
 static const soct_disk_ops_t s_sdc_ops = {
     .initialize = sdc_initialize,
-    .status = sdc_status,
-    .read = sdc_read,
-    .write = sdc_write,
-    .ioctl = sdc_ioctl,
+    .status     = sdc_status,
+    .read       = sdc_read,
+    .write      = sdc_write,
+    .ioctl      = sdc_ioctl,
 };
+
+/* Return the pdrv for a volume name, or -1 if not found */
+static int find_pdrv(const char *vol_name) {
+    for (int i = 0; i < FF_VOLUMES; i++) {
+        if (strcmp(s_vol_str[i], vol_name) == 0)
+            return i;
+    }
+    return -1;
+}
 
 static void soct_usleep(unsigned us) {
     uintptr_t cycles0;
@@ -158,64 +174,50 @@ static void soct_usleep(unsigned us) {
     }
 }
 
-int _sdc_cmd_finish(unsigned cmd) {
+static int _sdc_cmd_finish(BYTE pdrv, unsigned cmd) {
     while (1) {
-        unsigned status = s_regs->cmd_int_status;
+        unsigned status = s_regs[pdrv]->cmd_int_status;
         if (status) {
-            // clear interrupts
-            s_regs->cmd_int_status = 0;
-            while (s_regs->software_reset != 0) {
-            }
+            s_regs[pdrv]->cmd_int_status = 0;
+            while (s_regs[pdrv]->software_reset != 0) {}
             if (status == SDC_CMD_INT_STATUS_CC) {
-                // get response
-                s_response[0] = s_regs->response1;
-                s_response[1] = s_regs->response2;
-                s_response[2] = s_regs->response3;
-                s_response[3] = s_regs->response4;
+                s_response[pdrv][0] = s_regs[pdrv]->response1;
+                s_response[pdrv][1] = s_regs[pdrv]->response2;
+                s_response[pdrv][2] = s_regs[pdrv]->response3;
+                s_response[pdrv][3] = s_regs[pdrv]->response4;
                 return 0;
             }
             errno = FR_DISK_ERR;
-            if (status & SDC_CMD_INT_STATUS_CTE)
-                errno = FR_TIMEOUT;
-            if (status & SDC_CMD_INT_STATUS_CCRC)
-                errno = ERR_CMD_CRC;
-            if (status & SDC_CMD_INT_STATUS_CIE)
-                errno = ERR_CMD_CHECK;
+            if (status & SDC_CMD_INT_STATUS_CTE)  errno = FR_TIMEOUT;
+            if (status & SDC_CMD_INT_STATUS_CCRC) errno = ERR_CMD_CRC;
+            if (status & SDC_CMD_INT_STATUS_CIE)  errno = ERR_CMD_CHECK;
             break;
         }
     }
     return -1;
 }
 
-
-int _sdc_data_finish(void) {
+static int _sdc_data_finish(BYTE pdrv) {
     int status;
-
-    while ((status = s_regs->dat_int_status) == 0) {
-    }
-    s_regs->dat_int_status = 0;
-    while (s_regs->software_reset != 0) {
-    }
+    while ((status = s_regs[pdrv]->dat_int_status) == 0) {}
+    s_regs[pdrv]->dat_int_status = 0;
+    while (s_regs[pdrv]->software_reset != 0) {}
 
     if (status == SDC_DAT_INT_STATUS_TRS) return 0;
     errno = FR_DISK_ERR;
-    if (status & SDC_DAT_INT_STATUS_CTE)
-        errno = FR_TIMEOUT;
-    if (status & SDC_DAT_INT_STATUS_CRC)
-        errno = ERR_DATA_CRC;
-    if (status & SDC_DAT_INT_STATUS_CFE)
-        errno = ERR_DATA_FIFO;
+    if (status & SDC_DAT_INT_STATUS_CTE) errno = FR_TIMEOUT;
+    if (status & SDC_DAT_INT_STATUS_CRC) errno = ERR_DATA_CRC;
+    if (status & SDC_DAT_INT_STATUS_CFE) errno = ERR_DATA_FIFO;
     return -1;
 }
 
-
-int send_data_cmd(unsigned cmd, unsigned arg, void *buf, unsigned blocks) {
+static int send_data_cmd(BYTE pdrv, unsigned cmd, unsigned arg, void *buf, unsigned blocks) {
     unsigned command = (cmd & 0x3f) << 8;
     switch (cmd) {
         case CMD0:
         case CMD4:
         case CMD15:
-            // No responce
+            // No response
             break;
         case CMD11:
         case CMD13:
@@ -235,9 +237,9 @@ int send_data_cmd(unsigned cmd, unsigned arg, void *buf, unsigned blocks) {
         case CMD56:
         case ACMD6:
             // R1
-            command |= 1; // 48 bits
-            command |= 1 << 3; // resp CRC
-            command |= 1 << 4; // resp OPCODE
+            command |= 1;       // 48 bits
+            command |= 1 << 3;  // resp CRC
+            command |= 1 << 4;  // resp OPCODE
             break;
         case CMD7:
         case CMD12:
@@ -246,40 +248,39 @@ int send_data_cmd(unsigned cmd, unsigned arg, void *buf, unsigned blocks) {
         case CMD29:
         case CMD38:
             // R1b
-            command |= 1; // 48 bits
-            command |= 1 << 2; // busy
-            command |= 1 << 3; // resp CRC
-            command |= 1 << 4; // resp OPCODE
+            command |= 1;       // 48 bits
+            command |= 1 << 2;  // busy
+            command |= 1 << 3;  // resp CRC
+            command |= 1 << 4;  // resp OPCODE
             break;
         case CMD2:
         case CMD9:
         case CMD10:
             // R2
-            command |= 2; // 136 bits
-            command |= 1 << 3; // resp CRC
+            command |= 2;       // 136 bits
+            command |= 1 << 3;  // resp CRC
             break;
         case ACMD41:
             // R3
-            command |= 1; // 48 bits
+            command |= 1;       // 48 bits
             break;
         case CMD3:
             // R6
-            command |= 1; // 48 bits
-            command |= 1 << 2; // busy
-            command |= 1 << 3; // resp CRC
-            command |= 1 << 4; // resp OPCODE
+            command |= 1;       // 48 bits
+            command |= 1 << 2;  // busy
+            command |= 1 << 3;  // resp CRC
+            command |= 1 << 4;  // resp OPCODE
             break;
         case CMD8:
             // R7
-            command |= 1; // 48 bits
-            command |= 1 << 3; // resp CRC
-            command |= 1 << 4; // resp OPCODE
+            command |= 1;       // 48 bits
+            command |= 1 << 3;  // resp CRC
+            command |= 1 << 4;  // resp OPCODE
             break;
     }
 
     if (blocks) {
         command |= 1 << 5; // data transfer enable
-        // Set write direction bit for write commands
         switch (cmd) {
             case CMD24:
             case CMD25:
@@ -292,234 +293,211 @@ int send_data_cmd(unsigned cmd, unsigned arg, void *buf, unsigned blocks) {
             default:
                 break;
         }
-        if ((intptr_t) buf & 3) {
+        if ((intptr_t)buf & 3) {
             errno = ERR_BUF_ALIGNMENT;
             return -1;
         }
-        s_regs->dma_addres = (uint64_t) (intptr_t) buf;
-        s_regs->block_size = 511;
-        s_regs->block_count = blocks - 1;
-        s_regs->data_timeout = 0xFFFFFF;
+        s_regs[pdrv]->dma_addres    = (uint64_t)(intptr_t)buf;
+        s_regs[pdrv]->block_size    = 511;
+        s_regs[pdrv]->block_count   = blocks - 1;
+        s_regs[pdrv]->data_timeout  = 0xFFFFFF;
     }
 
-    s_regs->command = command;
-    s_regs->cmd_timeout = 0xFFFFF;
-    s_regs->argument = arg;
+    s_regs[pdrv]->command     = command;
+    s_regs[pdrv]->cmd_timeout = 0xFFFFF;
+    s_regs[pdrv]->argument    = arg;
 
-    if (_sdc_cmd_finish(cmd) < 0) return -1;
-    if (blocks) return _sdc_data_finish();
-
+    if (_sdc_cmd_finish(pdrv, cmd) < 0) return -1;
+    if (blocks) return _sdc_data_finish(pdrv);
     return 0;
 }
 
-#define send_cmd(cmd, arg) send_data_cmd(cmd, arg, NULL, 0)
+#define send_cmd(pdrv, cmd, arg) send_data_cmd(pdrv, cmd, arg, NULL, 0)
 
 
 DSTATUS sdc_initialize(BYTE pdrv) {
     unsigned rca;
 
+    s_card_type[pdrv]  = 0;
+    s_drv_status[pdrv] = STA_NOINIT;
+
     /* Reset controller */
-    s_regs->software_reset = 1;
-    while ((s_regs->software_reset & 1) == 0) {
-    }
-    s_regs->clock_divider = 0x7c;
-    s_regs->software_reset = 0;
-    while (s_regs->software_reset) {
-    }
+    s_regs[pdrv]->software_reset = 1;
+    while ((s_regs[pdrv]->software_reset & 1) == 0) {}
+    s_regs[pdrv]->clock_divider = 0x7c;
+    s_regs[pdrv]->software_reset = 0;
+    while (s_regs[pdrv]->software_reset) {}
     soct_usleep(5000);
 
-    s_card_type = 0;
-    s_drv_status = STA_NOINIT;
-
-    if (s_regs->capability & SDC_CAPABILITY_SD_RESET) {
+    if (s_regs[pdrv]->capability & SDC_CAPABILITY_SD_RESET) {
         /* Power cycle SD card */
-        s_regs->control |= SDC_CONTROL_SD_RESET;
+        s_regs[pdrv]->control |= SDC_CONTROL_SD_RESET;
         soct_usleep(1000000);
-        s_regs->control &= ~SDC_CONTROL_SD_RESET;
+        s_regs[pdrv]->control &= ~SDC_CONTROL_SD_RESET;
         soct_usleep(100000);
     }
 
     /* Enter Idle state */
-    send_cmd(CMD0, 0);
+    send_cmd(pdrv, CMD0, 0);
 
-    s_card_type = CT_SD1;
-    if (send_cmd(CMD8, 0x1AA) == 0) {
-        if ((s_response[0] & 0xfff) != 0x1AA) {
+    s_card_type[pdrv] = CT_SD1;
+    if (send_cmd(pdrv, CMD8, 0x1AA) == 0) {
+        if ((s_response[pdrv][0] & 0xfff) != 0x1AA) {
             errno = ERR_CMD_CHECK;
-            return s_drv_status;
+            return s_drv_status[pdrv];
         }
-        s_card_type = CT_SD2;
+        s_card_type[pdrv] = CT_SD2;
     }
 
     /* Wait for leaving idle state (ACMD41 with HCS bit) */
     while (1) {
-        /* ACMD41, Set Operating Conditions: Host High Capacity & 3.3V */
-        if (send_cmd(CMD55, 0) < 0 || send_cmd(ACMD41, 0x40300000) < 0) return s_drv_status;
-        if (s_response[0] & (1 << 31)) {
-            if (s_response[0] & (1 << 30)) s_card_type |= CT_BLOCK;
+        if (send_cmd(pdrv, CMD55, 0) < 0 || send_cmd(pdrv, ACMD41, 0x40300000) < 0)
+            return s_drv_status[pdrv];
+        if (s_response[pdrv][0] & (1 << 31)) {
+            if (s_response[pdrv][0] & (1 << 30)) s_card_type[pdrv] |= CT_BLOCK;
             break;
         }
     }
 
     /* Enter Identification state */
-    if (send_cmd(CMD2, 0) < 0) return s_drv_status;
+    if (send_cmd(pdrv, CMD2, 0) < 0) return s_drv_status[pdrv];
 
     /* Get RCA (Relative Card Address) */
     rca = 0x1234;
-    if (send_cmd(CMD3, rca << 16) < 0) return s_drv_status;
-    rca = s_response[0] >> 16;
+    if (send_cmd(pdrv, CMD3, rca << 16) < 0) return s_drv_status[pdrv];
+    rca = s_response[pdrv][0] >> 16;
 
     /* Select card */
-    if (send_cmd(CMD7, rca << 16) < 0) return s_drv_status;
+    if (send_cmd(pdrv, CMD7, rca << 16) < 0) return s_drv_status[pdrv];
 
     /* Clock 25MHz */
-    s_regs->clock_divider = 3;
+    s_regs[pdrv]->clock_divider = 3;
     soct_usleep(10000);
 
     /* Bus width 1-bit */
-    s_regs->control = 0;
-    if (send_cmd(CMD55, rca << 16) < 0 || send_cmd(ACMD6, 0) < 0) return s_drv_status;
+    s_regs[pdrv]->control = 0;
+    if (send_cmd(pdrv, CMD55, rca << 16) < 0 || send_cmd(pdrv, ACMD6, 0) < 0)
+        return s_drv_status[pdrv];
 
     /* Set R/W block length to 512 */
-    if (send_cmd(CMD16, 512) < 0) return s_drv_status;
+    if (send_cmd(pdrv, CMD16, 512) < 0) return s_drv_status[pdrv];
 
-    s_drv_status &= ~STA_NOINIT;
-    return s_drv_status;
+    s_drv_status[pdrv] &= ~STA_NOINIT;
+    return s_drv_status[pdrv];
 }
 
 
 DSTATUS sdc_status(BYTE pdrv) {
-    return s_drv_status;
+    return s_drv_status[pdrv];
 }
 
 
 DRESULT sdc_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
-
     if (!count) return RES_PARERR;
-    if (s_drv_status & STA_NOINIT) return RES_NOTRDY;
+    if (s_drv_status[pdrv] & STA_NOINIT) return RES_NOTRDY;
 
-    /* Convert LBA to byte address if needed */
-    if (!(s_card_type & CT_BLOCK)) sector *= 512;
+    if (!(s_card_type[pdrv] & CT_BLOCK)) sector *= 512;
     while (count > 0) {
         UINT bcnt = count > MAX_BLOCK_CNT ? MAX_BLOCK_CNT : count;
         unsigned bytes = bcnt * 512;
-        if (send_data_cmd(bcnt == 1 ? CMD17 : CMD18, sector, buff, bcnt) < 0) return RES_ERROR;
-        if (bcnt > 1 && send_cmd(CMD12, 0) < 0) return RES_ERROR;
-        sector += (s_card_type & CT_BLOCK) ? bcnt : bytes;
+        if (send_data_cmd(pdrv, bcnt == 1 ? CMD17 : CMD18, sector, buff, bcnt) < 0) return RES_ERROR;
+        if (bcnt > 1 && send_cmd(pdrv, CMD12, 0) < 0) return RES_ERROR;
+        sector += (s_card_type[pdrv] & CT_BLOCK) ? bcnt : bytes;
         count -= bcnt;
         buff += bytes;
     }
-
     return RES_OK;
 }
 
 
 DRESULT sdc_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
     if (!count) return RES_PARERR;
-    if (s_drv_status & STA_NOINIT) return RES_NOTRDY;
+    if (s_drv_status[pdrv] & STA_NOINIT) return RES_NOTRDY;
 
-    // Convert LBA to byte address if the card doesn't support block addressing
-    if (!(s_card_type & CT_BLOCK)) sector *= 512;
-
+    if (!(s_card_type[pdrv] & CT_BLOCK)) sector *= 512;
     while (count > 0) {
         UINT bcnt = count > MAX_BLOCK_CNT ? MAX_BLOCK_CNT : count;
         unsigned bytes = bcnt * 512;
-
-        if (send_data_cmd(bcnt == 1 ? CMD24 : CMD25, sector, (void *)buff, bcnt) < 0)
+        if (send_data_cmd(pdrv, bcnt == 1 ? CMD24 : CMD25, sector, (void *)buff, bcnt) < 0)
             return RES_ERROR;
-
-        if (bcnt > 1 && send_cmd(CMD12, 0) < 0)
+        if (bcnt > 1 && send_cmd(pdrv, CMD12, 0) < 0)
             return RES_ERROR;
-
-        sector += (s_card_type & CT_BLOCK) ? bcnt : bytes;
+        sector += (s_card_type[pdrv] & CT_BLOCK) ? bcnt : bytes;
         count -= bcnt;
         buff += bytes;
     }
-
     return RES_OK;
 }
 
 
 DRESULT sdc_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
-    if (s_drv_status & STA_NOINIT) return RES_NOTRDY;
+    if (s_drv_status[pdrv] & STA_NOINIT) return RES_NOTRDY;
 
     switch (cmd) {
         case CTRL_SYNC:
-            // No caching used; assume always synced
             return RES_OK;
-
         case GET_SECTOR_COUNT:
-            // Could return dummy value; real implementation needs CMD9 parsing
-            *(LBA_t *)buff = 0x100000; // Example: 1 million sectors
+            *(LBA_t *)buff = 0x100000;
             return RES_OK;
-
         case GET_SECTOR_SIZE:
             *(WORD *)buff = 512;
             return RES_OK;
-
         case GET_BLOCK_SIZE:
-            *(DWORD *)buff = 1; // Erase block size in units of sectors (not always available)
+            *(DWORD *)buff = 1;
             return RES_OK;
-
         default:
             return RES_PARERR;
     }
 }
 
 
-bool soct_init_from_dtb_sdc() {
-    dtb_node *node = dtb_find_compatible(NULL, SOCT_SDC_NAME_DTS);
-    if (!node) {
-        soct_add_setup_msg("No SD card node found in DTB - SD card handler disabled");
-        return false;
-    }
-    dtb_prop *reg_prop = dtb_find_prop(node, "reg");
-    if (!reg_prop) {
-        soct_add_setup_msg("SD card node found in DTB but it has no 'reg' property");
-        return false;
-    }
-    const size_t addr_cells = dtb_get_addr_cells_for(node);
-    uintmax_t regs[16] = {0};
-    const size_t n = dtb_read_prop_1(reg_prop, addr_cells, regs);
+bool soct_init_from_dtb_sdc(void) {
+    dtb_node *node = NULL;
+    bool any_mounted = false;
 
-    if (n < 1) {
-        soct_add_setup_msg("SD card node found in DTB but failed to read base address from 'reg' property");
-        return false;
-    }
+    for (int slot = 0; slot < SDC_MAX_DRIVES; slot++) {
+        node = dtb_find_compatible(node, SOCT_SDC_NAME_DTS);
+        if (!node) break;
 
-    s_regs = (struct sdc_regs *) regs[0];
-    soct_set_mount_ops(&s_sdc_ops);
-    const FRESULT res = f_mount(&s_fs, SOCT_SD_PATH, 1);
-    if (res != FR_OK) {
+        const char *vol_name = s_sd_vol_names[slot];
+        const int pdrv = find_pdrv(vol_name);
+        if (pdrv < 0) {
+            soct_add_setup_msg("SD card volume name not found in VolumeStr");
+            continue;
+        }
+
+        dtb_prop *reg_prop = dtb_find_prop(node, "reg");
+        if (!reg_prop) {
+            soct_add_setup_msg("SD card node found in DTB but it has no 'reg' property");
+            continue;
+        }
+        const size_t addr_cells = dtb_get_addr_cells_for(node);
+        uintmax_t regs[16] = {0};
+        if (dtb_read_prop_1(reg_prop, addr_cells, regs) < 1) {
+            soct_add_setup_msg("SD card node found in DTB but failed to read base address from 'reg' property");
+            continue;
+        }
+
+        s_regs[pdrv] = (struct sdc_regs *)regs[0];
+        soct_set_mount_ops(&s_sdc_ops);
+
+        const char *mount_path = s_sd_path_names[slot];
+        const FRESULT res = f_mount(&s_fs[pdrv], mount_path, 1);
+        if (res != FR_OK) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "%s: filesystem mount failed with error %d", vol_name, res);
+            soct_add_setup_msg(msg);
+            continue;
+        }
+
         char msg[128];
-        snprintf(msg, sizeof(msg), "SD card filesystem mount failed with error %d", res);
+        snprintf(msg, sizeof(msg), "%s: mounted from DTB node at 0x%lx", mount_path, regs[0]);
         soct_add_setup_msg(msg);
-        return false;
+        any_mounted = true;
     }
-    char msg[128];
-    snprintf(msg, sizeof(msg), "SD card node found in DTB with base address 0x%jx", regs[0]);
-    soct_add_setup_msg(msg);
-    return true;
-}
 
+    if (!any_mounted)
+        soct_add_setup_msg("No SD card nodes found in DTB - SD card handler disabled");
 
-void soct_handle_sdc(
-    soct_handler_resp_t *resp,
-    const sc_type_t syscall,
-    const sc_arg_t a0,
-    const sc_arg_t a1,
-    const sc_arg_t a2,
-    const sc_arg_t a3,
-    const sc_arg_t a4,
-    const sc_arg_t a5,
-    const sc_arg_t a6) {
-    (void) syscall;
-    (void) a0;
-    (void) a1;
-    (void) a2;
-    (void) a3;
-    (void) a4;
-    (void) a5;
-    (void) a6;
-    resp->status = SOCT_HANDLER_PASS;
+    return any_mounted;
 }

@@ -2,9 +2,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+
+#include "soct/soct_ff.h"
 #include "soct/syscall-handler.h"
-#include "syscall-uart.h"
-#include "soct/defaults.h"
 
 extern __thread char __printbuf[128];
 extern __thread size_t __printbuflen;

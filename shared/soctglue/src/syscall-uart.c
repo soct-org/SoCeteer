@@ -1,8 +1,6 @@
-#pragma once
+#include "default-syscalls.h"
 
-#include "soct/soctglue.h"
 #include "soct/syscall-handler.h"
-#include "syscall-uart.h"
 #include "soct/smoldtb.h"
 #include "soct/defaults.h"
 #include "soct/soct_ff.h"
@@ -12,9 +10,7 @@
 #define SR_TX_FIFO_EMPTY        (1 << 2) /* transmit FIFO empty */
 #define SR_TX_FIFO_FULL         (1 << 3) /* transmit FIFO full */
 
-extern void soct_add_setup_msg(const char *msg);
-
-static uintptr_t s_uart_base = SOCT_DEFAULT_UART_ADDR;
+uintptr_t s_uart_base = SOCT_DEFAULT_UART_ADDR;
 
 struct uart_regs {
     volatile uint32_t rx_fifo;
@@ -25,7 +21,7 @@ struct uart_regs {
 
 
 // Write char to UART
-static void kputc(const char ch) {
+void kputc(const char ch) {
     if (ch == '\n') kputc('\r'); // convert LF to CRLF
     struct uart_regs *regs = (struct uart_regs *) s_uart_base;
     while (regs->status & SR_TX_FIFO_FULL) {
@@ -35,7 +31,7 @@ static void kputc(const char ch) {
 
 
 // Write string to UART
-static void kputs(const char *s, const size_t nbyte) {
+void kputs(const char *s, const size_t nbyte) {
     if (nbyte == 0) {
         while (*s) kputc(*s++);
     } else {
@@ -46,7 +42,7 @@ static void kputs(const char *s, const size_t nbyte) {
 }
 
 // Read char from UART
-static char kgetc() {
+char kgetc() {
     struct uart_regs *regs = (struct uart_regs *) s_uart_base;
     while (!(regs->status & SR_RX_FIFO_VALID_DATA)) {
     }
@@ -59,7 +55,7 @@ static char kgetc() {
  * This should be called during the initialization phase of the soct glue code, before any syscalls are handled.
  * @return Whether the initialization was successful and the handler should be used.
  */
-static bool soct_init_from_dtb_uart() {
+bool soct_init_from_dtb_uart() {
     dtb_node *node = dtb_find_compatible(NULL, SOCT_UART_NAME_DTS);
     if (!node) {
         soct_add_setup_msg("No UART node found in DTB - UART handler disabled");
@@ -76,7 +72,7 @@ static bool soct_init_from_dtb_uart() {
     if (n > 1) {
         s_uart_base = regs[0];
         char msg[128];
-        snprintf(msg, sizeof(msg), "UART node found in DTB with base address 0x%jx", s_uart_base);
+        snprintf(msg, sizeof(msg), "UART node found in DTB with base address 0x%lx", s_uart_base);
         soct_add_setup_msg(msg);
         return true;
     }
@@ -85,7 +81,7 @@ static bool soct_init_from_dtb_uart() {
 }
 
 
-static void soct_handle_uart(
+void soct_handle_uart(
     soct_handler_resp_t *resp,
     const sc_type_t syscall,
     const sc_arg_t a0,
