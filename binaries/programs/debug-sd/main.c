@@ -38,14 +38,14 @@ int main(void) {
 
     FILE *f = fopen(s_test_file, "w+");
     if (!f) {
-        printf("Open failed\n");
+        perror("fopen");
         return 1;
     }
     printf("Opened file %s for writing\n", s_test_file);
 
     size_t bw = fwrite(buf, 1, sizeof(buf), f);
     if (ferror(f)) {
-        printf("Write failed\n");
+        perror("fwrite");
         fclose(f);
         return 1;
     }
@@ -56,13 +56,13 @@ int main(void) {
 
     f = fopen(s_test_file, "r");
     if (!f) {
-        printf("Open failed\n");
+        perror("fopen");
         return 1;
     }
 
     size_t br = fread(buf2, 1, sizeof(buf2), f);
     if (ferror(f)) {
-        printf("Read failed\n");
+        perror("fread");
         fclose(f);
         return 1;
     }
@@ -81,7 +81,7 @@ int main(void) {
 
     FRESULT res = f_unlink(s_test_file);
     if (res != FR_OK) {
-        printf("Unlink failed: %d\n", res);
+        printf("f_unlink(\"%s\") failed: FRESULT %d\n", s_test_file, res);
         return 1;
     }
     printf("Deleted TEST.TXT\n");

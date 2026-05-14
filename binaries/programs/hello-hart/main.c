@@ -5,9 +5,9 @@
 #include <stdarg.h>
 
 
-#include "soct/syscall-handler.h"
 #include "soct/defaults.h"
 #include "soct/soctglue.h"
+#include "soct/syscall-handler.h"
 #include "atomic.h"
 
 #ifdef SOCT_CLINT_BASE

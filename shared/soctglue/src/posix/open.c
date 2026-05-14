@@ -24,8 +24,15 @@ int mode_to_soct_flags(const char *mode) {
 }
 
 FILE *soct_fopen(const char *path, const char *mode) {
+    if (!path || !mode) {
+        errno = EFAULT;
+        return NULL;
+    }
     int flags = mode_to_soct_flags(mode);
-    if (flags < 0) return NULL;
+    if (flags < 0) {
+        errno = EINVAL;
+        return NULL;
+    }
     int fd = _open(path, flags, 0666);
     if (fd < 0) return NULL;
     return fdopen(fd, mode);
@@ -38,9 +45,19 @@ FILE *soct_fopen64(const char *path, const char *mode) {
 
 
 FILE *soct_freopen(const char *path, const char *mode, FILE *stream) {
-    if (!path) return NULL;
+    if (!path) {
+        errno = EFAULT;
+        fclose(stream);
+        return NULL;
+    }
+    if (!mode) {
+        errno = EFAULT;
+        fclose(stream);
+        return NULL;
+    }
     int flags = mode_to_soct_flags(mode);
     if (flags < 0) {
+        errno = EINVAL;
         fclose(stream);
         return NULL;
     }

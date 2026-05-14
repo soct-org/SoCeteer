@@ -49,8 +49,10 @@ long soct_syscall(
             soct_handler_resp_t resp = {.status = SOCT_HANDLER_PASS, .ret = 0};
             s_syscall_handlers[idx].handle(&resp, syscall, a0, a1, a2, a3, a4, a5, a6);
             if (resp.status == SOCT_HANDLER_HANDLED) {
-                if (resp.ret < 0)
+                if (resp.ret < 0) {
                     errno = (int) -resp.ret;
+                    return -1;
+                }
                 return resp.ret;
             }
         }

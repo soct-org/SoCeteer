@@ -28,7 +28,7 @@ void enable_fpu() {
 int main() {
 #ifndef BAREMETAL
     if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-      perror("mlockall failed");
+      perror("mlockall");
       exit(1);
     }
 #endif

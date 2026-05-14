@@ -98,20 +98,31 @@ void soct_handle_uart(
     switch (syscall) {
         case SOCT_READ:
             if (a0 == SOCT_STDIN) {
-                char *buf = (char *) a1;
                 const size_t nbyte = a2;
+                if (nbyte > 0 && a1 == 0) {
+                    resp->ret = -EFAULT;
+                    resp->status = SOCT_HANDLER_HANDLED;
+                    break;
+                }
+                char *buf = (char *) a1;
                 for (size_t i = 0; i < nbyte; i++) {
                     buf[i] = kgetc();
                 }
                 resp->status = SOCT_HANDLER_HANDLED;
-                resp->ret = (long) nbyte; // Return number of bytes read
+                resp->ret = (long) nbyte;
             }
             break;
         case SOCT_WRITE:
             if (a0 == SOCT_STDOUT || a0 == SOCT_STDERR) {
-                kputs((const char *) a1, a2);
+                const size_t nbyte = a2;
+                if (nbyte > 0 && a1 == 0) {
+                    resp->ret = -EFAULT;
+                    resp->status = SOCT_HANDLER_HANDLED;
+                    break;
+                }
+                kputs((const char *) a1, nbyte);
                 resp->status = SOCT_HANDLER_HANDLED;
-                resp->ret = (long) a2; // Return number of bytes written
+                resp->ret = (long) nbyte;
             }
             break;
         default:

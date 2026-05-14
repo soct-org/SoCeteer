@@ -1,5 +1,5 @@
 #pragma once
-#include "stddef.h"
+#include <stddef.h>
 
 /**
  * Get the number of harts or -1 if it cannot be determined
