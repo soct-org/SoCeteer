@@ -124,3 +124,73 @@ add_custom_target(${SOCT_PROGRAM}-info ALL
         COMMENT "Generating objdump and nm info for ${SOCT_PROGRAM} at ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.{objdump,nm}"
         VERBATIM
 )
+
+# ---- flash target -------------------------------------------------------
+# Flashes the ELF to an FPGA via xsdb. Works whether xsdb is local or is
+# the remote login shell (piping Tcl commands to ssh stdin).
+#
+#   SOCT_FLASH_XSDB              Path to xsdb                                [required for local]
+#   SOCT_FLASH_BOOT_HART         Boot hart index, passed as a0                [default: 0]
+#   SOCT_FLASH_BOOTROM_DTB_ADDR  DTB base address, passed as a1               [default: 0x00010080]
+#
+# Remote mode (SOCT_FLASH_HOST):
+#   SOCT_FLASH_HOST              SSH/SCP host, e.g. "mainframe"
+#   SOCT_FLASH_REMOTE_DIR        Remote directory to upload the ELF into       [default: /tmp]
+
+if (NOT DEFINED SOCT_FLASH_HOST)
+    set(SOCT_FLASH_HOST "" CACHE STRING "SSH/SCP host for flashing — leave empty to flash locally")
+endif ()
+if (NOT DEFINED SOCT_FLASH_XSDB)
+    set(SOCT_FLASH_XSDB "" CACHE STRING "Path to xsdb (local binary, or path on the remote host)")
+endif ()
+if (NOT DEFINED SOCT_FLASH_REMOTE_DIR)
+    set(SOCT_FLASH_REMOTE_DIR "/tmp" CACHE STRING "Remote directory to upload ELF files into (remote mode only)")
+endif ()
+if (NOT DEFINED SOCT_FLASH_BOOT_HART)
+    set(SOCT_FLASH_BOOT_HART "0" CACHE STRING "Boot hart index passed as a0 to xsdb")
+endif ()
+if (NOT DEFINED SOCT_FLASH_BOOTROM_DTB_ADDR)
+    set(SOCT_FLASH_BOOTROM_DTB_ADDR "0x00010080" CACHE STRING "Bootrom DTB base address passed as a1 to xsdb")
+endif ()
+
+if (SOCT_FLASH_HOST OR SOCT_FLASH_XSDB)
+    set(_flash_wrapper "${CMAKE_CURRENT_BINARY_DIR}/${SOCT_PROGRAM}-flash.sh")
+    set(_flash_tcl "connect; targets -set -filter {name =~ {Hart #0*}}; stop; dow -clear")
+
+    if (SOCT_FLASH_HOST)
+        # Remote: xsdb is the login shell on the remote host — pipe Tcl commands
+        # to ssh stdin rather than using "ssh host shell-command".
+        set(_flash_wrapper_content "\
+#!/bin/sh
+set -e
+echo \"[flash] uploading $1 to ${SOCT_FLASH_HOST}:${SOCT_FLASH_REMOTE_DIR}/\"
+scp \"$1\" \"${SOCT_FLASH_HOST}:${SOCT_FLASH_REMOTE_DIR}/\"
+echo '[flash] flashing on ${SOCT_FLASH_HOST} via xsdb...'
+printf 'connect\\ntargets -set -filter {name =~ {Hart #0*}}\\nstop\\ndow -clear ${SOCT_FLASH_REMOTE_DIR}/${SOCT_PROGRAM}.elf\\nrwr a0 ${SOCT_FLASH_BOOT_HART}\\nrwr a1 ${SOCT_FLASH_BOOTROM_DTB_ADDR}\\ncon\\n' | ssh \"${SOCT_FLASH_HOST}\" \"${SOCT_FLASH_XSDB}\"
+")
+    else ()
+        # Local: run xsdb directly, passing Tcl via -eval.
+        set(_flash_wrapper_content "\
+#!/bin/sh
+set -e
+echo '[flash] running xsdb on $1...'
+\"${SOCT_FLASH_XSDB}\" -eval \"${_flash_tcl} $1; rwr a0 ${SOCT_FLASH_BOOT_HART}; rwr a1 ${SOCT_FLASH_BOOTROM_DTB_ADDR}; con\"
+")
+    endif ()
+
+    file(GENERATE
+            OUTPUT "${_flash_wrapper}"
+            CONTENT "${_flash_wrapper_content}"
+            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE)
+
+    set_target_properties(${SOCT_PROGRAM} PROPERTIES CROSSCOMPILING_EMULATOR "${_flash_wrapper}")
+
+    add_custom_target(${SOCT_PROGRAM}-flash
+            COMMAND "${_flash_wrapper}" $<TARGET_FILE:${SOCT_PROGRAM}>
+            DEPENDS ${SOCT_PROGRAM}
+            USES_TERMINAL
+            VERBATIM
+            COMMENT "Flashing ${SOCT_PROGRAM}.elf via xsdb")
+endif ()

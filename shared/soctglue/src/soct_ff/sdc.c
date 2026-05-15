@@ -485,7 +485,7 @@ bool soct_init_from_dtb_sdc(void) {
         const FRESULT res = f_mount(&s_fs[pdrv], mount_path, 1);
         if (res != FR_OK) {
             char msg[128];
-            snprintf(msg, sizeof(msg), "%s: filesystem mount failed with error %d", vol_name, res);
+            snprintf(msg, sizeof(msg), "%s: filesystem mount failed with error %d", mount_path, res);
             soct_add_setup_msg(msg);
             continue;
         }
@@ -495,9 +495,6 @@ bool soct_init_from_dtb_sdc(void) {
         soct_add_setup_msg(msg);
         any_mounted = true;
     }
-
-    if (!any_mounted)
-        soct_add_setup_msg("No SD card nodes found in DTB - SD card handler disabled");
 
     return any_mounted;
 }
