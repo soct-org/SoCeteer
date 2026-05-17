@@ -118,6 +118,18 @@ object SOCTLauncher {
         return
       }
 
+
+      if (args.syncFromRemote) {
+        if (args.remoteDir.isEmpty) {
+          throw new IllegalArgumentException("Remote directory must be provided when using --sync-from-remote")
+        }
+        if (args.openSSHConfig.isEmpty) {
+          throw new IllegalArgumentException("OpenSSH config file must be provided when using --sync-from-remote")
+        }
+        SOCTRemote.pullDir(args.workspaceDir, args)
+        return
+      }
+
       // Modify the params:
       val config = SOCTConfig(args)
       config.params = config.params.orElse(new WithSOCTConfig(config))

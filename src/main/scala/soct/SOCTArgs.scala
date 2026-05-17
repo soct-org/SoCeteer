@@ -121,6 +121,7 @@ case class SOCTArgs(
                      useRemoteVivado: Boolean = false, // Whether to use Vivado on the remote machine for synthesis (i.e. the path to Vivado provided by --vivado is on the remote machine and not the local machine)
 
                      // Terminating options
+                     syncFromRemote: Boolean = false, // Whether to sync the remote directory to the local workspace directory
                      getVersion: Boolean = false, // Print the version of the tool
                      wtf: Boolean = false, // What the firtool - for debugging
                    )
@@ -229,6 +230,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[Unit]("use-remote-vivado").action((_, c) => c.copy(useRemoteVivado = true)).text("Whether to use Vivado on the remote machine for synthesis (i.e. the path to Vivado provided by --vivado is on the remote machine and not the local machine). Only applicable if --remote-dir and --ssh-config are set.")
 
   // Terminating options
+  opt[Unit]("sfr").action((_, c) => c.copy(syncFromRemote = true)).text("Sync from remote - Sync the remote directory to the local workspace directory. Only applicable if --remote-dir and --ssh-config are set.")
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")
   opt[Unit]("wtf").action((_, c) => c.copy(wtf = true)).text("What the firtool -- Prints the firtool help.")
 }
