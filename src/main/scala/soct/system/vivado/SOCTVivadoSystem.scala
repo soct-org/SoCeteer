@@ -255,7 +255,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         }
       }
 
-      bd.addTimingConstraints(() => sdPmod.timingTcl(coreClockObj, corePeriodProp, sdioCd, sdioClk, sdioCmd, sdioData))
+      bd.addTimingConstraints(() => sdPmod.timingTcl(coreClockObj, sdioCd, sdioClk, sdioCmd, sdioData))
     }
 
     // --------------------------------------------------------------------------
