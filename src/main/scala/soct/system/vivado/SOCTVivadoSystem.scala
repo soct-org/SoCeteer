@@ -24,6 +24,33 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
   require(p(HasDDR4ExtMem), "SOCTVivadoSystem currently requires HasDDR4ExtMem to be set in parameters.")
 
+  /**
+   * Bind a clock-output pin (by hierarchical path) to a triple of TCL variables:
+   *   - `<varBase>`: the pin handle
+   *   - `<varBase>_clk`: the `get_clocks` object driving it
+   *   - `<varBase>_period`: its min PERIOD
+   *
+   * Pure TCL plumbing — no topology-specific assumptions baked in. Used by the
+   * timing-constraint block below to turn pin paths into reusable handles.
+   *
+   * @param pinPath hierarchical pin path (typically `<instanceName>/<pin>`),
+   *                e.g. `s"${ddr4.instanceName}/addn_ui_clkout2"`. Matched with
+   *                a leading `*` and `-hier`, so partial paths work.
+   * @param varBase base TCL variable name (e.g. `"core_clock"`)
+   * @return (TCL commands, clockVarName, periodVarName)
+   */
+  private def captureClock(pinPath: String, varBase: String): (TCLCommands, String, String) = {
+    val clkVar = s"${varBase}_clk"
+    val perVar = s"${varBase}_period"
+    val cmd =
+      s"""# Capture clock object from $pinPath
+         |set $varBase [get_pins -quiet -hier *$pinPath]
+         |set $clkVar [get_clocks -of_objects $$$varBase]
+         |set $perVar [get_property -min PERIOD $$$clkVar]
+         |""".stripMargin.tcl
+    (Seq(cmd), clkVar, perVar)
+  }
+
   //-------------------------------------------------------------------------
   // Device tree generation
   // (must be done before module instantiation since some components bind resources during construction)
@@ -132,20 +159,36 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Periph and core clocks come directly from two outputs of DDR4's internal
     // MMCM. This is a single-MMCM topology
     val peripheryClock = ddr4.ADDN_UI_CLKOUT(1, peripheryDomain)
-    val coreClock      = ddr4.ADDN_UI_CLKOUT(2, coreDomain)
+    val coreClock = ddr4.ADDN_UI_CLKOUT(2, coreDomain)
 
+    // --------------------------------------------------------------------------
     // Timing constraints
-    lazy val (coreClockTCL, coreClockObj, corePeriodProp) = ddr4.addnUiClkTimingTcl(2, "core_clock")
+    // --------------------------------------------------------------------------
+    // Bind the core clock (DDR4 addn_ui_clkout2) to TCL handles used below.
+    val (coreClockTCL, coreClockObj, corePeriodProp) =
+      captureClock(coreClock.ref, "core_clock")
+
     bd.addTimingConstraints(() => coreClockTCL)
-    bd.addTimingConstraints(() => ddr4.timingTcl(coreClockObj, corePeriodProp))
+
+    // DDR4 controller: bound core<->ui_clk CDC, and ignore reset / calib_complete
+    // glitch paths (DDR4 IP synchronizes these internally).
+    bd.addTimingConstraints(() => Seq(
+      s"""# Timing constraints for DDR4 controller (${ddr4.instanceName})
+         |set ddrmc_inst [get_cells -hier ${ddr4.instanceName}]
+         |set_false_path -through [get_pins $$ddrmc_inst/${ddr4.SYS_RST.pin}]
+         |set_false_path -through [get_pins $$ddrmc_inst/${ddr4.CO_INIT_CALIB_COMPLETE.pin}]
+         |set ddrc_clock [get_clocks -of_objects [get_pins $$ddrmc_inst/${ddr4.C0_DDR4_UI_CLK.pin}]]
+         |set ddrc_clock_period [get_property -min PERIOD $$ddrc_clock]
+         |set_max_delay -from $$$coreClockObj -to $$ddrc_clock -datapath_only $$ddrc_clock_period
+         |set_max_delay -from $$ddrc_clock -to $$$coreClockObj -datapath_only $$$corePeriodProp
+         |""".stripMargin.tcl
+    ))
 
     // --------------------------------------------------------------------------
     // Fundamental interconnect (interfaces & major clocks)
     // --------------------------------------------------------------------------
     ddr4 <-> ddr4Port
     uart.UART <-> uartPort
-
-    // (no clk_wiz_0: periph/core are DDR4 addn_ui_clkouts — see comment above)
 
     // DDR reset domain clocking
     ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
@@ -161,9 +204,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Reset strategy
     // --------------------------------------------------------------------------
-    // DDR PSR should assert reset if either:
-    //  - board reset is active, OR
-    //  - DDR UI clock domain provides a sync reset signal
     fpgaRst --> ddrPsr.EXT_RESET_IN
 
     // DDR4 doesn't expose an explicit MMCM-locked pin, but `c0_init_calib_complete`
@@ -254,7 +294,19 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         }
       }
 
-      bd.addTimingConstraints(() => sdPmod.timingTcl(coreClockObj, sdioCd, sdioClk, sdioCmd, sdioData))
+
+      bd.addTimingConstraints(() => Seq(
+        s"""# Timing constraints for SDCardPMOD (${sdPmod.instanceName})
+           |set sdio_clock [get_clocks -of_objects [get_pins -hier ${sdPmod.CLOCK.ref}]]
+           |
+           |set_max_delay -from $$sdio_clock -to [get_ports {${sdioClk.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -datapath_only 8.0
+           |set_max_delay -from [get_ports {${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock -datapath_only 8.0
+           |set_min_delay -from [get_ports {${sdioCd.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock 0.0
+           |
+           |set_max_delay -from [get_ports ${sdioCd.portName}] -to $$sdio_clock -datapath_only 100.0
+           |set_max_delay -from $$sdio_clock -through [get_pins -hier ${sdPmod.INTERRUPT.ref}] -datapath_only 10.0
+           |""".stripMargin.tcl
+      ))
     }
 
     // --------------------------------------------------------------------------
@@ -293,7 +345,29 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         bscan <-> b2j
         b2j <-> jtagXIntf
 
-        bd.addTimingConstraints(() => bscan.timingTcl(coreClockObj, corePeriodProp))
+        // JTAG / Debug Bridge timing constraints. If a TCK pin exists on the
+        // SERIES7_BSCAN cell, create a 15ns jtag_clock (if Vivado hasn't already
+        // inferred one) and bound the core<->JTAG CDC. The `-reset_path` flag
+        // tells Vivado these paths are used only for debug-reset purposes and
+        // shouldn't be analyzed as functional timing.
+        bd.addTimingConstraints(() => Seq(
+          s"""# JTAG / Debug Bridge timing constraints
+             |set tck_pin ""
+             |if { [llength [get_pins -quiet -hier SERIES7_BSCAN*/TCK]] } {
+             |  set tck_pin [get_pins -hier SERIES7_BSCAN*/TCK]
+             |}
+             |if { $$tck_pin != "" } {
+             |  if { ![llength [get_clocks -quiet -of_objects $$tck_pin]] } {
+             |    create_clock -name jtag_clock -period 15.000 $$tck_pin
+             |  }
+             |  set jtag_clock [get_clocks -of_objects $$tck_pin]
+             |  set jtag_clock_period [get_property -min PERIOD $$jtag_clock]
+             |
+             |  set_max_delay -reset_path -from $$$coreClockObj -to $$jtag_clock -datapath_only $$jtag_clock_period
+             |  set_max_delay -reset_path -from $$jtag_clock -to $$$coreClockObj -datapath_only $$$corePeriodProp
+             |}
+             |""".stripMargin.tcl
+        ))
       }
     }
 

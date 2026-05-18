@@ -129,22 +129,6 @@ case class SDCardPMOD(
 
     masterConnects ++ slaveConnects
   }
-
-  def timingTcl(clockVar: String,
-                sdioCd: SDIOCDPort, sdioClk: SDIOClkPort, sdioCmd: SDIOCmdPort, sdioData: SDIODataPort): TCLCommands = {
-    Seq(
-      s"""# Timing constraints for SDCardPMOD
-         |set sdio_clock [get_clocks -of_objects [get_pins -hier ${CLOCK.ref}]]
-         |
-         |set_max_delay -from $$sdio_clock -to [get_ports {${sdioClk.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -datapath_only 8.0
-         |set_max_delay -from [get_ports {${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock -datapath_only 8.0
-         |set_min_delay -from [get_ports {${sdioCd.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock 0.0
-         |
-         |set_max_delay -from [get_ports ${sdioCd.portName}] -to $$sdio_clock -datapath_only 100.0
-         |set_max_delay -from $$$clockVar -through [get_pins -hier ${ASYNC_RESETN.ref}] -datapath_only 10.0
-         |set_max_delay -from $$sdio_clock -through [get_pins -hier ${INTERRUPT.ref}] -datapath_only 10.0
-         |""".stripMargin.tcl)
-  }
 }
 
 

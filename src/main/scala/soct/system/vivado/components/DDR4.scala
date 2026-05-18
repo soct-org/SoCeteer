@@ -62,49 +62,6 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
       s"assign_bd_address -offset 0x00000000 -range 0x400000000 -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
-
-  def timingTcl(clockVar: String, clockPeriodVar: String): TCLCommands = {
-    Seq(
-      s"""# Timing constraints for DDR4 controller
-         |set ddrmc_inst [get_cells -hier $instanceName]
-         |set_false_path -through [get_pins $$ddrmc_inst/${SYS_RST.pin}]
-         |set_false_path -through [get_pins $$ddrmc_inst/${CO_INIT_CALIB_COMPLETE.pin}]
-         |set ddrc_clock [get_clocks -of_objects [get_pins $$ddrmc_inst/${C0_DDR4_UI_CLK.pin}]]
-         |set ddrc_clock_period [get_property -min PERIOD $$ddrc_clock]
-         |set_max_delay -from $$$clockVar -to $$ddrc_clock -datapath_only $$ddrc_clock_period
-         |set_max_delay -from $$ddrc_clock -to $$$clockVar -datapath_only $$$clockPeriodVar
-         |""".stripMargin.tcl)
-  }
-
-  /**
-   * Capture an `addn_ui_clkout<idx>` pin as a TCL clock object plus its period, in the same shape
-   * `ClkWiz.timingTcl` produces. Use this when periph/core clocks are taken directly from the
-   * DDR4 IP's internal MMCM (single-MMCM topology) instead of cascading through a separate
-   * clk_wiz_0 — this avoids the inter-MMCM clock_uncertainty that `-datapath_only` constraints
-   * silently strip from cross-clock slack calculations.
-   *
-   * Emits TCL of the form:
-   * set pinVar [get_pins -quiet -hier *<instanceName>/addn_ui_clkout<idx>]
-   * set pinVar_clk [get_clocks -of_objects $pinVar]
-   * set pinVar_period [get_property -min PERIOD $pinVar_clk]
-   *
-   * @param idx    the addn_ui_clkout index (must exist on the IP)
-   * @param pinVar TCL variable base name to bind the pin/clock/period to
-   * @return (TCL commands, clock variable name, period variable name)
-   */
-  def addnUiClkTimingTcl(idx: Int, pinVar: String): (TCLCommands, String, String) = {
-    val clockVar = s"${pinVar}_clk"
-    val clockCmd = s"set $clockVar [get_clocks -of_objects $$$pinVar]".tcl
-    val periodVar = s"${pinVar}_period"
-    val periodCmd = s"set $periodVar [get_property -min PERIOD $$$clockVar]".tcl
-    val ifCmd =
-      s"""# Timing constraints for DDR4 addn_ui_clkout $idx
-         |set $pinVar [get_pins -quiet -hier *$instanceName/addn_ui_clkout$idx]
-         |$clockCmd
-         |$periodCmd
-         |""".stripMargin.tcl
-    (Seq(ifCmd), clockVar, periodVar)
-  }
 }
 
 
