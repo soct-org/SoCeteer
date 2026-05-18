@@ -46,7 +46,15 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
         m += s"CONFIG.CLKOUT${idx}_USED" -> "true"
     }
     m += "CONFIG.NUM_OUT_CLKS" -> clkouts.size.toString
-    m += "CONFIG.USE_BOARD_FLOW" -> "true"
+
+    val clkIn1Src = CLK_IN.get(1).flatMap(bd.sourceOf)
+    clkIn1Src match {
+      case Some(_: soct.system.vivado.fpga.FPGAClockPort) =>
+        m += "CONFIG.USE_BOARD_FLOW" -> "true"
+      case _ =>
+        m += "CONFIG.USE_BOARD_FLOW" -> "false"
+        m += "CONFIG.PRIM_SOURCE" -> "Global_buffer"
+    }
 
     bd.sourceOf(RESET) match {
       case Some(r: FPGAResetPortSource) =>
