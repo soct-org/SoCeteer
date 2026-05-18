@@ -103,9 +103,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
     )
 
-    // TODO: currently uses core frequency for DDR4 clock wizard - can/should we drive it faster?
-    val ddr4OutDomain = new ClockDomain(freqMHz = coreDomain.freqMHz)
-
     // --------------------------------------------------------------------------
     // Board ports
     // --------------------------------------------------------------------------
@@ -115,7 +112,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Components
     // --------------------------------------------------------------------------
-    val clkWiz = ClkWiz()
 
     val periphPsr = ProcSysReset().withInstanceName("periph_psr")
     val corePsr = ProcSysReset().withInstanceName("core_psr")
@@ -133,12 +129,13 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Derived pins (clock outputs / DDR helper pins)
     // --------------------------------------------------------------------------
-    val ddr4Clk1 = ddr4.ADDN_UI_CLKOUT(1, ddr4OutDomain)
-    val peripheryClock = clkWiz.CLK_OUT(1, peripheryDomain)
-    val coreClock = clkWiz.CLK_OUT(2, coreDomain)
+    // Periph and core clocks come directly from two outputs of DDR4's internal
+    // MMCM. This is a single-MMCM topology
+    val peripheryClock = ddr4.ADDN_UI_CLKOUT(1, peripheryDomain)
+    val coreClock      = ddr4.ADDN_UI_CLKOUT(2, coreDomain)
 
     // Timing constraints
-    lazy val (coreClockTCL, coreClockObj, corePeriodProp) = clkWiz.timingTcl(2, "core_clock")
+    lazy val (coreClockTCL, coreClockObj, corePeriodProp) = ddr4.addnUiClkTimingTcl(2, "core_clock")
     bd.addTimingConstraints(() => coreClockTCL)
     bd.addTimingConstraints(() => ddr4.timingTcl(coreClockObj, corePeriodProp))
 
@@ -148,8 +145,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     ddr4 <-> ddr4Port
     uart.UART <-> uartPort
 
-    // DDR4 -> drive clock wizard input from DDR addn clkout
-    ddr4Clk1 --> clkWiz.CLK_IN(1)
+    // (no clk_wiz_0: periph/core are DDR4 addn_ui_clkouts — see comment above)
 
     // DDR reset domain clocking
     ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
@@ -158,7 +154,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     fpgaClk --> ddr4.C0_SYS_CLK
     fpgaRst --> Seq(
       ddr4.SYS_RST,
-      clkWiz.RESET,
       periphPsr.EXT_RESET_IN,
       corePsr.EXT_RESET_IN
     )
@@ -171,8 +166,12 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     //  - DDR UI clock domain provides a sync reset signal
     fpgaRst --> ddrPsr.EXT_RESET_IN
 
-    // Clock wizard lock feeds reset synchronizers for domains derived from it
-    clkWiz.LOCKED --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
+    // DDR4 doesn't expose an explicit MMCM-locked pin, but `c0_init_calib_complete`
+    // is a superset: it asserts only after the MMCM has locked AND the DRAM init
+    // calibration is finished. Using it as DCM_LOCKED conservatively holds the
+    // periph and core resets until DDR4 is fully ready — which is what we want
+    // anyway, since nothing useful can run before DRAM is up.
+    ddr4.CO_INIT_CALIB_COMPLETE --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
 
     // Domain clocks:
     // Periphery domain clock drives periph reset sync + periph-ish IP clocks
