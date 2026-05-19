@@ -29,7 +29,6 @@ object LastRocketSystem {
 
 class SOCTSystem(implicit p: Parameters) extends BaseSubsystem
   with HasAsyncExtInterrupts
-  with HasExtInterrupts
   with CanHaveMasterAXI4MemPort
   with CanHaveMasterAXI4MMIOPort
   with CanHaveSlaveAXI4Port

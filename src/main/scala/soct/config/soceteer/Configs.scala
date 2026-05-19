@@ -50,8 +50,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
 
 
 class RocketBaseConfig extends Config(
-  new WithNExtTopInterrupts(8) ++
-    new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
+  new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
     new WithEdgeDataBits(64) ++
     new WithDefaultMemPort ++
     new WithDefaultMMIOPort ++
@@ -61,7 +60,8 @@ class RocketBaseConfig extends Config(
 )
 
 class RocketSimBaseConfig extends Config(
-  new WithDTS("freechips,rocketchip-unknown", Nil) ++
+  new WithNExtTopInterrupts(8) ++ // We don't know how many interrupts are needed, so we just use 8
+    new WithDTS("freechips,rocketchip-unknown", Nil) ++
     new WithNoSlavePort ++
     new WithClockGateModel ++
     new WithResetScheme(ResetSynchronous) ++ // Only io_clocks are top-level resets
@@ -75,6 +75,7 @@ class RocketVivadoBaseConfig extends Config(
     new WithJtagDTM ++
     new WithDebugSBA ++
     new WithSDCardPMOD ++
+    new WithUART ++
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )
@@ -94,6 +95,12 @@ class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
 }
 )
 
+case object FastPnR extends Field[Boolean](false)
+
+class WithFastPnR extends Config((_, _, _) => {
+  case FastPnR => true
+})
+
 
 /*----------------- Memory ---------------*/
 
@@ -101,7 +108,7 @@ class WithExtMemCapacity(cap: BigInt) extends Config((_, _, up) => {
   case ExtMem => up(ExtMem).map(x => x.copy(master = x.master.copy(size = cap - x.master.base)))
 })
 
-/*----------------- Storage ---------------*/
+/*----------------- MMIO ---------------*/
 
 /**
  * Field to indicate whether the design should include an SDCard PMOD interface on a specified port (index).
@@ -110,11 +117,19 @@ case object HasSDCardPMOD extends Field[Option[Int]](None)
 
 case object NeedsFatFS extends Field[Boolean](false)
 
-class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((_, _, _) => {
+class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((site, here, up) => {
   case HasSDCardPMOD => Some(pmodIdx)
   case NeedsFatFS => true
+  case NExtTopInterrupts => up(NExtTopInterrupts) + 1
 }
 )
+
+case object HasUART extends Field[Boolean](false)
+
+class WithUART extends Config((site, here, up) => {
+  case HasUART => true
+  case NExtTopInterrupts => up(NExtTopInterrupts) + 1
+})
 
 
 /*----------------- Clock Speeds ---------------*/
@@ -188,4 +203,3 @@ class WithXilinxFPGA(fpga: FPGA) extends Config((_, _, _) => {
 class WithResetScheme(scheme: SubsystemResetScheme) extends Config((site, here, up) => {
   case SubsystemResetSchemeKey => scheme
 })
-

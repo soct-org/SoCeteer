@@ -1,6 +1,6 @@
 package soct
 
-import freechips.rocketchip.subsystem.{ExtMem, WithExtMemSize}
+import freechips.rocketchip.subsystem.{ExtMem, WithExtMemSize, WithNExtTopInterrupts}
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
 import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
@@ -39,11 +39,21 @@ object SOCTLauncher {
     def apply(args: SOCTArgs): SOCTConfig = {
       val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
       var params: Parameters = new WithPeripheryClockSpeed(args.peripheryFreq.doubleValue / 1e6) // Convert from Hz to MHz
+      val topModule = args.userTop.getOrElse(args.target.defaultTop)
+      val topModuleName = topModule.fold(_.getSimpleName, _.getSimpleName)
+
       if (args.coreFreq.isDefined) {
         params ++= new WithSingleBusClockSpeed(args.coreFreq.get.doubleValue / 1e6) // Convert from Hz to MHz
       }
-      val topModule = args.userTop.getOrElse(args.target.defaultTop)
-      val topModuleName = topModule.fold(_.getSimpleName, _.getSimpleName)
+      if (args.fastPnR) {
+        params ++= new soct.WithFastPnR
+      }
+
+      if (args.xlen == 32) {
+        params = params.alter(new freechips.rocketchip.rocket.WithRV32)
+      }
+
+      new WithNExtTopInterrupts(8)
       new SOCTConfig(args, mabi, topModule, topModuleName, params ++ args.baseConfig, configName(args.baseConfig, args.xlen))
     }
   }
@@ -57,6 +67,7 @@ object SOCTLauncher {
     }
     val board = args.board.get
 
+    // Set the external memory size
     val memCap =
       args.extMemCap
         .orElse(board.intMemCap)
@@ -64,10 +75,12 @@ object SOCTLauncher {
           case 32 => BigInt(0x100000000L) // 4GB
           case _ => BigInt(0x400000000L) // 16GB
         })
-    // Throw warning if capacity is below 2GB, which is the minimum for Rocket Chip designs with the default memory map
     if (memCap < 0x80000000L) {
       soct.log.warn(s"Neither RocketChip nor SoCeteer really support 2GB or less external memory capacity as the default memory map places the external memory at 0x80000000 (i.e. 2GiB). If you are using a custom memory map, you may be able to use a smaller capacity, but be aware that some software may not run correctly if the memory capacity is too small. It is recommended to use at least 2GB of external memory for Rocket Chip designs.")
+    } else {
+      soct.log.info(s"Using external memory capacity of ${memCap / 1024 / 1024 / 1024}GB")
     }
+
     config.params = config.params.orElse(new WithExtMemCapacity(memCap))
     config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
     config.params = config.params.orElse(new soct.RocketVivadoBaseConfig)
@@ -140,12 +153,8 @@ object SOCTLauncher {
         return
       }
 
-      // Modify the params:
       val config = SOCTConfig(args)
       config.params = config.params.orElse(new WithSOCTConfig(config))
-      if (args.xlen == 32) {
-        config.params = config.params.alter(new freechips.rocketchip.rocket.WithRV32)
-      }
 
       val paths: SOCTPaths = args.target match {
         case Targets.Verilator =>

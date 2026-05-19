@@ -56,3 +56,40 @@ foreach (ENTRY ${ALL_ENTRIES})
         add_subdirectory("${ENTRY_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/${ENTRY}")
     endif ()
 endforeach ()
+
+
+###########################################################################################
+# General targets and utilities
+###########################################################################################
+if (SOCT_FLASH_HOST OR SOCT_FLASH_XSDB)
+    set(_rst_tgt "reset-core")
+    set(_reset_wrapper "${CMAKE_BINARY_DIR}/${_rst_tgt}.sh")
+    set(_reset_tcl "connect; targets -set -filter {name =~ {Hart #0*}}; rst -system; disconnect")
+
+    if (SOCT_FLASH_HOST)
+        set(_reset_content "\
+#!/bin/sh
+set -e
+echo '[${_rst_tgt}] triggering on ${SOCT_FLASH_HOST} via xsdb...'
+printf 'connect\\ntargets -set -filter {name =~ {Hart #0*}}\\nrst -system\\ndisconnect\\n' | ssh \"${SOCT_FLASH_HOST}\" \"${SOCT_FLASH_XSDB}\"
+")
+    else ()
+        set(_reset_content "\
+#!/bin/sh
+set -e
+echo '[${_rst_tgt}] triggering via xsdb...'
+\"${SOCT_FLASH_XSDB}\" -eval \"${_reset_tcl}\"
+")
+    endif ()
+
+    file(GENERATE OUTPUT "${_reset_wrapper}" CONTENT "${_reset_content}"
+            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE)
+
+    add_custom_target(${_rst_tgt}
+            COMMAND "${_reset_wrapper}"
+            USES_TERMINAL
+            VERBATIM
+            COMMENT "Triggering ${_rst_tgt} via xsdb")
+endif ()

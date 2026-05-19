@@ -115,6 +115,7 @@ case class SOCTArgs(
                      peripheryFreq: BigInt = 100 * 1000 * 1000, // Default to 100 MHz
                      overrideVivadoProject: Boolean = true,
                      extMemCap: Option[BigInt] = None,
+                     fastPnR: Boolean = false,
 
                      // Remote development
                      remoteDir: Option[Path] = None, // Relative to the remote user home directory.
@@ -231,6 +232,8 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure("External memory capacity must be greater than 0 GiB.")
     )
     .text(s"The capacity of the external memory in GiB (e.g. 4, 8, 16, 32).")
+
+  opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(s"Enable fast place&route mode to simplify generated logic at the cost of removing some of the more advanced features. The exact tradeoff depends on the block design and the FPGA board being targeted")
 
   // Remote development options
   opt[String]("remote-dir").action((x, c) => c.copy(remoteDir = Some(Paths.get(x)))).text("The directory on the remote machine to use for remote development. This should be a path relative to the remote user home directory. If not set, remote development features will be disabled.")

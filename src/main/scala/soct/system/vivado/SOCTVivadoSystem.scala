@@ -57,24 +57,33 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     throw new XilinxDesignException("SOCTVivadoSystem requires a PLIC to be present in the system for interrupt wiring.")
   ).device
 
-  val uartDTS = DTSInfo(
-    parent = mmioBusDevice.get,
-    regs = Seq(("reg", 0x60010000L, 0x10000L)),
-    irqs = Seq(Irq(plicDev, 0)),
-    compatibles = Seq("riscv,axi-uart-1.0"),
-    extraProps = Map("port-number" -> Seq(ResourceInt(0)))
-  )
-  AxiSlaveBinder.bindSimpleDevice(
-    devname = "uart0",
-    dts = uartDTS,
-    perms = AxiSlaveBinder.mmioPerms
-  )
+  var irqIdx = 0
+
+  val uartDTSOpt = if (p(HasUART)) {
+    val dts = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", 0x60010000L, 0x10000L)),
+      irqs = Seq(Irq(plicDev, irqIdx)),
+      compatibles = Seq("riscv,axi-uart-1.0"),
+      extraProps = Map("port-number" -> Seq(ResourceInt(0)))
+    )
+    irqIdx += 1
+    Some(dts)
+  } else None
+
+  uartDTSOpt.foreach { dts =>
+    AxiSlaveBinder.bindSimpleDevice(
+      devname = "uart0",
+      dts = dts,
+      perms = AxiSlaveBinder.mmioPerms
+    )
+  }
 
   val sdDTSOpt = p(HasSDCardPMOD).map { idx =>
     val sdDTS = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60000000L, 0x10000L)),
-      irqs = Seq(Irq(plicDev, 1)),
+      irqs = Seq(Irq(plicDev, irqIdx)),
       compatibles = Seq("riscv,axi-sd-card-1.0"),
       extraProps = Map(
         "clock" -> Seq(ResourceInt(100000000)),
@@ -86,6 +95,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
         "no-sdio" -> Nil
       )
     )
+    irqIdx += 1
     AxiSlaveBinder.bindSimpleDevice(
       devname = "mmc0",
       dts = sdDTS,
@@ -142,7 +152,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     val corePsr = ProcSysReset().withInstanceName("core_psr")
     val ddrPsr = ProcSysReset().withInstanceName("ddr_psr")
 
-    val uart = AXIUartLite(dtsInfo = uartDTS, getAxiMasterPin = axiMMIO)
+    val uartOpt = if (p(HasUART)) Some(AXIUartLite(dtsInfo = uartDTSOpt.get, getAxiMasterPin = axiMMIO)) else None
     val ddr4 = DDR4(axiMem)
 
     val memSMC = AXISmartConnect().withInstanceName("mem_smc")
@@ -186,23 +196,32 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Fundamental interconnect (interfaces & major clocks)
     // --------------------------------------------------------------------------
     ddr4 <-> ddr4Port
-    uart.UART <-> uartPort
+    if (p(HasUART)) {
+      val uartPort = fpga.initUARTPort()
+      uartOpt.get.UART <-> uartPort
+    }
 
     // DDR reset domain clocking
     ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
 
     // Board clocks/resets into IPs
     fpgaClk --> ddr4.C0_SYS_CLK
-    fpgaRst --> Seq(
-      ddr4.SYS_RST,
-      periphPsr.EXT_RESET_IN,
-      corePsr.EXT_RESET_IN
-    )
+    fpgaRst --> ddr4.SYS_RST
 
     // --------------------------------------------------------------------------
     // Reset strategy
     // --------------------------------------------------------------------------
     fpgaRst --> ddrPsr.EXT_RESET_IN
+
+    // ndreset from the debug module resets core and periphery but not DDR or JTAG:
+    // DDR must not be re-initialized on debug reset; JTAG is separately tied off below.
+    if (debug.isDefined && !p(soct.FastPnR)) {
+      OR(fpgaRst, portToBdPin(debug.getWrappedValue.get.ndreset))
+        .withInstanceName("ndreset_or_sys_rst") --> Seq(periphPsr.EXT_RESET_IN, corePsr.EXT_RESET_IN)
+    } else {
+      soct.log.info("[FastPnR] The core cannot be reset using a debugger.")
+      fpgaRst --> Seq(periphPsr.EXT_RESET_IN, corePsr.EXT_RESET_IN)
+    }
 
     // DDR4 doesn't expose an explicit MMCM-locked pin, but `c0_init_calib_complete`
     // is a superset: it asserts only after the MMCM has locked AND the DRAM init
@@ -216,9 +235,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     peripheryClock --> Seq(
       periphPsr.SLOWEST_SYNC_CLK,
       mmioSMC.ACLK(0),
-      dmaSMC.ACLK(0),
-      uart.S_AXI_ACLK
+      dmaSMC.ACLK(0)
     )
+    if (p(HasUART)) peripheryClock --> uartOpt.get.S_AXI_ACLK
 
     // Core domain clock drives core reset sync + top clocks + one mem SMC clock
     coreClock --> Seq(
@@ -233,7 +252,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     ddr4.C0_DDR4_UI_CLK --> memSMC.ACLK(1)
 
     // Reset net distribution (active-low aresetn)
-    periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN, uart.S_AXI_ARESETN)
+    periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN)
+    if (p(HasUART)) periphPsr.PeripheralAResetN --> uartOpt.get.S_AXI_ARESETN
     ddrPsr.PeripheralAResetN --> ddr4.C0_DDR4_ARESETN
 
     // memSMC reset is influenced by BOTH core and DDR domains:
@@ -243,10 +263,16 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Interrupt wiring
     // --------------------------------------------------------------------------
-    interruptConcat --> top.INTERRUPTS
+    if (irqIdx > 0) {
+      interruptConcat --> top.INTERRUPTS
+    } else {
+      TieOff() --> top.INTERRUPTS
+    }
 
-    uartDTS.irqs.foreach { irq =>
-      uart.INTERRUPT --> interruptConcat.IN(irq.index)
+    uartDTSOpt.foreach { dts =>
+      dts.irqs.foreach { irq =>
+        uartOpt.get.INTERRUPT --> interruptConcat.IN(irq.index)
+      }
     }
 
     // --------------------------------------------------------------------------
@@ -259,7 +285,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
     // MMIO path: Rocket MMIO -> mmioSMC -> (UART + SD-lite)
     mmioSMC.S_AXI(0) <-> axiMMIO
-    mmioSMC.M_AXI(1) <-> uart.S_AXI
+    if (p(HasUART)) mmioSMC.M_AXI(1) <-> uartOpt.get.S_AXI
 
     // DMA path: SD DMA -> dmaSMC -> Rocket L2 frontend
     dmaSMC.M_AXI(0) <-> axiL2Frontend
