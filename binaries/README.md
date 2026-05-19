@@ -208,3 +208,58 @@ cmake --build build -j$(nproc)
 ```
 
 ELF files land in `SOCT_ELFS_DIR` (set by the system file). Each program also gets an `.objdump` and `.nm` file generated alongside its ELF for inspection.
+
+---
+
+## Flashing to an FPGA
+
+Every program gets a `<name>-flash` target that loads the compiled ELF onto an FPGA over JTAG using Xilinx `xsdb`. The target is only created when at least one of `SOCT_FLASH_XSDB` or `SOCT_FLASH_HOST` is set.
+
+```sh
+cmake --build build --target hello-hart-flash
+```
+
+### CMake variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `SOCT_FLASH_XSDB` | *(empty)* | Path to the `xsdb` binary (local, or on the remote host) |
+| `SOCT_FLASH_HOST` | *(empty)* | SSH host to flash through — leave empty to flash locally |
+| `SOCT_FLASH_REMOTE_DIR` | `/tmp` | Directory on the remote host to upload the ELF into |
+| `SOCT_FLASH_BOOT_HART` | `0` | Boot hart index written into register `a0` before `con` |
+| `SOCT_FLASH_BOOTROM_DTB_ADDR` | `0x00010080` | DTB base address written into register `a1` before `con` |
+
+Pass any of these at configure time:
+
+```sh
+cmake -S binaries -B build \
+  -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake \
+  -DSOCT_FLASH_XSDB=/opt/Xilinx/Vivado/2024.2/bin/xsdb \
+  -DSOCT_FLASH_BOOT_HART=0 \
+  -DSOCT_FLASH_BOOTROM_DTB_ADDR=0x00010080
+```
+
+### Local mode
+
+When `SOCT_FLASH_HOST` is empty and `SOCT_FLASH_XSDB` is set, the target runs `xsdb` directly on the build host:
+
+```
+xsdb -eval "connect; targets ...; stop; dow -clear <elf>; rwr a0 <hart>; rwr a1 <dtb>; con"
+```
+
+### Remote mode
+
+When `SOCT_FLASH_HOST` is set, the ELF is first copied to the remote host via `scp`, then `xsdb` is invoked by piping Tcl commands to the SSH login shell:
+
+```sh
+scp hello-hart.elf mainframe:/tmp/
+printf 'connect\n...\ndow -clear /tmp/hello-hart.elf\n...\ncon\n' | ssh mainframe /path/to/xsdb
+```
+
+This works when the remote account's login shell **is** `xsdb` (i.e. there is no intermediate shell to wrap the command in).
+
+> **Note:** The flash wrapper script is generated at CMake configure time into the build directory as `<program>-flash.sh`. You can run it directly to re-flash without rebuilding:
+> ```sh
+> build/programs/hello-hart/hello-hart-flash.sh build/elfs/hello-hart.elf
+> ```
+

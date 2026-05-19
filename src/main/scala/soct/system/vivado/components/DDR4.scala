@@ -4,6 +4,8 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.fpga.{DDR4Port, FPGAClockPort, FPGAResetPortSource}
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
+import freechips.rocketchip.subsystem.ExtMem
+
 
 import scala.collection.mutable
 
@@ -57,9 +59,15 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 
   override def assignAddrTcl: TCLCommands = {
-    // FIXME Offset 0x00000000, not 0x80000000?
+    val extMemParam = p(ExtMem).get.master
+    // If base - size is 0 or smaller, throw an error
+    val cap = extMemParam.size.toLong + extMemParam.base.toLong
+    if (cap <= 0) {
+      throw XilinxDesignException(s"DDR4 memory controller requires a positive size, but got $cap")
+    }
+    val range = "0x%08X".format(cap)
     Seq(
-      s"assign_bd_address -offset 0x00000000 -range 0x400000000 -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
+      s"assign_bd_address -offset 0x0 -range $range -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
 }

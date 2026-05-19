@@ -42,8 +42,9 @@ case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterP
     if (regs.size != 1) {
       throw XilinxDesignException(s"AXIUartLite component requires exactly one register region in DTS info, but found ${regs.size}")
     }
-    val (_, offset, size) = regs.head
-
+    val (_, _offset, _size) = regs.head
+    val offset = "0x%08X".format(_offset)
+    val size   = "0x%08X".format(_size)
     Seq(
       s"assign_bd_address -offset $offset -range $size -target_address_space [get_bd_addr_spaces ${getAxiMasterPin.ref}] [get_bd_addr_segs ${S_AXI.ref}/Reg]".tcl
     )

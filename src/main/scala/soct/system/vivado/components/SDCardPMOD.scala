@@ -1,6 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
+import freechips.rocketchip.subsystem.ExtMem
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.misc.{BasePMODPin, DTSInfo, DigilentPMODPin, WantsPMODPins}
@@ -112,19 +113,33 @@ case class SDCardPMOD(
     Some(dest)
   }
 
+  private def dmaMasterRange: Long = {
+    val extMem = p(ExtMem).get.master
+    val dramEnd = extMem.base.toLong + extMem.size.toLong
+    var range = java.lang.Long.highestOneBit(dramEnd)
+    if (range < dramEnd) range <<= 1
+    range
+  }
+
+  override def defaultProperties: Map[String, String] = Map(
+    "CONFIG.dma_addr_bits" -> java.lang.Long.numberOfTrailingZeros(dmaMasterRange).toString
+  )
+
+
   override def assignAddrTcl: TCLCommands = {
     val regs = dtsInfo.regs
     if (regs.size != 1) {
       throw XilinxDesignException(s"SDCardPMOD DTSInfo must have exactly one reg entry, but found ${regs.size}")
     }
-    val (_, offset, size) = regs.head
+    val (_, _offset, _size) = regs.head
+    val offset = "0x%08X".format(_offset)
+    val range = "0x%08X".format(_size)
     val slaveConnects = Seq(
-      s"assign_bd_address -offset $offset -range $size -target_address_space [get_bd_addr_spaces ${getAxiMasterPin.ref}] [get_bd_addr_segs ${S_AXI.ref}/reg0]".tcl
+      s"assign_bd_address -offset $offset -range $range -target_address_space [get_bd_addr_spaces ${getAxiMasterPin.ref}] [get_bd_addr_segs ${S_AXI.ref}/reg0]".tcl
     )
 
     val masterConnects = getAxiSlavePins.map { case (pin, regName) =>
-      // We use a fixed offset of 0 and a large range to cover the entire address space of the master interface
-      s"assign_bd_address -offset 0x00000000 -range 0x000100000000 -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${pin.ref}/$regName]".tcl
+      s"assign_bd_address -offset 0x00000000 -range 0x${dmaMasterRange.toHexString.toUpperCase} -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${pin.ref}/$regName]".tcl
     }
 
     masterConnects ++ slaveConnects

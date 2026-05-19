@@ -9,7 +9,7 @@ import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
-import soct.system.vivado.fpga.{FPGAClockDomain, FPGARegistry}
+import soct.system.vivado.fpga.FPGAClockDomain
 import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq}
 
@@ -21,8 +21,6 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   implicit val bd: SOCTBdBuilder = p(BdBuilderKey).getOrElse(
     throw new XilinxDesignException("SOCTVivadoSystem requires a BdBuilder to be set in parameters for block design generation.")
   )
-
-  require(p(HasDDR4ExtMem), "SOCTVivadoSystem currently requires HasDDR4ExtMem to be set in parameters.")
 
   /**
    * Bind a clock-output pin (by hierarchical path) to a triple of TCL variables:
@@ -101,8 +99,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Board / Top init
     // --------------------------------------------------------------------------
-    val fpga = FPGARegistry.resolveBoardInstance(p(XilinxFPGAKey).get)
-    val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.fastestClock
+    val fpga = p(XilinxFPGAKey).getOrElse(throw new XilinxDesignException("XilinxFPGAKey not set in parameters."))
+    val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.initFastestClock
 
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
@@ -211,7 +209,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // calibration is finished. Using it as DCM_LOCKED conservatively holds the
     // periph and core resets until DDR4 is fully ready — which is what we want
     // anyway, since nothing useful can run before DRAM is up.
-    ddr4.CO_INIT_CALIB_COMPLETE --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
+    ddr4.CO_INIT_CALIB_COMPLETE --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED, ddrPsr.DCM_LOCKED)
 
     // Domain clocks:
     // Periphery domain clock drives periph reset sync + periph-ish IP clocks
@@ -245,10 +243,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Interrupt wiring
     // --------------------------------------------------------------------------
-    val intDelay = RAMShiftReg(nExtInterrupts, 3).withInstanceName("delay_3")
-    interruptConcat --> intDelay.D
-    coreClock --> intDelay.CLK
-    intDelay.Q --> top.INTERRUPTS
+    interruptConcat --> top.INTERRUPTS
 
     uartDTS.irqs.foreach { irq =>
       uart.INTERRUPT --> interruptConcat.IN(irq.index)

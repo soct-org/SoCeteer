@@ -1,6 +1,7 @@
 package soct
 
 import freechips.rocketchip.devices.tilelink.CLINTKey
+import freechips.rocketchip.subsystem.ExtMem
 import soct.SOCTNames.SOCT_SIMULATOR_EXE
 
 import java.nio.file.{Files, Path}
@@ -8,21 +9,21 @@ import java.nio.file.{Files, Path}
 /**
  * Represents a single CMake variable definition.
  *
- * @param name     The CMake variable name (e.g. "SOCT_ARCH")
- * @param value    The value to set (already rendered as a string)
- * @param comment  A human-readable comment emitted above the set() call
+ * @param name       The CMake variable name (e.g. "SOCT_ARCH")
+ * @param value      The value to set (already rendered as a string)
+ * @param comment    A human-readable comment emitted above the set() call
  * @param compileDef If true, this variable is included in SOCT_COMPILE_DEFS list so
  *                   consumers can do target_compile_definitions(foo PRIVATE ${SOCT_COMPILE_DEFS})
- * @param quoted   If true, the compile definition value is wrapped in escaped quotes
- *                 (use for string values; leave false for integers/booleans)
+ * @param quoted     If true, the compile definition value is wrapped in escaped quotes
+ *                   (use for string values; leave false for integers/booleans)
  */
 case class CMakeVar(
-  name: String,
-  value: String,
-  comment: String,
-  compileDef: Boolean = false,
-  quoted: Boolean = false,
-)
+                     name: String,
+                     value: String,
+                     comment: String,
+                     compileDef: Boolean = false,
+                     quoted: Boolean = false,
+                   )
 
 object CMakeVar {
   /**
@@ -39,7 +40,7 @@ object CMakeVar {
 
     val defEntries = vars.filter(_.compileDef).map { v =>
       if (v.quoted) s"""    ${v.name}="$${${v.name}}""""
-      else          s"""    ${v.name}=$${${v.name}}"""
+      else s"""    ${v.name}=$${${v.name}}"""
     }
 
     val append =
@@ -113,23 +114,23 @@ object SOCTSystemGenerator {
 
     // ---------------------------------------------------------------
     // Define all CMake variables here.
-    // Set compileDef = true  → variable is added to SOCT_COMPILE_DEFS.
-    // Set quoted      = true  → compile definition value is wrapped in quotes (strings).
+    // Set compileDef = true -> variable is added to SOCT_COMPILE_DEFS.
+    // Set quoted = true -> compile definition value is wrapped in quotes (strings).
     // ---------------------------------------------------------------
     val commonVars = Seq(
-      CMakeVar("SOCETEER_VERSION",  version,                          "The version of soceteer used to generate this system"),
-      CMakeVar("SOCT_CONFIG_NAME",  config.configName,                "The name of the system configuration",  compileDef = true, quoted = true),
-      CMakeVar("SOCT_TARGET",       config.args.target.name,          "Whether this system was built for an FPGA board, Verilator simulation etc.", compileDef = true, quoted = true),
-      CMakeVar("SOCT_ARCH",         march,                            "The RISC-V architecture string extracted from the DTS", compileDef = true, quoted = true),
-      CMakeVar("SOCT_ABI",          config.mabi,                      "The RISC-V ABI to use for compiling binaries for this system", compileDef = true, quoted = true),
-      CMakeVar("SOCT_XLEN",         config.args.xlen.toString,        "The XLEN of the system", compileDef = true),
-      CMakeVar("SOCT_NCPUS",        DTSExtractor.countCPUs(dtsContent).toString, "The number of CPU cores in the system, extracted from the DTS", compileDef = true),
-      CMakeVar("SOCT_VSRCS",        rel(paths.verilogSrcDir),         "The Verilog source files for this system"),
-      CMakeVar("SOCT_DTS",          rel(paths.dtsFile),               "The device tree file for this system"),
-      CMakeVar("SOCT_DTB",          rel(paths.dtbFile),               "The compiled device tree blob for this system"),
-      CMakeVar("SOCT_BOOTROM_IMG",  rel(paths.bootromImgFile),        "The bootrom image for this system"),
-      CMakeVar("SOCT_ELFS_DIR",     rel(paths.elfsDir),               "The directory where compiled ELF files for this system are stored"),
-      CMakeVar("SOCT_BUILD_DIR",    rel(paths.buildDir),              "A build directory for temporary files during the build process"),
+      CMakeVar("SOCETEER_VERSION", version, "The version of soceteer used to generate this system"),
+      CMakeVar("SOCT_CONFIG_NAME", config.configName, "The name of the system configuration", compileDef = true, quoted = true),
+      CMakeVar("SOCT_TARGET", config.args.target.name, "Whether this system was built for an FPGA board, Verilator simulation etc.", compileDef = true, quoted = true),
+      CMakeVar("SOCT_ARCH", march, "The RISC-V architecture string extracted from the DTS", compileDef = true, quoted = true),
+      CMakeVar("SOCT_ABI", config.mabi, "The RISC-V ABI to use for compiling binaries for this system", compileDef = true, quoted = true),
+      CMakeVar("SOCT_XLEN", config.args.xlen.toString, "The XLEN of the system", compileDef = true),
+      CMakeVar("SOCT_NCPUS", DTSExtractor.countCPUs(dtsContent).toString, "The number of CPU cores in the system, extracted from the DTS", compileDef = true),
+      CMakeVar("SOCT_VSRCS", rel(paths.verilogSrcDir), "The Verilog source files for this system"),
+      CMakeVar("SOCT_DTS", rel(paths.dtsFile), "The device tree file for this system"),
+      CMakeVar("SOCT_DTB", rel(paths.dtbFile), "The compiled device tree blob for this system"),
+      CMakeVar("SOCT_BOOTROM_IMG", rel(paths.bootromImgFile), "The bootrom image for this system"),
+      CMakeVar("SOCT_ELFS_DIR", rel(paths.elfsDir), "The directory where compiled ELF files for this system are stored"),
+      CMakeVar("SOCT_BUILD_DIR", rel(paths.buildDir), "A build directory for temporary files during the build process"),
     )
 
     val preamble =
@@ -148,19 +149,29 @@ object SOCTSystemGenerator {
 
     // Optional variables for specific peripherals
     var optionalVars = Seq.empty[CMakeVar]
+    if (config.params(ExtMem).isDefined) {
+      optionalVars :+= CMakeVar(
+        "SOCT_MEM_BASE_ADDR",
+        config.params(ExtMem).get.master.base.toString,
+        "Base address of the external memory",
+        compileDef = true
+      )
+    }
+
     if (config.params(NeedsFatFS)) {
       optionalVars :+= CMakeVar(
         "SOCT_NEEDS_FATFS", "ON",
-        "This system needs the FatFS library for filesystem support (e.g. SD card)",
-        compileDef = true,
+        "This system has a block device that requires the FatFS library for filesystem support (e.g. SD card)",
+        compileDef = true
       )
     }
+
     if (config.params(CLINTKey).isDefined) {
       optionalVars :+= CMakeVar(
         "SOCT_CLINT_BASE",
         config.params(CLINTKey).get.baseAddress.toString,
         "Base address of the CLINT (Core Local Interruptor)",
-        compileDef = true,
+        compileDef = true
       )
     }
     val optional = if (optionalVars.isEmpty) "" else "\n" + CMakeVar.render(optionalVars)

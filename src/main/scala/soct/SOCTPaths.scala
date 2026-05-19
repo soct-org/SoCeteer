@@ -247,7 +247,7 @@ class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args,
 
 class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
   private val fpgaBoardName: String = args.board match {
-    case Some(boardClass) => FPGARegistry.b2n(boardClass)
+    case Some(board) => FPGARegistry.b2n(board)
     case None => throw new InternalBugException("FPGA board not set in SOCTArgs for VivadoSOCTPaths")
   }
 

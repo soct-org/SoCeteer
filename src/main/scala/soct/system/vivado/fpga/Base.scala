@@ -1,7 +1,6 @@
 package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
-import soct.FPGAResetPolarity
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
@@ -15,46 +14,33 @@ import scala.annotation.unused
 object FPGARegistry {
 
   // TODO ADD YOUR BOARD HERE! - Use uppercase names as keys
-  private val registry: Map[String, Class[_ <: FPGA]] = Map(
-    "ZCU104" -> classOf[ZCU104]
+  private val registry: Map[String, FPGA] = Map(
+    "ZCU104" -> ZCU104
   )
 
   def getKnownBoards: Seq[String] = registry.keys.toSeq
 
   /** name -> Board (throws if not found) */
-  def n2b(name: String): Class[_ <: FPGA] = {
+  def n2b(name: String): FPGA = {
     registry.getOrElse(name.toUpperCase, throw new Exception(s"Unknown FPGA board: $name"))
   }
 
   /** name -> Board */
-  def n2bOpt(name: String): Option[Class[_ <: FPGA]] = {
+  def n2bOpt(name: String): Option[FPGA] = {
     registry.get(name.toUpperCase)
   }
 
   /** Board -> name (throws if not found) */
-  def b2n(clazz: Class[_ <: FPGA]): String = {
-    registry.find(_._2 == clazz) match {
+  def b2n(fpga: FPGA): String = {
+    registry.find(_._2 == fpga) match {
       case Some((name, _)) => name
-      case None => throw new Exception(s"FPGA class ${clazz.getName} not found in registry")
+      case None => throw new Exception(s"FPGA '${fpga.friendlyName}' not found in registry")
     }
   }
 
   /** Board -> name */
-  def b2nOpt(clazz: Class[_ <: FPGA]): Option[String] = {
-    registry.find(_._2 == clazz) match {
-      case Some((name, _)) => Some(name)
-      case None => None
-    }
-  }
-
-  /**
-   * Instantiate an FPGA board given its class.
-   *
-   * @param clazz The class of the FPGA board to instantiate
-   * @return An instance of the FPGA board
-   */
-  def resolveBoardInstance(clazz: Class[_ <: FPGA])(implicit bd: SOCTBdBuilder, p: Parameters): FPGA = {
-    clazz.getConstructor(classOf[SOCTBdBuilder], classOf[Parameters]).newInstance(bd, p)
+  def b2nOpt(fpga: FPGA): Option[String] = {
+    registry.find(_._2 == fpga).map(_._1)
   }
 }
 
@@ -95,26 +81,37 @@ case class FPGAResetNPort(override val portName: String)(implicit bd: SOCTBdBuil
 }
 
 /**
- * Case class representing a clock port provided by the FPGA board. This port can be used to drive clock domains within the design.
- *
- * @param portName The name of the clock port, which should match the name of the corresponding clock pin on the FPGA board.
- * @param dom      A function that returns the clock domain associated with this clock port. This allows for lazy evaluation of the clock domain, which can be useful for handling circular dependencies between the clock port and the clock domain.
+ * Abstract base class for clock input ports provided by the FPGA board.
+ * Concrete subclasses differ only in the Xilinx interface type (single-ended vs differential).
  */
-case class FPGAClockPort(override val portName: String, dom: () => ClockDomain)(implicit bd: SOCTBdBuilder, p: Parameters)
+abstract class FPGAClockPort(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPortSlave with DrivesNet {
-
-  override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
+  def dom: () => ClockDomain
 
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.FREQ_HZ" -> (dom().freqMHz * 1e6).toInt.toString
   )
 }
 
+/** Single-ended clock input from the FPGA board (e.g. a 100 MHz XTAL oscillator) */
+case class FPGASingleEndedClockPort(override val portName: String, dom: () => ClockDomain)
+                                   (implicit bd: SOCTBdBuilder, p: Parameters)
+  extends FPGAClockPort {
+  override def partName: String = "xilinx.com:interface:clk_rtl:1.0"
+}
+
+/** Differential (LVDS) clock input from the FPGA board (e.g. ZCU104 300 MHz diff pair) */
+case class FPGADiffClockPort(override val portName: String, dom: () => ClockDomain)
+                            (implicit bd: SOCTBdBuilder, p: Parameters)
+  extends FPGAClockPort {
+  override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"
+}
+
 /**
  * Case class representing a clock domain provided by the FPGA board.
  *
- * @param clock   Clock provider that is synced to this clock domain
- * @param reset   Reset provider that is synced to this clock domain
+ * @param clock   Clock provider synced to this clock domain
+ * @param reset   Reset provider synced to this clock domain
  * @param freqMHz The frequency of the clock domain in MHz
  */
 case class FPGAClockDomain(clock: FPGAClockPort, reset: FPGAResetPortSource, override val freqMHz: Double)
@@ -124,9 +121,9 @@ case class FPGAClockDomain(clock: FPGAClockPort, reset: FPGAResetPortSource, ove
  * Abstract base class for FPGA boards. Subclasses must provide information about the specific FPGA board,
  * such as the Xilinx part number, available clock domains, DDR4 ports, and PMOD ports.
  * For instance, see the ZCU104 implementation.
- * Subclasses must provide a SOCTBdBuilder and Parameters context for instantiation.
+ * All init functions have side-effects, and should be called only once per block design.
  */
-abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) extends IsXilinx with HasFriendlyName {
+abstract class FPGA extends IsXilinx with HasFriendlyName {
 
   /**
    * The Xilinx part number for this FPGA board - e.g., "xczu7ev-ffvc1156-2-e"
@@ -134,37 +131,18 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
   val xilinxPart: String
 
   /**
-   * The clock domain representing the fastest clock available on this FPGA board.
+   * The size of the DDR memory on this FPGA board in bytes, if it is a fixed known size
+   * (e.g., a board with soldered-on DDR4 of a specific capacity).
+   * Returns None if the board has no fixed DDR size
    */
-  val fastestClock: FPGAClockDomain
-
-  /**
-   * Get the i-th DDR4 port available on this FPGA board.
-   *
-   * @param i The index of the DDR4 port to initialize (default is 0)
-   * @throws XilinxDesignException if no DDR4 ports are defined for this FPGA board or if the index is out of range
-   * @return The initialized DDR4 port
-   */
-  @throws[XilinxDesignException]
-  def initDDR4Port(i: Int = 0): DDR4Port = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any DDR4 ports defined.")
-
-
-  /**
-   * Get the i-th UART port available on this FPGA board.
-   *
-   * @param i The index of the UART port to initialize (default is 0)
-   * @throws XilinxDesignException if no UART ports are defined for this FPGA board or if the index is out of range
-   * @return The initialized UART port
-   */
-  @throws[XilinxDesignException]
-  def initUARTPort(i: Int = 0): UARTPort = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any UART ports defined.")
+  @unused
+  val intMemCap: Option[BigInt] = None
 
 
   /**
    * The PMOD ports available on this FPGA board
    */
   val getPMODPorts: Seq[Int] = Seq.empty
-
 
   /**
    * Get the PMOD pin corresponding to the given PMOD port and pin index.
@@ -176,17 +154,33 @@ abstract class FPGA(implicit @unused bd: SOCTBdBuilder, @unused p: Parameters) e
    */
   def pmod(pmodPort: Int, pmodPin: RawPMODPin): FPGAPMODPin
 
+  /**
+   * Get the i-th DDR4 port available on this FPGA board.
+   *
+   * @param i The index of the DDR4 port to initialize (default is 0)
+   * @throws XilinxDesignException if no DDR4 ports are defined for this FPGA board or if the index is out of range
+   * @return The initialized DDR4 port
+   */
+  @throws[XilinxDesignException]
+  def initDDR4Port(i: Int = 0)(implicit bd: SOCTBdBuilder, p: Parameters): DDR4Port = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any DDR4 ports defined.")
+
 
   /**
-   * The default reset port for this FPGA board, based on the reset polarity parameter
+   * Get the i-th UART port available on this FPGA board.
+   *
+   * @param i The index of the UART port to initialize (default is 0)
+   * @throws XilinxDesignException if no UART ports are defined for this FPGA board or if the index is out of range
+   * @return The initialized UART port
    */
-  lazy val defaultReset: FPGAResetPortSource = {
-    if (p(FPGAResetPolarity)) {
-      FPGAResetPort("reset")
-    } else {
-      FPGAResetNPort("reset_n")
-    }
-  }
+  @throws[XilinxDesignException]
+  def initUARTPort(i: Int = 0)(implicit bd: SOCTBdBuilder, p: Parameters): UARTPort = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any UART ports defined.")
+
+
+  /**
+   * The clock domain representing the fastest clock available on this FPGA board.
+   */
+  def initFastestClock(implicit bd: SOCTBdBuilder, p: Parameters): FPGAClockDomain
+
 
   override def toString: String = friendlyName
 }

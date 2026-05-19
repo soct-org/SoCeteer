@@ -20,7 +20,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
     .map(_.tileParams.core.xLen) :+ 32).max
   case MaxHartIdBits => log2Up((site(PossibleTileLocations).flatMap(loc => site(TilesLocated(loc)))
     .map(_.tileParams.tileId) :+ 0).max + 1)
-  // Interconnect parameters
+    // Interconnect parameters
   case SystemBusKey => SystemBusParams(
     beatBytes = 8,
     blockBytes = site(CacheBlockBytes))
@@ -38,7 +38,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
   case FrontBusKey => FrontBusParams(
     beatBytes = 8,
     blockBytes = site(CacheBlockBytes))
-  // Additional device Parameters
+    // Additional device Parameters
   case BootROMLocated(InSubsystem) => Seq(BootROMParams())
   case HasTilesExternalResetVectorKey => false
   case DebugModuleKey => Some(DefaultDebugModuleParams(64))
@@ -74,7 +74,6 @@ class RocketVivadoBaseConfig extends Config(
     new WithDefaultSlavePort ++
     new WithJtagDTM ++
     new WithDebugSBA ++
-    new WithDDR4ExtMem ++
     new WithSDCardPMOD ++
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
@@ -97,20 +96,10 @@ class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
 
 
 /*----------------- Memory ---------------*/
-class ExtMem64Bit extends Config(new WithExtMemSize(0x380000000L))
 
-class ExtMem32Bit extends Config(new WithExtMemSize(0x80000000L))
-
-/**
- * Field to indicate whether the design should include DDR4 external memory.
- */
-case object HasDDR4ExtMem extends Field[Boolean](false)
-
-
-class WithDDR4ExtMem extends Config((_, _, _) => {
-  case HasDDR4ExtMem => true
-}
-)
+class WithExtMemCapacity(cap: BigInt) extends Config((_, _, up) => {
+  case ExtMem => up(ExtMem).map(x => x.copy(master = x.master.copy(size = cap - x.master.base)))
+})
 
 /*----------------- Storage ---------------*/
 
@@ -160,7 +149,7 @@ class WithSingleBusClockSpeed(freqMHz: Double) extends Config(
 /**
  * Field to indicate whether the design runs on a Xilinx FPGA.
  */
-case object XilinxFPGAKey extends Field[Option[Class[_ <: FPGA]]](None)
+case object XilinxFPGAKey extends Field[Option[FPGA]](None)
 
 
 /**
@@ -179,32 +168,16 @@ class WithBdBuilder(bd: SOCTBdBuilder) extends Config((_, _, _) => {
 })
 
 /**
- * Class to specify the Xilinx FPGA board class for the design.
+ * Class to specify the Xilinx FPGA board for the design.
  *
- * @param fpgaClass The class of the Xilinx FPGA board.
+ * @param fpga The FPGA board object.
  */
-class WithXilinxFPGA(fpgaClass: Class[_ <: FPGA]) extends Config((_, _, _) => {
-  case XilinxFPGAKey => Some(fpgaClass)
+class WithXilinxFPGA(fpga: FPGA) extends Config((_, _, _) => {
+  case XilinxFPGAKey => Some(fpga)
 })
 
 
 /*----------------- Reset Schemes ---------------*/
-
-/**
- * Field to specify the reset polarity of the FPGA reset signal.
- * True for active high, false for active low.
- */
-case object FPGAResetPolarity extends Field[Boolean](true)
-
-
-/**
- * Class to specify the polarity of the FPGA reset signal.
- *
- * @param activeHigh True if the reset is active high, false if active low.
- */
-class WithFPGAResetPolarity(activeHigh: Boolean) extends Config((_, _, _) => {
-  case FPGAResetPolarity => activeHigh
-})
 
 
 /**

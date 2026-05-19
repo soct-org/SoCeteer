@@ -105,8 +105,13 @@ abstract class BaseSubsystem(val location: HierarchicalLocation = InSubsystem)
   }
 }
 
-abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends LazyRawModuleImp(_outer) with HasDTSImp[L] {
+abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends LazyRawModuleImp(_outer) {
   def dtsLM: L = _outer
+
+  ElaborationArtefacts.add("graphml", dtsLM.graphML)
+  ElaborationArtefacts.add("dts", dtsLM.dts)
+  ElaborationArtefacts.add("json", dtsLM.json)
+  soct.log.debug(s"Device Tree for ${dtsLM.dts}:")
 
   private val mapping: Seq[AddressMapEntry] = {
     dtsLM.collectResourceAddresses.groupBy(_._2).toList.flatMap { case (key, seq) =>
@@ -124,10 +129,22 @@ abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends La
   private val dtsRanges = AddressRange.unify(mapping.map(_.range))
   private val allRanges = AddressRange.unify(dtsLM.topManagers.flatMap { m => AddressRange.fromSets(m.address) })
 
-  if (dtsRanges != allRanges) {
+  // The MMIO export port (ExtBus) is a forwarding window, not a physical device.
+  // Gaps within it just generate bus errors — they don't need DTS entries.
+  // Replace the full MMIO window in allRanges with only its DTS-described sub-ranges.
+  private val adjustedAllRanges: Seq[AddressRange] = p(ExtBus) match {
+    case Some(ep) =>
+      val mmioWindow = AddressRange(ep.base, ep.size)
+      val outsideMmio = AddressRange.subtract(allRanges, Seq(mmioWindow))
+      val insideMmio  = dtsRanges.filter(r => r.base >= mmioWindow.base && r.base + r.size <= mmioWindow.base + mmioWindow.size)
+      AddressRange.unify(outsideMmio ++ insideMmio)
+    case None => allRanges
+  }
+
+  if (dtsRanges != adjustedAllRanges) {
     soct.log.warn("Address map described by DTS differs from physical implementation:")
-    AddressRange.subtract(allRanges, dtsRanges).foreach(r => soct.log.warn(s"\texists, but undescribed by DTS: $r"))
-    AddressRange.subtract(dtsRanges, allRanges).foreach(r => soct.log.warn(s"\tdoes not exist, but described by DTS: $r"))
+    AddressRange.subtract(adjustedAllRanges, dtsRanges).foreach(r => soct.log.warn(s"\texists, but undescribed by DTS: $r"))
+    AddressRange.subtract(dtsRanges, adjustedAllRanges).foreach(r => soct.log.warn(s"\tdoes not exist, but described by DTS: $r"))
   }
 }
 
@@ -166,8 +183,8 @@ object SOCTBootROM {
 
       val target = config.args.userBootrom.getOrElse(config.args.target.defaultBootrom)
 
-      runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString, "-G", "Ninja"), defs, streamOutput = true)
-      runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty, streamOutput = true)
+      runCMakeCommand(Seq("-S", sourceDir.toString, "-B", buildDir.toString, "-G", "Ninja"), defs)
+      runCMakeCommand(Seq("--build", buildDir.toString, "--target", target), Map.empty)
 
       assert(Files.exists(paths.bootromImgFile), s"Bootrom image file ${paths.bootromImgFile} was not created")
 

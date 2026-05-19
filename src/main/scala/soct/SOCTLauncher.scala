@@ -1,5 +1,6 @@
 package soct
 
+import freechips.rocketchip.subsystem.{ExtMem, WithExtMemSize}
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
 import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
@@ -51,14 +52,23 @@ object SOCTLauncher {
   private def generateVivadoDesign(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
     log.info("Generating design for Vivado synthesis")
 
-    if (args.xlen == 32) {
-      config.params = config.params.orElse(new ExtMem32Bit)
-    } else {
-      config.params = config.params.orElse(new ExtMem64Bit)
-    }
     if (args.board.isEmpty) {
       throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
     }
+    val board = args.board.get
+
+    val memCap =
+      args.extMemCap
+        .orElse(board.intMemCap)
+        .getOrElse(args.xlen match {
+          case 32 => BigInt(0x100000000L) // 4GB
+          case _ => BigInt(0x400000000L) // 16GB
+        })
+    // Throw warning if capacity is below 2GB, which is the minimum for Rocket Chip designs with the default memory map
+    if (memCap < 0x80000000L) {
+      soct.log.warn(s"Neither RocketChip nor SoCeteer really support 2GB or less external memory capacity as the default memory map places the external memory at 0x80000000 (i.e. 2GiB). If you are using a custom memory map, you may be able to use a smaller capacity, but be aware that some software may not run correctly if the memory capacity is too small. It is recommended to use at least 2GB of external memory for Rocket Chip designs.")
+    }
+    config.params = config.params.orElse(new WithExtMemCapacity(memCap))
     config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
     config.params = config.params.orElse(new soct.RocketVivadoBaseConfig)
 
