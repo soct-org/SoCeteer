@@ -190,9 +190,10 @@ object SOCTUtils {
    * @param workingDir   The working directory to run the command in (default: project root)
    * @param streamOutput If true, stream the command's stdout and stderr to the console in real time while also capturing it. If false, only capture the output and print it if the command fails.
    * @return A tuple of (stdout, stderr) from the command
+   * @throws RuntimeException If the command fails (non-zero exit code), with stdout and stderr included in the exception message for debugging
    */
   def runCMakeCommand(command: Seq[String],
-                      definesMap: Map[String, String],
+                      definesMap: Map[String, String] = Map.empty,
                       workingDir: Path = SOCTPaths.projectRoot,
                       streamOutput: Boolean = false
                      ): (String, String) = {

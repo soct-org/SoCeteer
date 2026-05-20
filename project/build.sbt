@@ -1,1 +1,0 @@
-libraryDependencies += "org.antlr" % "antlr4" % "4.9.3" // Forced by firrtl
