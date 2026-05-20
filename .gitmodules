@@ -14,7 +14,7 @@
 	path = generators/shuttle
 	url = https://github.com/ucb-bar/shuttle.git
 	branch = master
-	ignore = all
+	ignore = dirty
 [submodule "generators/gemmini"]
 	path = generators/gemmini
 	url = https://github.com/soct-org/gemmini.git
