@@ -117,6 +117,11 @@ abstract class SOCTPathsBase {
   def systemDir: Path
 
   /**
+   * Path to the generated verilog/systemverilog files
+   */
+  def verilogSrcDir: Path = systemDir.resolve("vsrcs")
+
+  /**
    * Initialize any subdirectories needed for this synthesis flow (e.g., for Vivado, we need a vivado-srcs subdirectory for the generated TCL scripts and sources).
    */
   def createSubdirsImpl(): Unit
@@ -154,6 +159,7 @@ abstract class SOCTPathsBase {
    */
   final def createSubdirs(): Unit = {
     systemDir.toFile.mkdirs()
+    verilogSrcDir.toFile.mkdirs()
     createSubdirsImpl()
   }
 }
@@ -203,11 +209,6 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPathsBa
    * Path to the firtool binary
    */
   def firtoolBinary: Path = args.firtoolPath.getOrElse(throw new InternalBugException("Firtool path not set in LauncherArgs"))
-
-  /**
-   * Path to the generated verilog/systemverilog files
-   */
-  def verilogSrcDir: Path = systemDir.resolve("vsrcs")
 
   /**
    * Path to the generated low firrtl file (only when using Berkeley chisel)

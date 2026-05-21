@@ -45,7 +45,7 @@ object SOCTReadmeBuilder {
 
   val simBuildDir = rel(paths.buildDir.resolve("sim-build"))
   val progBuildDir = rel(paths.buildDir.resolve("prog-build"))
-  val cmakeSoctSystemDef = s"-DSOCT_SYSTEM=${rel(paths.soctSystemCMakeFile)}"
+  val cmakeSoctSystemDef = s"-DSOCT_SYSTEM=/path/to/${rel(paths.soctSystemCMakeFile)}"
 
 
   def rel(path: Path): String = {
@@ -167,12 +167,12 @@ object SOCTReadmeBuilder {
        |(using `main.cpp`, `dpi-c.cpp`, FESVR, and the RISC-V ISA disassembler) into a native simulator binary.
        |
        |The simulator loads a RISC-V ELF, communicates with the program's syscalls via **FESVR** (Front-End Server)
-       |over the Debug Transport Module (DTM) using DPI-C, and exits when the program calls `tohost`.
-       |A remote JTAG bitbang interface (port 1337) is also exposed for live debugging with OpenOCD/GDB.
+       |over the Debug Transport Module (DTM) using DPI-C.
+       |A remote JTAG bitbang interface is also exposed for live debugging with OpenOCD/GDB.
        |
-       |$sct emits a `$SOCT_SYSTEM_CMAKE_FILE` file at `$soctCmakePath` alongside the Verilog.
+       |$sct emits a `$SOCT_SYSTEM_CMAKE_FILE` file alongside the Verilog files.
        |This file contains CMake variables (architecture, core count, ABI, source paths, etc.) consumed by both the
-       |simulator CMake project and the binaries CMake project - so neither needs to be reconfigured between designs.
+       |simulator CMake project and the binaries CMake project.
        |
        |#### CLI usage
        |```bash
@@ -196,7 +196,7 @@ object SOCTReadmeBuilder {
        |
        || Variable | Description |
        ||-|-|
-       || `SOCT_SYSTEM` | **(Required)** Path to the emitted `$SOCT_SYSTEM_CMAKE_FILE` file. |
+       || `SOCT_SYSTEM` | **(Required)** Absolute path to the emitted `$SOCT_SYSTEM_CMAKE_FILE` file. |
        || `VL_THREADS` | Number of Verilator threads (default: `SOCT_NCPUS + 1`). |
        || `VL_TRACE` | Enable VCD waveform tracing (off by default). |
        || `VL_TRACE_DEPTH` | Hierarchy depth limit for tracing (default: 2). |
@@ -224,6 +224,8 @@ object SOCTReadmeBuilder {
        |
        |**IntelliJ IDEA / CLion:** Run the `main` method in [$slFilePath]($slFilePath) to emit the design, then open
        |`${path("binaries")}` and `${path("sim")}` as separate CLion projects and add `$cmakeSoctSystemDef` to CMake options.
+       |Then build the `$defaultBin` target in the binaries project to build the example ELF, and build the default target in the sim project to build the simulator.
+       |Finally, run the simulator binary with the ELF as the first positional argument to run the example program on the generated design.
        |
        |**CLI:**
        |```bash
@@ -321,7 +323,8 @@ object SOCTReadmeBuilder {
        |To force installation run `softwareupdate --install-rosetta --agree-to-license` in the terminal.
        |* If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
        |* If UART to the board fails, close the Vivado hardware manager. Sometimes the /dev/ttyUSB* disappears where `udevadm trigger` can help. We also advice against using USB hubs for the board connection as they can cause issues with the serial connection.
-       |
+       |* On Windows, Verilator requires Visual Studio 2022 while building a simulation binary requires MinGW. Make sure both are installed and configured correctly.
+       |* On Windows, the `CreateProcessA` function restricts the number of characters to 32767. When building a simulation binary, Verilator is passed all the Verilog source files as arguments which can exceed this limit. If you encounter issues with building the simulator on Windows, try moving the project to a directory with a shorter path or pass `--single-verilog-file` to the launcher to emit a single concatenated Verilog file instead of separate files.
        |""".stripMargin
   }
 

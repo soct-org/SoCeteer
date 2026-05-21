@@ -74,7 +74,11 @@ class SimulationSpec extends AnyFlatSpec {
       "-t", "verilator",
       "--no-latest-soct-system" // Don't create symlink to latest SOCTSystem.cmake file for tests, to avoid conflicts between tests and user builds
     )
-    SOCTLauncher.main(args.toArray)
+
+    // Add the --single-verilog-file argument if running on Windows - see README.md for details
+    val osArgs = if (SOCTUtils.isWindows) Seq("--single-verilog-file") else Seq.empty
+
+    SOCTLauncher.main((args ++ osArgs).toArray)
 
     withClue(s"Expected `${paths.soctSystemCMakeFile}` to exist. ") {
       assert(paths.soctSystemCMakeFile.toFile.exists())
