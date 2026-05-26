@@ -60,6 +60,62 @@ class SimulationSpec extends AnyFlatSpec {
 
 
   /**
+   * Flattens a Seq[Test] into (Test, xlen) pairs, then runs each via `body`, saving a checkpoint
+   * file after every success so the suite can be resumed from where it left off.
+   * Clears the checkpoint file on full success.
+   *
+   * @param tests          the tests to run
+   * @param checkpointName name used to derive the checkpoint file (stored under testWorkspace)
+   * @param body           called for each (config, xlen) pair; should throw on failure
+   */
+  def runWithCheckpoint(tests: Seq[Test], checkpointName: String)(body: (Class[_ <: Config], Int) => Unit): Unit = {
+    val checkpointFile = testWorkspace.resolve(s"$checkpointName-checkpoint.txt")
+    val flat = for {t <- tests; xlen <- t.xlens} yield (t, xlen)
+
+    val lastCheckpoint =
+      if (checkpointFile.toFile.exists()) {
+        val src = scala.io.Source.fromFile(checkpointFile.toFile)
+        try src.mkString.trim finally src.close()
+      } else ""
+
+    val startIndex = if (lastCheckpoint.nonEmpty) {
+      val idx = flat.indexWhere { case (t, xlen) => SOCTUtils.configName(t.config, xlen) == lastCheckpoint }
+      if (idx >= 0) {
+        soct.log.info(s"Resuming from checkpoint: $lastCheckpoint"); idx + 1
+      } else 0
+    } else 0
+
+    try {
+      for (i <- startIndex until flat.length) {
+        val (test, xlen) = flat(i)
+        val testName = SOCTUtils.configName(test.config, xlen)
+        try {
+          withClue(s"Running test `$testName`. ") {
+            body(test.config, xlen)
+          }
+          val w = new java.io.PrintWriter(checkpointFile.toFile);
+          w.print(testName);
+          w.close()
+          soct.log.info(s"Checkpoint saved: $testName")
+        } catch {
+          case e: Exception =>
+            soct.log.error(s"Test failed at: $testName")
+            soct.log.error(s"Last successful: ${if (i > 0) SOCTUtils.configName(flat(i - 1)._1.config, flat(i - 1)._2) else "none"}")
+            soct.log.error(s"Checkpoint file: $checkpointFile")
+            throw e
+        }
+      }
+      checkpointFile.toFile.delete()
+      soct.log.info(s"All $checkpointName tests passed. Checkpoint cleared.")
+    } catch {
+      case e: Exception =>
+        soct.log.error(s"$checkpointName test suite failed. Resume with: sbt test")
+        throw e
+    }
+  }
+
+
+  /**
    * Run a test with the given configuration and xlen.
    * This generates the SOCTSystem.cmake file for the test configuration, then configures and builds both the simulator and the test binary using that file, and finally runs the simulator with the test ELF.
    */
@@ -216,63 +272,7 @@ class SimulationSpec extends AnyFlatSpec {
   // FULL TEST
   //***********
   "Full test" should "run without errors" in {
-    val checkpointFile = testWorkspace.resolve("full-test-checkpoint.txt")
-    val lastCheckpoint = if (checkpointFile.toFile.exists()) {
-      val f = scala.io.Source.fromFile(checkpointFile.toFile)
-      f.getLines().mkString.trim
-    } else {
-      ""
-    }
-
-    var checkpointIndex = 0
-    val allTestsFlat = for {
-      test <- allTests
-      xlen <- test.xlens
-    } yield (test, xlen)
-
-    // Find starting index if resuming from checkpoint
-    if (lastCheckpoint.nonEmpty) {
-      checkpointIndex = allTestsFlat.indexWhere { case (test, xlen) =>
-        SOCTUtils.configName(test.config, xlen) == lastCheckpoint
-      }
-      if (checkpointIndex >= 0) {
-        soct.log.info(s"Resuming from checkpoint: $lastCheckpoint")
-        checkpointIndex += 1 // Start from next test after checkpoint
-      } else {
-        checkpointIndex = 0
-      }
-    }
-
-    try {
-      for (i <- checkpointIndex until allTestsFlat.length) {
-        val (test, xlen) = allTestsFlat(i)
-        val testName = SOCTUtils.configName(test.config, xlen)
-
-        try {
-          withClue(s"Running test `$testName`. ") {
-            runTest(test.config, xlen)
-          }
-          // Write successful checkpoint
-          val writer = new java.io.PrintWriter(checkpointFile.toFile)
-          writer.print(testName)
-          writer.close()
-          soct.log.info(s"Checkpoint saved: $testName")
-        } catch {
-          case e: Exception =>
-            soct.log.error(s"Test failed at: $testName")
-            soct.log.error(s"Last successful checkpoint: ${if (i > 0) allTestsFlat(i - 1)._2 else "none"}")
-            soct.log.error(s"Checkpoint file: ${checkpointFile}")
-            throw e
-        }
-      }
-      // Clear checkpoint on full success
-      checkpointFile.toFile.delete()
-      soct.log.info("All tests passed. Checkpoint cleared.")
-    } catch {
-      case e: Exception =>
-        soct.log.error(s"Test suite failed. Resume with: sbt test")
-        throw e
-    }
+    runWithCheckpoint(allTests, "full-test")(runTest(_, _))
   }
 
 

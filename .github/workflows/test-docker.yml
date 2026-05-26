@@ -33,9 +33,16 @@ jobs:
       - name: Run tests (docker, mounted workspace)
         env:
           SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
+          JAVA_TOOL_OPTIONS: >-
+            -XX:MaxRAMPercentage=50.0
+            -XX:+UseG1GC
+            -XX:MinHeapFreeRatio=5
+            -XX:MaxHeapFreeRatio=15
+            -XX:GCTimeRatio=4
         run: |
           docker run --rm \
             -e SOCT_CHISEL_VERSION="${SOCT_CHISEL_VERSION}" \
+            -e JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS}" \
             -w /work \
             -v "${PWD}:/work" \
             --user "$(id -u):$(id -g)" \

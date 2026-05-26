@@ -93,6 +93,12 @@ jobs:
       - name: Run tests (native)
         env:
           SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
+          JAVA_TOOL_OPTIONS: >-
+            -XX:MaxRAMPercentage=50.0
+            -XX:+UseG1GC
+            -XX:MinHeapFreeRatio=5
+            -XX:MaxHeapFreeRatio=15
+            -XX:GCTimeRatio=4
         run: |
           chmod +x "${{ inputs.test_script }}"
           "${{ inputs.test_script }}"
