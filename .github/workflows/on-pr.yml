@@ -15,9 +15,8 @@ jobs:
     name: Prepare matrices
     uses: ./.github/workflows/prepare-matrix.yml
 
-  # ── Fast tests ─────────────────────────────────────────────────────────────
-  # Run a small set of fast configs on every OS and Docker to catch
-  # cross-platform regressions early on every push/PR.
+  # ── Smoke tests (push / PR) ────────────────────────────────────────────────
+  # Fast configs only, all platforms.  Full tests run on tags (on-tag.yml).
 
   fast-native:
     name: "[${{ matrix.os }}, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
@@ -44,23 +43,5 @@ jobs:
         config: ${{ fromJson(needs.prepare.outputs.fast_configs_json) }}
     uses: ./.github/workflows/test-docker.yml
     with:
-      chisel: ${{ matrix.chisel }}
-      test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
-
-  # ── Full tests ─────────────────────────────────────────────────────────────
-  # macOS-only (largest GitHub-hosted runner), one job per config so each
-  # core appears as an individual check in the PR status view.
-
-  full-macos:
-    name: "[macos, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
-        config: ${{ fromJson(needs.prepare.outputs.full_configs_json) }}
-    uses: ./.github/workflows/test-native.yml
-    with:
-      os: macos-latest
       chisel: ${{ matrix.chisel }}
       test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
