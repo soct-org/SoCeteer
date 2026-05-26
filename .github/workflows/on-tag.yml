@@ -35,28 +35,48 @@ jobs:
     with:
       image_name: soceteer
 
-  full-native:
-    name: Full (native) - ${{ matrix.os }} - chisel ${{ matrix.chisel }}
+  # Fast tests on all platforms (smoke-check the freshly-built image)
+  fast-native:
+    name: "[${{ matrix.os }}, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
     needs: [prepare, docker]
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+        config: ${{ fromJson(needs.prepare.outputs.fast_configs_json) }}
     uses: ./.github/workflows/test-native.yml
     with:
       os: ${{ matrix.os }}
       chisel: ${{ matrix.chisel }}
-      test_script: ./.github/scripts/ci/run-full-tests.sh
+      test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
 
-  full-docker:
-    name: Full (docker :latest) - chisel ${{ matrix.chisel }}
+  fast-docker:
+    name: "[docker:${{ needs.prepare.outputs.image_tag }}, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
     needs: [prepare, docker]
     strategy:
       fail-fast: false
       matrix:
         chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+        config: ${{ fromJson(needs.prepare.outputs.fast_configs_json) }}
     uses: ./.github/workflows/test-docker.yml
     with:
       chisel: ${{ matrix.chisel }}
-      test_script: ./.github/scripts/ci/run-full-tests.sh
+      docker_image: ghcr.io/${{ github.repository_owner }}/soceteer:${{ needs.prepare.outputs.image_tag }}
+      test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
+
+  # Full tests — macOS only (largest runner), one job per config
+  full-macos:
+    name: "[macos, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
+    needs: [prepare, docker]
+    strategy:
+      fail-fast: false
+      matrix:
+        chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json) }}
+        config: ${{ fromJson(needs.prepare.outputs.full_configs_json) }}
+    uses: ./.github/workflows/test-native.yml
+    with:
+      os: macos-latest
+      chisel: ${{ matrix.chisel }}
+      test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
+

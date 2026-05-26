@@ -10,9 +10,10 @@ on:
         required: false
         type: string
         default: ghcr.io/${{ github.repository_owner }}/soceteer:latest
-      test_script:
+      test_name:
         required: true
         type: string
+        description: "Config name to test, e.g. RocketB2-64. Runs '<test_name> should run without errors'."
 
 jobs:
   test-docker:
@@ -30,7 +31,7 @@ jobs:
         run: |
           docker pull "${{ inputs.docker_image }}"
 
-      - name: Run tests (docker, mounted workspace)
+      - name: Run test — ${{ inputs.test_name }}
         env:
           SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
           JAVA_TOOL_OPTIONS: >-
@@ -47,4 +48,4 @@ jobs:
             -v "${PWD}:/work" \
             --user "$(id -u):$(id -g)" \
             "${{ inputs.docker_image }}" \
-            bash "${{ inputs.test_script }}"
+            sbt "testOnly soct.tests.SimulationSpec -- -t \"${{ inputs.test_name }} should run without errors\""

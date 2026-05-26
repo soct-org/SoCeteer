@@ -1,0 +1,106 @@
+[
+  {
+    "name": "RocketS1",
+    "xlen": 32
+  },
+  {
+    "name": "RocketS1",
+    "xlen": 64
+  },
+  {
+    "name": "RocketS2",
+    "xlen": 32
+  },
+  {
+    "name": "RocketS2",
+    "xlen": 64
+  },
+  {
+    "name": "RocketM1",
+    "xlen": 32
+  },
+  {
+    "name": "RocketM1",
+    "xlen": 64
+  },
+  {
+    "name": "RocketM2",
+    "xlen": 32
+  },
+  {
+    "name": "RocketM2",
+    "xlen": 64
+  },
+  {
+    "name": "RocketB1",
+    "xlen": 32
+  },
+  {
+    "name": "RocketB1",
+    "xlen": 64
+  },
+  {
+    "name": "RocketB2",
+    "xlen": 32
+  },
+  {
+    "name": "RocketB2",
+    "xlen": 64
+  },
+  {
+    "name": "RocketH1",
+    "xlen": 32
+  },
+  {
+    "name": "RocketH1",
+    "xlen": 64
+  },
+  {
+    "name": "RocketH2",
+    "xlen": 32
+  },
+  {
+    "name": "RocketH2",
+    "xlen": 64
+  },
+  {
+    "name": "SmallBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "DualSmallBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "MediumBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "DualMediumBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "LargeBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "DualLargeBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "MegaBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "DualMegaBoomV4",
+    "xlen": 64
+  },
+  {
+    "name": "RocketB1Gem4Fp",
+    "xlen": 64
+  },
+  {
+    "name": "RocketB1Gem4",
+    "xlen": 64
+  }
+]

@@ -6,6 +6,12 @@ on:
       chisel_versions_json:
         description: "JSON array of supported Chisel versions from build.sbt"
         value: ${{ jobs.prepare.outputs.chisel_versions_json }}
+      fast_configs_json:
+        description: "JSON array of fast-test config names"
+        value: ${{ jobs.prepare.outputs.fast_configs_json }}
+      full_configs_json:
+        description: "JSON array of full-test config names"
+        value: ${{ jobs.prepare.outputs.full_configs_json }}
       image_tag:
         description: "Raw tag name (vX.Y.Z) when running on tags; otherwise ref name"
         value: ${{ jobs.prepare.outputs.image_tag }}
@@ -15,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       chisel_versions_json: ${{ steps.chisel.outputs.json }}
+      fast_configs_json: ${{ steps.configs.outputs.fast }}
+      full_configs_json: ${{ steps.configs.outputs.full }}
       image_tag: ${{ steps.imagetag.outputs.image_tag }}
     steps:
       - name: Checkout
@@ -26,6 +34,13 @@ jobs:
         run: |
           python3 ./.github/scripts/ci/extract-chisel-versions.py build.sbt | tee chisel_versions.json
           echo "json=$(cat chisel_versions.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Load test config matrices
+        id: configs
+        shell: bash
+        run: |
+          echo "fast=$(cat .github/configs/fast-matrix.json | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
+          echo "full=$(cat .github/configs/full-matrix.json | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Set image tag from git ref
         id: imagetag

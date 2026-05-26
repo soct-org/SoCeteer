@@ -183,6 +183,13 @@ object SOCTUtils {
   }
 
   /**
+   * Generate a config name string from a plain class simple name and xlen, used for output directories
+   */
+  def configName(configClassName: String, xLen: Int): String = {
+    s"$configClassName-$xLen"
+  }
+
+  /**
    * Run a CMake command with the given defines and working directory, returning the stdout and stderr as strings. Throws an exception if the command fails (non-zero exit code), including stdout and stderr in the exception message for debugging.
    *
    * @param command      The CMake command to run, as a sequence of strings (e.g. Seq("--build", ".", "--target", "foo"))

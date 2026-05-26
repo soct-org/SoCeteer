@@ -1,291 +1,159 @@
 package soct.tests
 
-import org.chipsalliance.cde.config.Config
+import org.json4s._
+import org.json4s.jackson.JsonMethods._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
 import soct.SOCTNames.{SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_KEY, SYSCALL_TEST_BINARY}
 import soct.{SOCTLauncher, SOCTPaths, SOCTPathsBase, SOCTUtils, configureLogging, logLevels}
+import java.nio.file.Path
+
+// Must be top-level (not an inner class) so json4s can instantiate it via reflection.
+private case class MatrixEntry(name: String, xlen: Int)
+
 
 class SimulationSpec extends AnyFlatSpec {
 
-  val XLEN_32 = Seq(32)
-  val XLEN_64 = Seq(64)
-  val XLEN_ALL = Seq(32, 64)
-  val testWorkspace = SOCTPaths.get("test-workspace")
-  var firstRun = true
+  implicit val formats: Formats = DefaultFormats
 
-  case class Test(config: Class[_ <: Config], xlens: Seq[Int])
+  val testWorkspace: Path = SOCTPaths.get("test-workspace")
 
-  // Boom3 not tested by default
-  val boom3Tests: Seq[Test] = Seq(
-    Test(classOf[soct.SmallBoomV3], XLEN_64),
-    Test(classOf[soct.DualSmallBoomV3], XLEN_64),
-    Test(classOf[soct.MediumBoomV3], XLEN_64),
-    Test(classOf[soct.DualMediumBoomV3], XLEN_64),
-    Test(classOf[soct.LargeBoomV3], XLEN_64),
-    Test(classOf[soct.DualLargeBoomV3], XLEN_64),
-    Test(classOf[soct.MegaBoomV3], XLEN_64),
-    Test(classOf[soct.DualMegaBoomV3], XLEN_64)
-  )
-
-  val boom4Tests: Seq[Test] = Seq(
-    Test(classOf[soct.SmallBoomV4], XLEN_64),
-    Test(classOf[soct.DualSmallBoomV4], XLEN_64),
-    Test(classOf[soct.MediumBoomV4], XLEN_64),
-    Test(classOf[soct.DualMediumBoomV4], XLEN_64),
-    Test(classOf[soct.LargeBoomV4], XLEN_64),
-    Test(classOf[soct.DualLargeBoomV4], XLEN_64),
-    Test(classOf[soct.MegaBoomV4], XLEN_64),
-    Test(classOf[soct.DualMegaBoomV4], XLEN_64)
-  )
-
-  val rocketTests: Seq[Test] = Seq(
-    Test(classOf[soct.RocketS1], XLEN_ALL),
-    Test(classOf[soct.RocketS2], XLEN_ALL),
-    Test(classOf[soct.RocketM1], XLEN_ALL),
-    Test(classOf[soct.RocketM2], XLEN_ALL),
-    Test(classOf[soct.RocketB1], XLEN_ALL),
-    Test(classOf[soct.RocketB2], XLEN_ALL),
-    Test(classOf[soct.RocketH1], XLEN_ALL),
-    Test(classOf[soct.RocketH2], XLEN_ALL)
-  )
-
-  val gemminiTests: Seq[Test] = Seq(
-    Test(classOf[soct.RocketB1Gem4Fp], XLEN_64),
-    Test(classOf[soct.RocketB1Gem4], XLEN_64)
-  )
+  // ── Matrix loader ─────────────────────────────────────────────────────────
+  //
+  // Reads a JSON array of {name, xlen} objects from .github/configs/.
+  // The JSON files are the single source of truth shared with the CI matrix.
 
 
-  val allTests: Seq[Test] = gemminiTests ++ boom4Tests ++ rocketTests
-
-
-  /**
-   * Flattens a Seq[Test] into (Test, xlen) pairs, then runs each via `body`, saving a checkpoint
-   * file after every success so the suite can be resumed from where it left off.
-   * Clears the checkpoint file on full success.
-   *
-   * @param tests          the tests to run
-   * @param checkpointName name used to derive the checkpoint file (stored under testWorkspace)
-   * @param body           called for each (config, xlen) pair; should throw on failure
-   */
-  def runWithCheckpoint(tests: Seq[Test], checkpointName: String)(body: (Class[_ <: Config], Int) => Unit): Unit = {
-    val checkpointFile = testWorkspace.resolve(s"$checkpointName-checkpoint.txt")
-    val flat = for {t <- tests; xlen <- t.xlens} yield (t, xlen)
-
-    val lastCheckpoint =
-      if (checkpointFile.toFile.exists()) {
-        val src = scala.io.Source.fromFile(checkpointFile.toFile)
-        try src.mkString.trim finally src.close()
-      } else ""
-
-    val startIndex = if (lastCheckpoint.nonEmpty) {
-      val idx = flat.indexWhere { case (t, xlen) => SOCTUtils.configName(t.config, xlen) == lastCheckpoint }
-      if (idx >= 0) {
-        soct.log.info(s"Resuming from checkpoint: $lastCheckpoint"); idx + 1
-      } else 0
-    } else 0
-
-    try {
-      for (i <- startIndex until flat.length) {
-        val (test, xlen) = flat(i)
-        val testName = SOCTUtils.configName(test.config, xlen)
-        try {
-          withClue(s"Running test `$testName`. ") {
-            body(test.config, xlen)
-          }
-          val w = new java.io.PrintWriter(checkpointFile.toFile);
-          w.print(testName);
-          w.close()
-          soct.log.info(s"Checkpoint saved: $testName")
-        } catch {
-          case e: Exception =>
-            soct.log.error(s"Test failed at: $testName")
-            soct.log.error(s"Last successful: ${if (i > 0) SOCTUtils.configName(flat(i - 1)._1.config, flat(i - 1)._2) else "none"}")
-            soct.log.error(s"Checkpoint file: $checkpointFile")
-            throw e
-        }
-      }
-      checkpointFile.toFile.delete()
-      soct.log.info(s"All $checkpointName tests passed. Checkpoint cleared.")
-    } catch {
-      case e: Exception =>
-        soct.log.error(s"$checkpointName test suite failed. Resume with: sbt test")
-        throw e
-    }
+  private def loadMatrix(pathKey: String): Seq[(String, Int)] = {
+    val file = SOCTPaths.get(pathKey, create = false)
+    val src = scala.io.Source.fromFile(file.toFile)
+    val content = try src.mkString finally src.close()
+    parse(content).extract[List[MatrixEntry]].map(e => (e.name, e.xlen))
   }
 
+  /** Full CI matrix — driven by `.github/configs/full-matrix.json`. */
+  val allTests: Seq[(String, Int)] = loadMatrix("full-matrix")
+
+  // ── Core test helper ──────────────────────────────────────────────────────
+
+  var firstRun = true
 
   /**
-   * Run a test with the given configuration and xlen.
-   * This generates the SOCTSystem.cmake file for the test configuration, then configures and builds both the simulator and the test binary using that file, and finally runs the simulator with the test ELF.
+   * Build the simulator + test binary for the given config name and xlen,
+   * then run the syscall-test ELF and assert a zero exit code.
+   * Config is passed as --config soct.<name> directly to SOCTLauncher — no reflection needed.
    */
-  def runTest(config: Class[_ <: Config], xlen: Int, logLevel: String = logLevels(1)): Unit = {
-    val outDir = testWorkspace.resolve(SOCTUtils.configName(config, xlen))
+  def runTest(config: String, xlen: Int, logLevel: String = logLevels(1)): Unit = {
+    val name = SOCTUtils.configName(config, xlen)
+    val outDir = testWorkspace.resolve(name)
     val paths = SOCTPathsBase(outDir)
-    val args = Seq(
+
+    SOCTLauncher.main(Array(
       "--ll", "error",
-      "--config", config.getCanonicalName,
+      "--config", s"soct.$config",
       "--xlen", xlen.toString,
       "--out-dir", outDir.toString,
       "-t", "verilator",
-      "--no-latest-soct-system" // Don't create symlink to latest SOCTSystem.cmake file for tests, to avoid conflicts between tests and user builds
-    )
-
-    // Add the --single-verilog-file argument if running on Windows - see README.md for details
-    val osArgs = if (SOCTUtils.isWindows) Seq("--single-verilog-file") else Seq.empty
-
-    SOCTLauncher.main((args ++ osArgs).toArray)
+      "--no-latest-soct-system",
+    ))
 
     withClue(s"Expected `${paths.soctSystemCMakeFile}` to exist. ") {
       assert(paths.soctSystemCMakeFile.toFile.exists())
     }
 
     configureLogging(logLevel)
-    val defs = Map(
-      SOCT_SYSTEM_CMAKE_KEY -> paths.soctSystemCMakeFile.toString,
-      "CMAKE_BUILD_TYPE" -> "Release",
-    )
+    val defs = Map(SOCT_SYSTEM_CMAKE_KEY -> paths.soctSystemCMakeFile.toString, "CMAKE_BUILD_TYPE" -> "Release")
     val simBuildDir = paths.buildDir.resolve("sim-build")
     simBuildDir.toFile.mkdirs()
 
-    soct.log.info(s"Configuring and building simulator in `${simBuildDir}` with SOCTSystem.cmake at `${paths.soctSystemCMakeFile}`...")
-    // Configure and build the simulator in the test build directory, using the generated SOCTSystem.cmake file
-    // Builds verilator on the first run, which can take a long time, so stream output to show the user that something is happening.
+    soct.log.info(s"Configuring and building simulator in `$simBuildDir`...")
     SOCTUtils.runCMakeCommand(
       Seq("-S", SOCTPaths.get("sim").toString, "-B", simBuildDir.toString, "-G", "Ninja"),
-      defs ++ Map("VL_THREADS" -> "1"), // Disable verilator multithreading to avoid issues on GitHub Actions runners with limited resources
-      streamOutput = firstRun
+      defs ++ Map("VL_THREADS" -> "1"),
+      streamOutput = firstRun,
     )
     firstRun = false
-    val (simBuildStdout, simBuildStderr) =
-      SOCTUtils.runCMakeCommand(
-        Seq("--build", simBuildDir.toString, "--verbose"),
-        Map.empty,
-      )
-    soct.log.debug(s"CMake build stdout (Simulator):\n$simBuildStdout")
-    soct.log.debug(s"CMake build stderr (Simulator):\n$simBuildStderr")
 
-    // Validate that the simulator binary was created:
+    val (simBuildOut, simBuildErr) = SOCTUtils.runCMakeCommand(Seq("--build", simBuildDir.toString, "--verbose"), Map.empty)
+    soct.log.debug(s"CMake build stdout (Simulator):\n$simBuildOut")
+    soct.log.debug(s"CMake build stderr (Simulator):\n$simBuildErr")
+
     val simBinary = simBuildDir.resolve(SOCT_SIMULATOR_EXE + (if (SOCTUtils.isWindows) ".exe" else ""))
-    withClue(s"Expected simulator binary `${simBinary}` to exist after building. ") {
+    withClue(s"Expected simulator binary `$simBinary` to exist after building. ") {
       assert(simBinary.toFile.exists())
     }
 
-    // Now configure and build the test binary using the same SOCTSystem.cmake file, but with a separate build directory
     val binBuildDir = paths.buildDir.resolve("prog-build")
     binBuildDir.toFile.mkdirs()
+    soct.log.info(s"Configuring and building test binary in `$binBuildDir`...")
 
-    soct.log.info(s"Configuring and building test binary in `$binBuildDir` with SOCTSystem.cmake at `${paths.soctSystemCMakeFile}`...")
+    val (binCfgOut, binCfgErr) = SOCTUtils.runCMakeCommand(
+      Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString, "-G", "Ninja"), defs)
+    soct.log.debug(s"CMake configure stdout (Test Binary):\n$binCfgOut")
+    soct.log.debug(s"CMake configure stderr (Test Binary):\n$binCfgErr")
 
-    val (binCfgStdout, binCfgStderr) = SOCTUtils.runCMakeCommand(
-      Seq("-S", SOCTPaths.get("binaries").toString, "-B", binBuildDir.toString, "-G", "Ninja"),
-      defs
-    )
-    soct.log.debug(s"CMake configure stdout (Test Binary):\n$binCfgStdout")
-    soct.log.debug(s"CMake configure stderr (Test Binary):\n$binCfgStderr")
-
-    val (binBuildStdout, binBuildStderr) =
-      SOCTUtils.runCMakeCommand(
-        Seq("--build", binBuildDir.toString, "--target", SYSCALL_TEST_BINARY),
-        Map.empty
-      )
-    soct.log.debug(s"CMake build stdout (Test Binary):\n$binBuildStdout")
-    soct.log.debug(s"CMake build stderr (Test Binary):\n$binBuildStderr")
+    val (binBuildOut, binBuildErr) = SOCTUtils.runCMakeCommand(
+      Seq("--build", binBuildDir.toString, "--target", SYSCALL_TEST_BINARY), Map.empty)
+    soct.log.debug(s"CMake build stdout (Test Binary):\n$binBuildOut")
+    soct.log.debug(s"CMake build stderr (Test Binary):\n$binBuildErr")
 
     val testElf = paths.elfsDir.resolve(s"$SYSCALL_TEST_BINARY.elf")
     withClue(s"Expected test ELF `$testElf` to exist after building. ") {
       assert(testElf.toFile.exists())
     }
 
-    // The syscall test writes and reads files; give it a dedicated scratch directory
     val tgtDir = simBuildDir.resolve("syscall-test-tgt")
     tgtDir.toFile.mkdirs()
+    soct.log.info(s"Running simulator `$simBinary` with ELF `$testElf`...")
 
-    soct.log.info(s"Running simulator at `${simBinary}` with test ELF `${testElf}` and tgt dir `${tgtDir}`...")
-
-    // Run the simulator; --tgt=<dir> is forwarded to the ELF as argv[1]
     val simProcess = new ProcessBuilder(simBinary.toString, testElf.toString, s"--tgt=$tgtDir", "--log-level=debug")
       .directory(simBuildDir.toFile)
-      .redirectErrorStream(true) // Merge stdout and stderr
+      .redirectErrorStream(true)
       .start()
 
-    val simOutputBuilder = new StringBuilder
-    val outputDrainer = new Thread(() => {
-      val src = scala.io.Source.fromInputStream(simProcess.getInputStream)
-      try {
-        src.getLines().foreach { line =>
-          simOutputBuilder.append(line).append("\n")
-        }
-      } finally {
-        src.close()
-      }
-    })
-    outputDrainer.setDaemon(true)
-    outputDrainer.start()
-
-    // The syscall test blocks on fgets(stdin). Feed it one line then close stdin so
-    // it gets EOF — done in a separate thread to avoid deadlocking against the stdout read below.
+    // Feed one line to stdin in a background thread to avoid deadlocking against the stdout drain below.
     val stdinFeeder = new Thread(() => {
       val writer = new java.io.PrintWriter(simProcess.getOutputStream)
-      writer.println("Hello from SoCeteer!\n")
+      writer.println("Hello from SoCeteer!")
       writer.flush()
       writer.close()
     })
     stdinFeeder.setDaemon(true)
     stdinFeeder.start()
 
+    // Drain stdout/stderr in a background thread so the pipe buffer never fills.
+    val outputBuf = new java.util.concurrent.atomic.AtomicReference("")
+    val stdoutDrainer = new Thread(() => {
+      val src = scala.io.Source.fromInputStream(simProcess.getInputStream)
+      outputBuf.set(src.mkString)
+    })
+    stdoutDrainer.setDaemon(true)
+    stdoutDrainer.start()
+
     val simExitCode = simProcess.waitFor()
     stdinFeeder.join()
-    outputDrainer.join()
+    stdoutDrainer.join()
 
     withClue(
       s"""Expected simulator to exit with code 0.
-         |Simulator stdout/stderr:
-         |${simOutputBuilder.toString()}
+         |Simulator output:
+         |${outputBuf.get()}
          |""".stripMargin
     ) {
       simExitCode shouldBe 0
     }
   }
 
-
-  //***********
-  // Fast TEST
-  //***********
-  val fastTests: Seq[Test] = Seq(
-    Test(classOf[soct.RocketB2], XLEN_ALL)
-  )
-
-  "Fast test" should "run without errors" in {
-    for {
-      test <- fastTests
-      xlen <- test.xlens
-    } {
-      withClue(s"Running test `${SOCTUtils.configName(test.config, xlen)}`. ") {
-        runTest(test.config, xlen)
-      }
-    }
-  }
-
-
-  //***********
-  // FULL TEST
-  //***********
-  "Full test" should "run without errors" in {
-    runWithCheckpoint(allTests, "full-test")(runTest(_, _))
-  }
-
-
-  //***********
-  // BOOM3 TEST
-  //***********
-  "Boom3 test" should "run without errors" in {
-    for {
-      test <- boom3Tests
-      xlen <- test.xlens
-    } {
-      withClue(s"Running test `${SOCTUtils.configName(test.config, xlen)}`. ") {
-        runTest(test.config, xlen)
+  // ── Per-config test cases (used by CI matrix) ─────────────────────────────
+  //
+  // Each entry in allTests is registered as its own ScalaTest case so that
+  // GitHub Actions can surface exactly which core failed.  CI targets one with:
+  //   sbt "testOnly soct.tests.SimulationSpec -- -t \"RocketB2-64 should run without errors\""
+  for ((config, xlen) <- allTests) {
+    val testName = SOCTUtils.configName(config, xlen)
+    testName should "run without errors" in {
+      withClue(s"Config `$testName`: ") {
+        runTest(config, xlen)
       }
     }
   }

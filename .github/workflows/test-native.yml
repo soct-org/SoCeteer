@@ -9,9 +9,10 @@ on:
       chisel:
         required: true
         type: string
-      test_script:
+      test_name:
         required: true
         type: string
+        description: "Config name to test, e.g. RocketB2-64. Runs '<test_name> should run without errors'."
 
 jobs:
   test-native:
@@ -32,7 +33,6 @@ jobs:
           soct_test_run_dir="${{ runner.os == 'Windows' && 'D:/t' || '/tmp/t' }}"
           mkdir -p "$soct_test_run_dir"
           echo "SOCT_TEST_RUN_DIR=$soct_test_run_dir" >> "$GITHUB_ENV"
-      
 
       - name: Checkout code with submodules
         uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
             choco install -y winflexbison3
           fi
 
-      - name: Run tests (native)
+      - name: Run test — ${{ inputs.test_name }}
         env:
           SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
           JAVA_TOOL_OPTIONS: >-
@@ -100,5 +100,4 @@ jobs:
             -XX:MaxHeapFreeRatio=15
             -XX:GCTimeRatio=4
         run: |
-          chmod +x "${{ inputs.test_script }}"
-          "${{ inputs.test_script }}"
+          sbt "testOnly soct.tests.SimulationSpec -- -t \"${{ inputs.test_name }} should run without errors\""

@@ -78,7 +78,10 @@ object SOCTPaths {
   private val derived: Map[String, Path] = Map(
     "FindVERILATOR.cmake" -> base("shared").resolve("cmake").resolve("FindVERILATOR.cmake"),
     "default-toolchain" -> base("shared").resolve("cmake").resolve("toolchain-riscv.cmake"),
-    "verilator" -> base("shared").resolve("verilator")
+    "verilator" -> base("shared").resolve("verilator"),
+    // CI test-matrix JSON files (checked into the repo under .github/configs/)
+    "fast-matrix" -> root.resolve(".github").resolve("configs").resolve("fast-matrix.json"),
+    "full-matrix" -> root.resolve(".github").resolve("configs").resolve("full-matrix.json"),
   )
 
   // Dynamic paths that are created during the execution of the program - these cannot be validated at startup since they may not exist yet
