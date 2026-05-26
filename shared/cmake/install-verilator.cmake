@@ -88,8 +88,21 @@ function(install_verilator)
                    "to the path where Win Flex Bison is installed.")
            endif()
        endif()
-       set(_generator "Visual Studio 17 2022")
        list(APPEND _cfg_cmd "-DWIN_FLEX_BISON=${WIN_FLEX_BISON}")
+
+       # Prefer Ninja over the Visual Studio generator on Windows
+       find_program(_ninja_exe ninja)
+       if (_ninja_exe)
+           message(STATUS "Ninja found at ${_ninja_exe}, using Ninja generator for Verilator build (faster)")
+           set(_generator "Ninja")
+       else()
+           message(STATUS "Ninja not found, falling back to Visual Studio 17 2022 generator")
+           message(STATUS "Tip: install Ninja (e.g. 'choco install ninja') for faster Verilator builds")
+           set(_generator "Visual Studio 17 2022")
+           # /MP enables within-project parallel file compilation for MSVC, which is not
+           # enabled automatically by MSBuild's /maxcpucount (project-level parallelism).
+           list(APPEND _cfg_cmd "-DCMAKE_CXX_FLAGS=/MP" "-DCMAKE_C_FLAGS=/MP")
+       endif()
     elseif(APPLE)
         list(APPEND _cfg_cmd "-DFLEX_INCLUDE_DIR=\"\"")
     endif()

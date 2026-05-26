@@ -334,7 +334,7 @@ object SOCTReadmeBuilder {
     val outPath = SOCTPaths.projectRoot.resolve("README.md")
 
     // Overwrite the file with the generated content.
-    Files.write(outPath, readmeContent.getBytes(StandardCharsets.UTF_16))
+    Files.write(outPath, readmeContent.getBytes(StandardCharsets.UTF_8))
 
     // Optional: print where we wrote it, which is handy when invoked via sbt.
     println(s"Wrote ${outPath.toAbsolutePath} (${readmeContent.length} chars)")
