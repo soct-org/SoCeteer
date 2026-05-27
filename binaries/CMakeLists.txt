@@ -63,32 +63,47 @@ endforeach ()
 ###########################################################################################
 if (SOCT_FLASH_HOST OR SOCT_FLASH_XSDB)
     set(_rst_tgt "reset-core")
-    set(_reset_wrapper "${CMAKE_BINARY_DIR}/${_rst_tgt}.sh")
-    set(_reset_tcl "connect; targets -set -filter {name =~ {Hart #0*}}; rst -system; disconnect")
+    set(_reset_wrapper "${CMAKE_BINARY_DIR}/${_rst_tgt}.py")
+
+    # TCL commands sent to xsdb (one per line so they work both via -eval and stdin pipe)
+    set(_reset_tcl_lines "connect\ntargets -set -filter {name =~ {Hart #0*}}\nrst -system\ndisconnect\n")
 
     if (SOCT_FLASH_HOST)
+        # Remote: pipe the Tcl to xsdb which is the login shell on the remote host.
         set(_reset_content "\
-#!/bin/sh
-set -e
-echo '[${_rst_tgt}] triggering on ${SOCT_FLASH_HOST} via xsdb...'
-printf 'connect\\ntargets -set -filter {name =~ {Hart #0*}}\\nrst -system\\ndisconnect\\n' | ssh \"${SOCT_FLASH_HOST}\" \"${SOCT_FLASH_XSDB}\"
+import subprocess
+
+host = '${SOCT_FLASH_HOST}'
+xsdb = '${SOCT_FLASH_XSDB}'
+tcl  = [
+    'connect',
+    'targets -set -filter {name =~ {Hart #0*}}',
+    'rst -system',
+    'disconnect',
+]
+
+print(f'[reset-core] triggering on {host} via xsdb...')
+subprocess.run(['ssh', host, xsdb], input='\\n'.join(tcl).encode(), check=True)
+print('[reset-core] done.')
 ")
     else ()
+        # Local: invoke xsdb with -eval so no stdin pipe is needed.
         set(_reset_content "\
-#!/bin/sh
-set -e
-echo '[${_rst_tgt}] triggering via xsdb...'
-\"${SOCT_FLASH_XSDB}\" -eval \"${_reset_tcl}\"
+import subprocess
+
+xsdb = '${SOCT_FLASH_XSDB}'
+tcl  = 'connect; targets -set -filter {name =~ {Hart #0*}}; rst -system; disconnect'
+
+print('[reset-core] triggering via xsdb...')
+subprocess.run([xsdb, '-eval', tcl], check=True)
+print('[reset-core] done.')
 ")
     endif ()
 
-    file(GENERATE OUTPUT "${_reset_wrapper}" CONTENT "${_reset_content}"
-            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-            GROUP_READ GROUP_EXECUTE
-            WORLD_READ WORLD_EXECUTE)
+    file(GENERATE OUTPUT "${_reset_wrapper}" CONTENT "${_reset_content}")
 
     add_custom_target(${_rst_tgt}
-            COMMAND "${_reset_wrapper}"
+            COMMAND ${CMAKE_COMMAND} -E env python3 "${_reset_wrapper}"
             USES_TERMINAL
             VERBATIM
             COMMENT "Triggering ${_rst_tgt} via xsdb")

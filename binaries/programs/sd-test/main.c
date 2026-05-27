@@ -8,18 +8,7 @@
 
 #include "soct/soct_ff.h"
 #include "soct/smoldtb.h"
-
-/* =========================================================================
- * Shared test helpers
- * ========================================================================= */
-
-#define TEST_PASS(label, fmt, ...) printf("  [PASS] %-30s " fmt "\n", label, ##__VA_ARGS__)
-#define TEST_FAIL(label, fmt, ...) printf("  [FAIL] %-30s " fmt "\n", label, ##__VA_ARGS__)
-#define TEST_SKIP(label, fmt, ...) printf("  [SKIP] %-30s " fmt "\n", label, ##__VA_ARGS__)
-#define TEST_HDR(name)             printf("\n=== %s ===\n", name)
-#define TEST_RESULT(name, n)       printf("\n=== %s %s (%d failure%s) ===\n\n", \
-                                       name, (n) == 0 ? "PASSED" : "FAILED", \
-                                       (n), (n) == 1 ? "" : "s")
+#include "soct-test.h"
 
 /* =========================================================================
  * DMA mapping test
@@ -131,7 +120,7 @@ static int test_dma_mapping(void) {
     }
 
     /* Heap */
-    printf("\n--- Region: heap ---\n");
+    TEST_SECTION("Region: heap");
     {
         uint8_t *raw = malloc(DMA_BLKSZ + 4);
         if (!raw) {
@@ -144,7 +133,7 @@ static int test_dma_mapping(void) {
     }
 
     /* Alignment rejection */
-    printf("\n--- Alignment check ---\n");
+    TEST_SECTION("Alignment check");
     {
         static uint8_t __attribute__((aligned(4))) base[DMA_BLKSZ + 4];
         f += dma_probe("misaligned +1", base + 1, NULL, 1);

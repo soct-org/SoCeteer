@@ -112,7 +112,10 @@ else ()
 endif ()
 
 
-target_include_directories(${SOCT_PROGRAM} PRIVATE ${LIBGLOSS_DIR}/include)
+target_include_directories(${SOCT_PROGRAM} PRIVATE
+        ${LIBGLOSS_DIR}/include
+        ${CMAKE_CURRENT_LIST_DIR}
+)
 
 set_target_properties(${SOCT_PROGRAM} PROPERTIES OUTPUT_NAME ${SOCT_PROGRAM}.elf RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR})
 
@@ -154,41 +157,68 @@ if (NOT DEFINED SOCT_FLASH_BOOTROM_DTB_ADDR)
 endif ()
 
 if (SOCT_FLASH_HOST OR SOCT_FLASH_XSDB)
-    set(_flash_wrapper "${CMAKE_CURRENT_BINARY_DIR}/${SOCT_PROGRAM}-flash.sh")
-    set(_flash_tcl "connect; targets -set -filter {name =~ {Hart #0*}}; stop; dow -clear")
+    set(_flash_wrapper "${CMAKE_CURRENT_BINARY_DIR}/${SOCT_PROGRAM}-flash.py")
 
     if (SOCT_FLASH_HOST)
-        # Remote: xsdb is the login shell on the remote host — pipe Tcl commands
-        # to ssh stdin rather than using "ssh host shell-command".
+        # Remote: scp the ELF then pipe Tcl to xsdb (which is the login shell).
         set(_flash_wrapper_content "\
-#!/bin/sh
-set -e
-echo \"[flash] uploading $1 to ${SOCT_FLASH_HOST}:${SOCT_FLASH_REMOTE_DIR}/\"
-scp \"$1\" \"${SOCT_FLASH_HOST}:${SOCT_FLASH_REMOTE_DIR}/\"
-echo '[flash] flashing on ${SOCT_FLASH_HOST} via xsdb...'
-printf 'connect\\ntargets -set -filter {name =~ {Hart #0*}}\\nstop\\ndow -clear ${SOCT_FLASH_REMOTE_DIR}/${SOCT_PROGRAM}.elf\\nrwr a0 ${SOCT_FLASH_BOOT_HART}\\nrwr a1 ${SOCT_FLASH_BOOTROM_DTB_ADDR}\\ncon\\n' | ssh \"${SOCT_FLASH_HOST}\" \"${SOCT_FLASH_XSDB}\"
+import subprocess, sys, os
+
+host       = '${SOCT_FLASH_HOST}'
+xsdb       = '${SOCT_FLASH_XSDB}'
+remote_dir = '${SOCT_FLASH_REMOTE_DIR}'
+boot_hart  = '${SOCT_FLASH_BOOT_HART}'
+dtb_addr   = '${SOCT_FLASH_BOOTROM_DTB_ADDR}'
+elf        = sys.argv[1]
+remote_elf = remote_dir + '/' + os.path.basename(elf)
+
+print(f'[flash] uploading {elf} to {host}:{remote_dir}/')
+subprocess.run(['scp', elf, f'{host}:{remote_dir}/'], check=True)
+
+tcl = [
+    'connect',
+    'targets -set -filter {name =~ {Hart #0*}}',
+    'stop',
+    f'dow -clear {remote_elf}',
+    f'rwr a0 {boot_hart}',
+    f'rwr a1 {dtb_addr}',
+    'con',
+]
+print(f'[flash] flashing on {host} via xsdb...')
+subprocess.run(['ssh', host, xsdb], input='\\n'.join(tcl).encode(), check=True)
+print('[flash] done.')
 ")
     else ()
-        # Local: run xsdb directly, passing Tcl via -eval.
+        # Local: invoke xsdb directly with -eval.
         set(_flash_wrapper_content "\
-#!/bin/sh
-set -e
-echo '[flash] running xsdb on $1...'
-\"${SOCT_FLASH_XSDB}\" -eval \"${_flash_tcl} $1; rwr a0 ${SOCT_FLASH_BOOT_HART}; rwr a1 ${SOCT_FLASH_BOOTROM_DTB_ADDR}; con\"
+import subprocess, sys
+
+xsdb      = '${SOCT_FLASH_XSDB}'
+boot_hart = '${SOCT_FLASH_BOOT_HART}'
+dtb_addr  = '${SOCT_FLASH_BOOTROM_DTB_ADDR}'
+elf       = sys.argv[1]
+
+tcl = (
+    f'connect; targets -set -filter {{name =~ {{Hart #0*}}}}; stop; '
+    f'dow -clear {elf}; rwr a0 {boot_hart}; rwr a1 {dtb_addr}; con'
+)
+print(f'[flash] running xsdb on {elf}...')
+subprocess.run([xsdb, '-eval', tcl], check=True)
+print('[flash] done.')
 ")
     endif ()
 
     file(GENERATE
             OUTPUT "${_flash_wrapper}"
-            CONTENT "${_flash_wrapper_content}"
-            FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-            GROUP_READ GROUP_EXECUTE
-            WORLD_READ WORLD_EXECUTE)
+            CONTENT "${_flash_wrapper_content}")
 
-    set_target_properties(${SOCT_PROGRAM} PROPERTIES CROSSCOMPILING_EMULATOR "${_flash_wrapper}")
+    # CROSSCOMPILING_EMULATOR is used by ctest / cmake --build --target run.
+    # We prepend python3 so it works on all platforms.
+    set_target_properties(${SOCT_PROGRAM} PROPERTIES
+            CROSSCOMPILING_EMULATOR "python3;${_flash_wrapper}")
 
     add_custom_target(${SOCT_PROGRAM}-flash
-            COMMAND "${_flash_wrapper}" $<TARGET_FILE:${SOCT_PROGRAM}>
+            COMMAND ${CMAKE_COMMAND} -E env python3 "${_flash_wrapper}" $<TARGET_FILE:${SOCT_PROGRAM}>
             DEPENDS ${SOCT_PROGRAM}
             USES_TERMINAL
             VERBATIM
