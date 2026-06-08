@@ -23,6 +23,7 @@ file(GLOB_RECURSE SOCTGLUE_ASM_SRCS ${SOCTGLUE_SRC}/**/*.S ${SOCTGLUE_SRC}/*.S)
 set(ASMFLAGS
         -march=${SOCT_ARCH}
         -mabi=${SOCT_ABI}
+        -g0
         -mcmodel=medany
         -fno-builtin
         -nostartfiles
@@ -34,7 +35,6 @@ set(ASMFLAGS
 set(CFLAGS
         -march=${SOCT_ARCH}
         -mabi=${SOCT_ABI}
-        -g3
         -g0
         -Os
         -mcmodel=medany
