@@ -1,3 +1,5 @@
+import ProjectOps.ProjectOpsImpl
+
 enablePlugins(BuildInfoPlugin)
 
 //***************************
@@ -30,7 +32,7 @@ val useChisel3 = chiselVersion.startsWith("3.")
 lazy val chiselSettings = if (useChisel3) {
   Seq(
     addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % chiselVersion cross CrossVersion.full),
-    libraryDependencies += "org.chipsalliance" %% "firtool-resolver" % "2.0.1",
+    libraryDependencies += "org.chipsalliance" %% "firtool-resolver" % "2.1.1",
     libraryDependencies += "edu.berkeley.cs" %% "chisel3" % chiselVersion,
     libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.6.0"
   )
@@ -41,7 +43,7 @@ lazy val chiselSettings = if (useChisel3) {
   )
 }
 
-def freshProject(name: String, dir: File): Project = {
+def freshProject(name: String, dir: File): Project =
   Project(id = name, base = dir / "src")
     .settings(
       Compile / scalaSource := baseDirectory.value / "main" / "scala",
@@ -50,7 +52,7 @@ def freshProject(name: String, dir: File): Project = {
       Test / scalaSource := baseDirectory.value / "test" / "scala",
       Test / resourceDirectory := baseDirectory.value / "test" / "resources",
     )
-}
+
 
 lazy val commonSettings = Seq(
   scalaVersion := (if (useChisel3) "2.13.14" else "2.13.18"),
@@ -61,13 +63,12 @@ lazy val commonSettings = Seq(
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % (if (useChisel3) "3.9.5" else "3.9.6"), // For logging
   libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.5.20", // For logging backend
   libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
   libraryDependencies += "org.antlr" % "antlr4" % "4.9.3" // Forced by firrtl
 )
 
 lazy val soct_org = Seq(organization := "soct")
 lazy val berkeley_org = Seq(organization := "edu.berkeley.cs")
-
 
 
 //***************************
@@ -77,7 +78,7 @@ val rootDir = file(".")
 
 val generatorsDir = rootDir / "generators"
 
-val rocketChipDir =generatorsDir / "rocket-chip"
+val rocketChipDir = generatorsDir / "rocket-chip"
 
 val rocketChipDepsDir = rocketChipDir / "dependencies"
 
@@ -111,9 +112,49 @@ val gemminiDir = generatorsDir / "gemmini"
 
 val sifiveCacheDir = generatorsDir / "sifive-cache"
 
+val nailDir = generatorsDir / "nail" // RTL Fault Injection framework
+
+val nailExists: Boolean = nailDir.exists()
+
 //***************************
 // PROJECTS:
 //***************************
+
+// NAIL RTL Fault Injection framework (optional - only included if the directory exists)
+lazy val nail = {
+  val nailShared = nailDir / "nail"
+  val nailVersioned = nailDir / (if (useChisel3) "nail3" else "nailX")
+
+  def nailDirs(scope: String) = Seq(nailShared / scope, nailVersioned / scope)
+
+  Project(id = "nail", base = nailShared / "src")
+    .settings(soct_org)
+    .settings(commonSettings)
+    .settings(chiselSettings)
+    .settings(
+      Compile / unmanagedSourceDirectories := nailDirs("src/main/scala"),
+      Test / unmanagedSourceDirectories := nailDirs("src/test/scala"),
+      Test / unmanagedResourceDirectories := nailDirs("src/test/resources"),
+      Compile / unmanagedResourceDirectories := nailDirs("src/main/resources"),
+    )
+}
+
+lazy val nailgun = Project(id = "nailgun", base = nailDir / "nailgun" / "src")
+  .settings(soct_org)
+  .settings(commonSettings)
+  .settings(chiselSettings)
+  .settings(
+    Compile / unmanagedSourceDirectories := Seq(nailDir / "nailgun" / "src" / "main" / "scala"),
+    Test    / unmanagedSourceDirectories := Seq(nailDir / "nailgun" / "src" / "test" / "scala"),
+  )
+  .dependsOn(nail, rocketchip)
+
+
+// Optional tool projects — add new optional tools here, generators will pick them up automatically
+lazy val optionalTools: Seq[Project] = if (nailExists) Seq(nail) else Seq.empty
+lazy val optionalProjects: Seq[Project] = if (nailExists) Seq(nailgun) else Seq.empty
+
+
 lazy val compat = freshProject("compat", compatDir)
   .settings(soct_org)
   .settings(commonSettings)
@@ -130,24 +171,29 @@ lazy val shuttle = freshProject("shuttle", shuttleDir)
   .settings(berkeley_org)
   .dependsOn(rocketchip)
   .settings(commonSettings)
+  .withOptionalDeps(optionalTools)
 
 lazy val saturn = freshProject("saturn-vectors", saturnDir)
   .settings(berkeley_org)
   .dependsOn(rocketchip, shuttle)
   .settings(commonSettings)
+  .withOptionalDeps(optionalTools)
 
 lazy val hardfloat = freshProject("hardfloat", hardfloatDir)
   .settings(berkeley_org)
   .settings(commonSettings)
   .settings(chiselSettings)
+  .withOptionalDeps(optionalTools)
 
 lazy val boom = freshProject("riscv-boom", boomDir)
   .dependsOn(cde)
   .dependsOn(rocketchip)
   .settings(commonSettings)
   .settings(chiselSettings)
+  .withOptionalDeps(optionalTools)
 
 lazy val rocketchip = freshProject("rocket-chip", rocketChipDir)
+  .withOptionalDeps(optionalTools)
   .settings(berkeley_org)
   .dependsOn(cde)
   .dependsOn(compat)
@@ -156,7 +202,8 @@ lazy val rocketchip = freshProject("rocket-chip", rocketChipDir)
   .dependsOn(rocketMacros)
   .settings(commonSettings)
   .settings(chiselSettings)
-  .settings(libraryDependencies ++= Seq("com.lihaoyi" %% "mainargs" % "0.7.7"))
+  .settings(libraryDependencies ++= Seq("com.lihaoyi" %% "mainargs" % "0.7.8"))
+
 
 lazy val gemmini = freshProject("gemmini", gemminiDir)
   .settings(berkeley_org)
@@ -165,6 +212,7 @@ lazy val gemmini = freshProject("gemmini", gemminiDir)
   .dependsOn(rocketchip)
   .settings(commonSettings)
   .settings(chiselSettings)
+  .withOptionalDeps(optionalTools)
 
 lazy val rocketMacros = freshProject("rocket-macros", macrosDir)
   .settings(berkeley_org)
@@ -202,6 +250,7 @@ lazy val sifiveCache = Project("sifive-cache", base = sifiveCacheDir)
   .settings(commonSettings)
   .settings(chiselSettings)
   .settings(Compile / scalaSource := baseDirectory.value / "design/craft")
+  .withOptionalDeps(optionalTools)
 
 // ------------------- Root project -------------------
 lazy val soceteer = (project in rootDir)
@@ -226,18 +275,17 @@ lazy val soceteer = (project in rootDir)
       case PathList("META-INF", "logging.properties") => MergeStrategy.first
       case PathList("META-INF", name) if name.toLowerCase.matches(""".*log4j.*\.xml""") =>
         MergeStrategy.first
-      // Keep service loader metadata (needed for SLF4J, etc.)
+        // Keep service loader metadata (needed for SLF4J, etc.)
       case PathList("META-INF", "services", _@_*) => MergeStrategy.concat
-      // Discard manifest and cryptographic signatures
+        // Discard manifest and cryptographic signatures
       case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
       case PathList("META-INF", xs@_*) if xs.exists(_.matches(""".*\.(RSA|SF|DSA)$""")) => MergeStrategy.discard
-      // Discard license/notice files
+        // Discard license/notice files
       case PathList("META-INF", "LICENSE" | "NOTICE" | "DEPENDENCIES" | "LICENSE.txt" | "NOTICE.txt") =>
         MergeStrategy.discard
-      // Default safe fallback
+        // Default safe fallback
       case _ => MergeStrategy.first
     }
-
   ).settings(
     // Lowering backend depends on the Chisel version
     Compile / unmanagedSourceDirectories ++= {
@@ -245,6 +293,9 @@ lazy val soceteer = (project in rootDir)
       else Seq(unmanagedDir / "chisel")
     }
   ).settings(name := "SoCeteer")
+  .withOptionalDeps(optionalTools)
+  .withOptionalDeps(optionalProjects)
+
 
 
 // Add build info settings to the root project

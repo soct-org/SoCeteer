@@ -65,7 +65,7 @@ if (SOCT_FLASH_HOST OR SOCT_FLASH_XSDB)
     set(_rst_tgt "reset-core")
     set(_reset_wrapper "${CMAKE_BINARY_DIR}/${_rst_tgt}.py")
 
-    # TCL commands sent to xsdb (one per line so they work both via -eval and stdin pipe)
+    # TCL commands sent to xsdb (one per line — used for remote stdin pipe and local temp file)
     set(_reset_tcl_lines "connect\ntargets -set -filter {name =~ {Hart #0*}}\nrst -system\ndisconnect\n")
 
     if (SOCT_FLASH_HOST)
@@ -87,15 +87,25 @@ subprocess.run(['ssh', host, xsdb], input='\\n'.join(tcl).encode(), check=True)
 print('[reset-core] done.')
 ")
     else ()
-        # Local: invoke xsdb with -eval so no stdin pipe is needed.
         set(_reset_content "\
-import subprocess
+import subprocess, tempfile, os
 
 xsdb = '${SOCT_FLASH_XSDB}'
-tcl  = 'connect; targets -set -filter {name =~ {Hart #0*}}; rst -system; disconnect'
+tcl  = '\\n'.join([
+    'connect',
+    'targets -set -filter {name =~ {Hart #0*}}',
+    'rst -system',
+    'disconnect',
+])
 
 print('[reset-core] triggering via xsdb...')
-subprocess.run([xsdb, '-eval', tcl], check=True)
+with tempfile.NamedTemporaryFile(mode='w', suffix='.tcl', delete=False) as f:
+    f.write(tcl)
+    tmp = f.name
+try:
+    subprocess.run([xsdb, tmp], stdin=subprocess.DEVNULL, check=True)
+finally:
+    os.unlink(tmp)
 print('[reset-core] done.')
 ")
     endif ()
