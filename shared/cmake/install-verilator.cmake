@@ -63,36 +63,39 @@ function(install_verilator)
     set(_cfg_cmd ${CMAKE_COMMAND} -S "${VERILATOR_SOURCE}" -B "${VERILATOR_BUILD}" -DCMAKE_BUILD_TYPE=Release)
     set(_generator "Ninja")
 
+    # 1. Platform-Agnostic Flex and Bison Discovery
     if (WIN32)
-       if (NOT DEFINED WIN_FLEX_BISON AND DEFINED ENV{WIN_FLEX_BISON})
-           set(WIN_FLEX_BISON "$ENV{WIN_FLEX_BISON}")
-       elseif (NOT DEFINED WIN_FLEX_BISON)
-           if (DEFINED ENV{ChocolateyInstall})
-               file(TO_CMAKE_PATH "$ENV{ChocolateyInstall}/lib/winflexbison3/tools" WIN_FLEX_BISON)
-           elseif (DEFINED ENV{ProgramData})
-               file(TO_CMAKE_PATH "$ENV{ProgramData}/chocolatey/lib/winflexbison3/tools" WIN_FLEX_BISON)
-           elseif (DEFINED ENV{ALLUSERSPROFILE})
-               file(TO_CMAKE_PATH "$ENV{ALLUSERSPROFILE}/chocolatey/lib/winflexbison3/tools" WIN_FLEX_BISON)
-           else()
-               message(FATAL_ERROR
-                   "Could not determine Chocolatey install root. "
-                   "Please set WIN_FLEX_BISON to the Win Flex Bison tools directory.")
-           endif()
+        # Search for win_flex and win_bison executables automatically
+        find_program(WIN_FLEX_EXE NAMES win_flex flex)
+        find_program(WIN_BISON_EXE NAMES win_bison bison)
 
-           if (EXISTS "${WIN_FLEX_BISON}")
-               message(STATUS "Using Win Flex Bison path: ${WIN_FLEX_BISON}")
-           else()
-               message(FATAL_ERROR
-                   "WIN_FLEX_BISON variable not defined and derived path "
-                   "${WIN_FLEX_BISON} does not exist. Please set WIN_FLEX_BISON "
-                   "to the path where Win Flex Bison is installed.")
-           endif()
-       endif()
-       set(_generator "Visual Studio 17 2022")
-       list(APPEND _cfg_cmd "-DWIN_FLEX_BISON=${WIN_FLEX_BISON}")
+        if (WIN_FLEX_EXE AND WIN_BISON_EXE)
+            # Extract the directory containing the tools to match your variable intent
+            get_filename_component(WIN_FLEX_BISON "${WIN_FLEX_EXE}" DIRECTORY)
+            message(STATUS "Found Win Flex Bison path: ${WIN_FLEX_BISON}")
+        else()
+            message(FATAL_ERROR
+                "Win Flex Bison tools not found. "
+                "Please install them via Chocolatey/vcpkg or set WIN_FLEX_BISON manually.")
+        endif()
+
+        list(APPEND _cfg_cmd "-DWIN_FLEX_BISON=${WIN_FLEX_BISON}")
+
+        # 2. Dynamic Visual Studio Generator Selection
+        if (NOT DEFINED CMAKE_GENERATOR)
+            if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.31" AND MSVC_VERSION VERSION_GREATER_EQUAL 1940)
+                set(_generator "Visual Studio 18 2026")
+            else()
+                set(_generator "Visual Studio 17 2022")
+            endif()
+        else()
+            set(_generator "${CMAKE_GENERATOR}")
+        endif()
+
     elseif(APPLE)
         list(APPEND _cfg_cmd "-DFLEX_INCLUDE_DIR=\"\"")
     endif()
+
 
     # Add generator
     list(APPEND _cfg_cmd -G "${_generator}")
