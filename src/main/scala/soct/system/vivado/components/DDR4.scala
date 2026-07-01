@@ -1,11 +1,10 @@
 package soct.system.vivado.components
 
-import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.fpga.{DDR4Port, FPGAClockPort, FPGAResetPortSource}
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
-import soct.system.vivado.abstracts._
 import freechips.rocketchip.subsystem.ExtMem
-
+import org.chipsalliance.cde.config.Parameters
+import soct.system.vivado.abstracts._
+import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockPort, FPGADiffClockPort, FPGAResetPortSource, FPGASingleEndedClockPort}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 
 import scala.collection.mutable
 
@@ -13,18 +12,21 @@ import scala.collection.mutable
 /**
  * DDR4 memory controller component for Xilinx FPGAs.
  */
-case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class DDR4(memMaster: BdIntfPin, ddr4Intf: BdIntfPortMaster, ddr4params: DDR4PortParams)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps with HasIndexedPins with HasBdAddr {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
   object C0_DDR4 extends BdIntfPin("C0_DDR4", DDR4.this)
+  ddr4Intf <-> C0_DDR4
 
   object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", DDR4.this) with DrivenByNet
 
+  object C0_SYS_CLK_I extends BdPinIn("c0_sys_clk_i", DDR4.this) // The unbuffered clock version
+
   object C0_DDR4_UI_CLK_SYNC_RST extends BdPinOut("c0_ddr4_ui_clk_sync_rst", DDR4.this)
 
-  object CO_INIT_CALIB_COMPLETE extends BdPinOut("c0_init_calib_complete", DDR4.this)
+  object C0_INIT_CALIB_COMPLETE extends BdPinOut("c0_init_calib_complete", DDR4.this)
 
   object C0_DDR4_UI_CLK extends BdPinOut("c0_ddr4_ui_clk", DDR4.this)
 
@@ -43,12 +45,29 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
-    val ddr4Intf = bd.singleConnector(C0_DDR4, p => p.isInstanceOf[DDR4Port])
-    val boardClk = bd.singleConnector(C0_SYS_CLK, p => p.isInstanceOf[FPGAClockPort])
     val boardRst = bd.singleConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
+    val baseAddr = p(ExtMem).get.master.base + ddr4params.getOffset.value
+
     m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
-    m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> boardClk.ref
     m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
+    m += "CONFIG.C0_DDR4_MEMORY_MAP_BASEADDR" -> baseAddr.toLong.toHexString
+
+    val clkIn1Src = bd.sourceOf(C0_SYS_CLK_I)
+    val clkIn1DSrc = bd.sourceOf(C0_SYS_CLK)
+
+    if (clkIn1Src.isDefined && clkIn1DSrc.isDefined) {
+      throw XilinxDesignException(s"DDR4 $instanceName C0_SYS_CLK and c0_sys_clk_i cannot both be connected to a source. Only one clock input can be used.")
+    }
+
+    (clkIn1DSrc, clkIn1Src) match {
+      case (Some(c: FPGADiffClockPort), None) =>
+        m += "CONFIG.System_Clock" -> "Differential"
+        m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> c.ref
+      case _ =>
+        soct.log.warn(s"DDR4 $instanceName C0_SYS_CLK is not connected to a differential clock source. Using unbuffered clock input c0_sys_clk_i instead.")
+        m += "CONFIG.System_Clock" -> "No_Buffer"
+    }
+
 
     ADDN_UI_CLKOUT.all.foreach {
       case (idx, clk) =>
@@ -59,21 +78,9 @@ case class DDR4(memMaster: BdIntfPin)(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 
   override def assignAddrTcl: TCLCommands = {
-    val extMemParam = p(ExtMem).get.master
-    // If base - size is 0 or smaller, throw an error
-    val cap = extMemParam.size.toLong + extMemParam.base.toLong
-    if (cap <= 0) {
-      throw XilinxDesignException(s"DDR4 memory controller requires a positive size, but got $cap")
-    }
-    val range = "0x%08X".format(cap)
+    val aperture = ddr4params.getCap.value + ddr4params.getOffset.value + p(ExtMem).get.master.base
     Seq(
-      s"assign_bd_address -offset 0x0 -range $range -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
+      s"assign_bd_address -offset 0 -range $aperture -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
-}
-
-
-object DDR4 {
-  implicit val ddr4Toddr4Port: AutoConnect[DDR4, DDR4Port] = (comp: DDR4, port: DDR4Port, bd: SOCTBdBuilder) =>
-    bd.addEdge(comp.C0_DDR4, port)
 }

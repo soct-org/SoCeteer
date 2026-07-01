@@ -33,7 +33,7 @@ case class ProcSysReset(autoSlice: Boolean = true)(implicit bd: SOCTBdBuilder, p
         return // No slicing needed
       } else {
         // Remove existing connections from bd as we will rewire after slicing
-        bd.removeConnection(this)
+        bd.disconnect(this)
       }
 
       soct.log.debug(s"Slicing $this of ${ProcSysReset.this.instanceName} into $dinWidth slices for ${sinks.size} sinks")

@@ -11,6 +11,7 @@ import soct.system.vivado.SOCTVivadoSystem
 import soct.system.vivado.fpga.{FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
+import soct.SOCTBytes.Bytes
 import soct.SOCTNames.{LATEST_SOCT_SYSTEM_CMAKE_FILE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.SOCTPaths.projectRoot
 
@@ -114,7 +115,7 @@ case class SOCTArgs(
                      coreFreq: Option[BigInt] = Some(100 * 1000 * 1000), // Default to 100 MHz
                      peripheryFreq: BigInt = 100 * 1000 * 1000, // Default to 100 MHz
                      overrideVivadoProject: Boolean = true,
-                     extMemCap: Option[BigInt] = None,
+                     extMemCaps: Seq[Bytes] = Seq.empty,
                      fastPnR: Boolean = false,
 
                      // Remote development
@@ -225,13 +226,11 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |""".stripMargin
     )
   opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the out-dir directory.")
-  opt[Double]("ext-mem-gib")
-    .action((x, c) => c.copy(extMemCap = Some(BigInt((x * 1024 * 1024 * 1024).toLong))))
-    .validate(x =>
-      if (x > 0) success
-      else failure("External memory capacity must be greater than 0 GiB.")
-    )
-    .text(s"The capacity of the external memory in GiB (e.g. 4, 8, 16, 32).")
+  opt[String]("ext-mem")
+    .unbounded()
+    .action((x, c) => c.copy(extMemCaps = c.extMemCaps :+ Bytes(x)))
+    .validate(x => if (Bytes(x).isPowerOfTwo) success else failure(s"Invalid external memory capacity $x. Must be a power of two in -ibytes (e.g., 4GiB, 512MiB, 1TiB)."))
+    .text(s"The capacity of the external memory to use for the design. Can be specified multiple times for multiple external memories (first occurrence is used to specify the first external memory port, second occurrence for the second one, etc.). If not specified, the default is determined by the board and the XLEN. Must be in -ibytes (e.g., 4GiB, 512MiB, 1TiB).")
 
   opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(s"Enable fast place&route mode to simplify generated logic at the cost of removing some of the more advanced features. The exact tradeoff depends on the block design and the FPGA board being targeted")
 

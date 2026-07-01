@@ -3,6 +3,11 @@ package soct
 import firtoolresolver.FirtoolBinary
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
+import soct.SOCTBytes.{ByteUnitOpsInt, Bytes}
+import soct.SOCTLauncher.SOCTConfig
+import soct.SOCTUtils.MAX_MEM_SIZE_32_BIT
+import soct.system.vivado.fpga.DDR4PortParams
+import soct.system.vivado.hasMultiMemSupport
 
 import java.nio.file.{Path, Paths}
 import scala.util.Try
@@ -53,8 +58,11 @@ object SOCTRemote {
   }
 
   private def rsync(cmd: Seq[String], what: String): Unit = {
-    log.debug(s"Running: ${cmd.mkString(" ")}")
-    val exitCode = new ProcessBuilder(cmd: _*).inheritIO().start().waitFor()
+    log.info(s"Syncing $what with command: ${cmd.mkString(" ")}")
+    val exitCode = new ProcessBuilder(cmd: _*)
+      .redirectOutput(if (log.underlying.isDebugEnabled) ProcessBuilder.Redirect.INHERIT else ProcessBuilder.Redirect.DISCARD)
+      .redirectError(ProcessBuilder.Redirect.INHERIT)
+      .start().waitFor()
     if (exitCode != 0) throw new RuntimeException(s"rsync failed ($what), exit code $exitCode")
   }
 
@@ -112,7 +120,109 @@ object SOCTRemote {
 }
 
 
+
+
+object SOCTMem {
+
+
+  def limitToMaxCap(mems: Seq[DDR4PortParams], maxSize: Bytes): Seq[DDR4PortParams] = {
+    if (maxSize < 0.B) {
+      throw new IllegalArgumentException(s"maxSize must be non-negative, got $maxSize")
+    }
+    if (maxSize == 0.B) {
+      return Seq.empty
+    }
+
+    var remaining = maxSize
+    var nextOffset = 0.B
+
+    mems
+      .sortBy(_.getCap.value)(Ordering.Long.reverse)
+      .iterator
+      .flatMap { mem =>
+        if (remaining <= 0.B) {
+          None
+        } else {
+          val capped = if (mem.getCap <= remaining) mem.getCap else remaining
+          val updated = mem.withOffset(nextOffset).withCap(capped)
+          nextOffset = nextOffset + capped
+          remaining = remaining - capped
+          Some(updated)
+        }
+      }
+      .toSeq
+  }
+
+
+  def genMemConfig(args: SOCTArgs, topSupportMultiMem: Boolean): Option[Config] = {
+    val board = args.board.get
+    val _memCaps: Seq[DDR4PortParams] = {
+      // Requires memory inserted by the user - we don't know its capacity
+      // Note that we don't support internal and external memory at the same time
+      val extMem = if (board.extDDR4Ports.nonEmpty) {
+        val nPorts = board.extDDR4Ports.length
+        if (args.extMemCaps.nonEmpty) {
+          if (args.extMemCaps.length != nPorts) {throw new IllegalArgumentException(s"Number of external memory capacities provided (${args.extMemCaps.length}) does not match the number of external DDR4 ports on the board ${board.friendlyName}: ($nPorts). Please provide a capacity for each external DDR4 port.")}
+          // Creates offsets of form 0, cap0, cap0+cap1, ...
+          args.extMemCaps
+            .scanLeft(0.B)(_ + _)
+            .dropRight(1) // per-port offsets, drop the last one which is the total size
+            .zip(args.extMemCaps)
+            .zip(board.extDDR4Ports)
+            .map { case ((offset, cap), port) => port.withCap(cap).withOffset(offset)}
+        } else {
+          val defaultSize = args.xlen match {
+            case 32 => MAX_MEM_SIZE_32_BIT
+            case _ => 16.GiB
+          }
+          val defaultPort = board.extDDR4Ports.head
+          soct.log.warn(s"No external memory capacities provided for external DDR4 ports on the board. Using a single port (${defaultPort.portName}) with capacity of $defaultSize. You can provide a capacity for each external DDR4 port using the --ext-mem argument.")
+          Seq(defaultPort.withCap(defaultSize).withOffset(0.B))
+        }
+      } else {
+        Seq.empty
+      }
+      extMem ++ board.intDDR4Ports
+    }
+
+
+    val memCaps = if (args.xlen == 32) {
+      val oldCaps = _memCaps.map(_.getCap).mkString(", ")
+      val limited = limitToMaxCap(_memCaps, MAX_MEM_SIZE_32_BIT)
+      val newCaps = limited.map(_.getCap).mkString(", ")
+      soct.log.info(s"Limiting memory capacities to a maximum of $MAX_MEM_SIZE_32_BIT for 32-bit address space. Original capacities: ${oldCaps}, limited capacities: $newCaps")
+      limited
+    } else {
+      _memCaps
+    }
+
+    if (memCaps.nonEmpty) {
+      if (!topSupportMultiMem) {
+        val chosen = memCaps.head
+        if (memCaps.length > 1) {
+          soct.log.warn(s"Top module does not support multiple memory channels, but ${memCaps.length} memory channels were provided. Using ${chosen.portName} with capacity ${chosen.getCap}")
+        }
+        Some(new WithSingleMemLayout(chosen))
+      } else {
+        Some(new WithMultiMemLayout(memCaps))
+      }
+    } else {
+      None
+    }
+  }
+}
+
+
+
+
 object SOCTUtils {
+  /**
+   * The maximum memory size for 32-bit address space, which is 2 GiB. This is used to ensure that the memory size does not exceed the addressable range for 32-bit systems.
+   * Very hacky for now
+   */
+  val MAX_MEM_SIZE_32_BIT: SOCTBytes.Bytes = 2.GiB
+
+
   private def findConfigSubclasses(pkg: String = "soct"): Seq[Class[_]] = {
     import scala.jdk.CollectionConverters._
     val loader = Thread.currentThread().getContextClassLoader
@@ -298,5 +408,424 @@ object SOCTUtils {
       .start()
       .waitFor()
     sys.exit(code)
+  }
+
+
+  /** Returns true iff x is a positive power of two. */
+  def isPowerOfTwo(x: Long): Boolean =
+    x > 0 && (x & (x - 1)) == 0
+
+  /** Exact log2 for powers of two.
+   *
+   * Example:
+   * log2Exact(4096) == 12
+   *
+   * Throws IllegalArgumentException if x is not a positive power of two.
+   */
+  def log2Exact(x: Long): Int = {
+    require(isPowerOfTwo(x), s"$x is not a positive power of two")
+    java.lang.Long.numberOfTrailingZeros(x)
+  }
+
+  /** Formats a Long as an uppercase hexadecimal literal.
+   *
+   * Example:
+   * toHex(4096) == "0x1000"
+   */
+  def toHex(x: Long): String =
+    f"0x${x}%X"
+
+  /** Formats a value using the largest unit whose scale is <= value.
+   *
+   * Example:
+   * scaledString(
+   * 2147483648.0,
+   * Seq(("GiB", 1L << 30), ("MiB", 1L << 20), ("B", 1.0))
+   * )
+   * // "2.00 GiB"
+   */
+  def scaledString(
+                    value: Double,
+                    units: Seq[(String, Double)],
+                    decimals: Int = 2
+                  ): String = {
+    val (unit, scale) =
+      units.find { case (_, s) => value >= s }
+        .getOrElse(units.last)
+
+    String.format(s"%.${decimals}f %s", Double.box(value / scale), unit)
+  }
+}
+
+
+/** SOCTBytes
+ *
+ * Convenience constants/conversions for working with byte counts in SoC /
+ * address-map contexts: KiB/MiB/GiB/TiB (binary, IEC) and KB/MB/GB/TB
+ * (decimal, SI), plus helpers that are specifically useful when laying out
+ * memory maps (power-of-two checks, address-bit-width derivation, hex
+ * formatting). Shared low-level logic lives in SOCTUtils.
+ *
+ * Usage:
+ * import SOCTBytes._
+ *
+ * val ddrSize   = 2.GiB
+ * val flashSize = 512.MiB
+ * val total     = ddrSize + flashSize
+ *
+ * println(ddrSize.addrBits)     // 31
+ * println(ddrSize.toHex)        // 0x80000000
+ * println(total)                // 2.50 GiB
+ *
+ * val mibFromGib = ddrSize.toMiB // 2048.0
+ */
+object SOCTBytes {
+
+  // ---- Binary (IEC) units, in bytes ----
+  final val KiB: Long = 1L << 10
+  final val MiB: Long = 1L << 20
+  final val GiB: Long = 1L << 30
+  final val TiB: Long = 1L << 40
+  final val PiB: Long = 1L << 50
+
+  // ---- Decimal (SI) units, in bytes ----
+  final val KB: Long = 1000L
+  final val MB: Long = KB * 1000L
+  final val GB: Long = MB * 1000L
+  final val TB: Long = GB * 1000L
+  final val PB: Long = TB * 1000L
+
+  /** A byte count with convenient conversions/formatting attached.
+   * Backed by Long, which comfortably covers any realistic address space
+   * (up to ~8 EiB) without needing BigInt.
+   */
+  final case class Bytes(value: Long) extends AnyVal {
+
+    def +(other: Bytes): Bytes = Bytes(value + other.value)
+
+    def -(other: Bytes): Bytes = Bytes(value - other.value)
+
+    def *(scalar: Long): Bytes = Bytes(value * scalar)
+
+    def /(scalar: Long): Long = value / scalar
+
+    def <(other: Bytes): Boolean = value < other.value
+
+    def <=(other: Bytes): Boolean = value <= other.value
+
+    def >(other: Bytes): Boolean = value > other.value
+
+    def >=(other: Bytes): Boolean = value >= other.value
+
+    // ---- Binary conversions (exact ratios, returned as Double for readability) ----
+    def toKiB: Double = value.toDouble / KiB
+
+    def toMiB: Double = value.toDouble / MiB
+
+    def toGiB: Double = value.toDouble / GiB
+
+    def toTiB: Double = value.toDouble / TiB
+
+    def toPiB: Double = value.toDouble / PiB
+
+    // ---- Decimal conversions ----
+    def toKB: Double = value.toDouble / KB
+
+    def toMB: Double = value.toDouble / MB
+
+    def toGB: Double = value.toDouble / GB
+
+    def toTB: Double = value.toDouble / TB
+
+    def toPB: Double = value.toDouble / PB
+
+    /** True if value is a power of two -- useful for sanity-checking
+     * address-window sizes before wiring them into an address editor.
+     */
+    def isPowerOfTwo: Boolean = SOCTUtils.isPowerOfTwo(value)
+
+    /** Number of address bits needed to span this many bytes.
+     * Only well-defined for power-of-two sizes (the common case for
+     * AXI address windows / DDR channels / MMIO apertures).
+     */
+    def addrBits: Int = SOCTUtils.log2Exact(value)
+
+    /** Bytes as a hex literal, e.g. "0x80000000" -- handy for dropping
+     * straight into an address-editor offset or a Tcl assign_bd_address call.
+     */
+    def toHex: String = SOCTUtils.toHex(value)
+
+    /** Human-readable form, picking the largest binary unit that gives a
+     * result >= 1.0 (e.g. "2.00 GiB", "512.00 MiB", "768.00 B").
+     */
+    def humanReadable: String = SOCTUtils.scaledString(
+      value.toDouble,
+      Seq(("PiB", PiB.toDouble), ("TiB", TiB.toDouble), ("GiB", GiB.toDouble),
+        ("MiB", MiB.toDouble), ("KiB", KiB.toDouble), ("B", 1.0))
+    )
+
+    override def toString: String = humanReadable
+  }
+
+  implicit object BytesIsIntegral extends Integral[Bytes] {
+    def quot(x: Bytes, y: Bytes): Bytes = Bytes(x.value / y.value)
+
+    def rem(x: Bytes, y: Bytes): Bytes = Bytes(x.value % y.value)
+
+    def plus(x: Bytes, y: Bytes): Bytes = x + y
+
+    def minus(x: Bytes, y: Bytes): Bytes = x - y
+
+    def times(x: Bytes, y: Bytes): Bytes = Bytes(x.value * y.value)
+
+    def negate(x: Bytes): Bytes = Bytes(-x.value)
+
+    def fromInt(x: Int): Bytes = Bytes(x.toLong)
+
+    def parseString(str: String): Option[Bytes] = Bytes.parse(str)
+
+    def toInt(x: Bytes): Int = x.value.toInt
+
+    def toLong(x: Bytes): Long = x.value
+
+    def toFloat(x: Bytes): Float = x.value.toFloat
+
+    def toDouble(x: Bytes): Double = x.value.toDouble
+
+    def compare(x: Bytes, y: Bytes): Int = java.lang.Long.compare(x.value, y.value)
+  }
+
+  object Bytes {
+    def apply(i: Int): Bytes = Bytes(i.toLong)
+
+    def sum(xs: Iterable[Bytes]): Bytes = Bytes(xs.foldLeft(0L)(_ + _.value))
+
+    private val stringPattern =
+      """(?i)^\s*([0-9]+(?:\.[0-9]+)?)\s*([a-z]*)\s*$""".r
+
+    private val unitSizes: Map[String, Long] = Map(
+      "" -> 1L,
+      "B" -> 1L,
+      "KIB" -> SOCTBytes.KiB,
+      "KB" -> SOCTBytes.KB,
+      "MIB" -> SOCTBytes.MiB,
+      "MB" -> SOCTBytes.MB,
+      "GIB" -> SOCTBytes.GiB,
+      "GB" -> SOCTBytes.GB,
+      "TIB" -> SOCTBytes.TiB,
+      "TB" -> SOCTBytes.TB,
+      "PIB" -> SOCTBytes.PiB,
+      "PB" -> SOCTBytes.PB
+    )
+
+    def parse(s: String): Option[Bytes] = s match {
+      case stringPattern(numStr, unitStr) =>
+        unitSizes.get(unitStr.toUpperCase).map { unitBytes =>
+          val exact = BigDecimal(numStr) * BigDecimal(unitBytes)
+          Bytes(exact.setScale(0, BigDecimal.RoundingMode.HALF_UP).toLongExact)
+        }
+      case _ => None
+    }
+
+    def apply(s: String): Bytes =
+      parse(s).getOrElse(
+        throw new IllegalArgumentException(
+          s"""Cannot parse "$s" as a byte size (expected e.g. "3.5GiB", "20000B", "512", "2GB")"""
+        )
+      )
+  }
+
+  /** Implicit numeric literal extensions, e.g. `4.GiB`, `512.MiB`, `2.GB`. */
+  implicit class ByteUnitOpsLong(private val n: Long) extends AnyVal {
+    def B: Bytes = Bytes(n)
+
+    def KiB: Bytes = Bytes(n * SOCTBytes.KiB)
+
+    def MiB: Bytes = Bytes(n * SOCTBytes.MiB)
+
+    def GiB: Bytes = Bytes(n * SOCTBytes.GiB)
+
+    def TiB: Bytes = Bytes(n * SOCTBytes.TiB)
+
+    def PiB: Bytes = Bytes(n * SOCTBytes.PiB)
+
+    def KB: Bytes = Bytes(n * SOCTBytes.KB)
+
+    def MB: Bytes = Bytes(n * SOCTBytes.MB)
+
+    def GB: Bytes = Bytes(n * SOCTBytes.GB)
+
+    def TB: Bytes = Bytes(n * SOCTBytes.TB)
+
+    def PB: Bytes = Bytes(n * SOCTBytes.PB)
+  }
+
+  implicit class ByteUnitOpsInt(private val n: Int) extends AnyVal {
+    def B: Bytes = Bytes(n.toLong)
+
+    def KiB: Bytes = Bytes(n.toLong * SOCTBytes.KiB)
+
+    def MiB: Bytes = Bytes(n.toLong * SOCTBytes.MiB)
+
+    def GiB: Bytes = Bytes(n.toLong * SOCTBytes.GiB)
+
+    def TiB: Bytes = Bytes(n.toLong * SOCTBytes.TiB)
+
+    def PiB: Bytes = Bytes(n.toLong * SOCTBytes.PiB)
+
+    def KB: Bytes = Bytes(n.toLong * SOCTBytes.KB)
+
+    def MB: Bytes = Bytes(n.toLong * SOCTBytes.MB)
+
+    def GB: Bytes = Bytes(n.toLong * SOCTBytes.GB)
+
+    def TB: Bytes = Bytes(n.toLong * SOCTBytes.TB)
+
+    def PB: Bytes = Bytes(n.toLong * SOCTBytes.PB)
+  }
+}
+
+
+/** SOCTFreq
+ *
+ * Convenience constants/conversions for working with clock frequencies in SoC
+ * and FPGA designs: Hz/kHz/MHz/GHz/THz (decimal, SI), plus helpers that are
+ * specifically useful when configuring clocks (period conversion, angular
+ * frequency, and human-readable formatting). Shared low-level logic lives in
+ * SOCTUtils.
+ *
+ * Usage:
+ * import SOCTFreq._
+ *
+ * val cpuClk = 100.MHz
+ * val axiClk = 250.MHz
+ * val total  = cpuClk + axiClk
+ *
+ * println(cpuClk.periodNs)      // 10.0
+ * println(cpuClk.toHz)          // 100000000.0
+ * println(total)                // 350.00 MHz
+ */
+object SOCTFreq {
+
+  // ---- SI units, in hertz ----
+  final val Hz: Long = 1L
+  final val kHz: Long = 1_000L
+  final val MHz: Long = 1_000_000L
+  final val GHz: Long = 1_000_000_000L
+  final val THz: Long = 1_000_000_000_000L
+
+  /** A frequency with convenient conversions/formatting attached.
+   * Backed by Double to naturally support fractional frequencies such as
+   * 33.333 MHz or 148.5 MHz.
+   */
+  final case class Freq(value: Double) extends AnyVal {
+
+    def +(other: Freq): Freq = Freq(value + other.value)
+
+    def -(other: Freq): Freq = Freq(value - other.value)
+
+    def *(scalar: Double): Freq = Freq(value * scalar)
+
+    def /(scalar: Double): Freq = Freq(value / scalar)
+
+    def <(other: Freq): Boolean = value < other.value
+
+    def <=(other: Freq): Boolean = value <= other.value
+
+    def >(other: Freq): Boolean = value > other.value
+
+    def >=(other: Freq): Boolean = value >= other.value
+
+    // ---- SI conversions ----
+    def toHz: Double = value
+
+    def tokHz: Double = value / kHz
+
+    def toMHz: Double = value / MHz
+
+    def toGHz: Double = value / GHz
+
+    def toTHz: Double = value / THz
+
+    /** Clock period in seconds. */
+    def periodSeconds: Double = 1.0 / value
+
+    /** Clock period in milliseconds. */
+    def periodMs: Double = 1e3 / value
+
+    /** Clock period in microseconds. */
+    def periodUs: Double = 1e6 / value
+
+    /** Clock period in nanoseconds. */
+    def periodNs: Double = 1e9 / value
+
+    /** Clock period in picoseconds. */
+    def periodPs: Double = 1e12 / value
+
+    /** Angular frequency (ω = 2πf), in rad/s. */
+    def toAngular: Double = 2.0 * math.Pi * value
+
+    /** Human-readable form, choosing the largest SI unit with a value >= 1.0. */
+    def humanReadable: String = SOCTUtils.scaledString(
+      value,
+      Seq(
+        ("THz", THz.toDouble),
+        ("GHz", GHz.toDouble),
+        ("MHz", MHz.toDouble),
+        ("kHz", kHz.toDouble),
+        ("Hz", Hz.toDouble)
+      )
+    )
+
+    override def toString: String = humanReadable
+  }
+
+  object Freq {
+    def apply(i: Int): Freq = Freq(i.toDouble)
+
+    def apply(l: Long): Freq = Freq(l.toDouble)
+
+    /** Sum a sequence of frequencies. */
+    def sum(xs: Iterable[Freq]): Freq =
+      Freq(xs.foldLeft(0.0)(_ + _.value))
+
+    implicit val ordering: Ordering[Freq] = Ordering.by(_.value)
+  }
+
+  /** Implicit numeric literal extensions, e.g. `100.MHz`, `2.5.GHz`. */
+  implicit class FreqUnitOpsLong(private val n: Long) extends AnyVal {
+    def Hz: Freq = Freq(n.toDouble)
+
+    def kHz: Freq = Freq(n.toDouble * SOCTFreq.kHz)
+
+    def MHz: Freq = Freq(n.toDouble * SOCTFreq.MHz)
+
+    def GHz: Freq = Freq(n.toDouble * SOCTFreq.GHz)
+
+    def THz: Freq = Freq(n.toDouble * SOCTFreq.THz)
+  }
+
+  implicit class FreqUnitOpsInt(private val n: Int) extends AnyVal {
+    def Hz: Freq = Freq(n.toDouble)
+
+    def kHz: Freq = Freq(n.toDouble * SOCTFreq.kHz)
+
+    def MHz: Freq = Freq(n.toDouble * SOCTFreq.MHz)
+
+    def GHz: Freq = Freq(n.toDouble * SOCTFreq.GHz)
+
+    def THz: Freq = Freq(n.toDouble * SOCTFreq.THz)
+  }
+
+  implicit class FreqUnitOpsDouble(private val n: Double) extends AnyVal {
+    def Hz: Freq = Freq(n)
+
+    def kHz: Freq = Freq(n * SOCTFreq.kHz)
+
+    def MHz: Freq = Freq(n * SOCTFreq.MHz)
+
+    def GHz: Freq = Freq(n * SOCTFreq.GHz)
+
+    def THz: Freq = Freq(n * SOCTFreq.THz)
   }
 }

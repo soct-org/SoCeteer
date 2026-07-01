@@ -1,10 +1,8 @@
-#define BOOTROM_MEM_ADDR 0x80000000
-
 // boot all cores (only hart 0) and jump to main program execution
 .section .text.start, "ax", @progbits
 .globl _start
 _start:
-  li a1, 0x2000000 // base address of clint
+  li a1, SOCT_CLINT_BASE // base address of clint
   csrr a0, mhartid
   bnez a0, boot_core
   addi a2, a1, 4
@@ -51,7 +49,7 @@ boot_core:
   add a1, a0, a1
 boot_core_hart0:      // begin executing code at DRAM_BASE
   sw zero, 0(a1)      // clear the interrupt
-  li a0, BOOTROM_MEM_ADDR   // hardcoded boot address for now
+  li a0, SOCT_MEM_BASE_ADDR
   csrw mepc, a0       // return from interrupt to start of user program
   csrr a0, mhartid    // hartid for next level bootloader
   la a1, _dtb         // dtb address for next level bootloader

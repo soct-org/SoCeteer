@@ -1,10 +1,12 @@
 OUTPUT_ARCH("riscv")
 ENTRY(_hang)
 
+ASSERT(DEFINED(SOCT_MEM_BASE_ADDR), "SOCT_MEM_BASE_ADDR must be defined");
+
 MEMORY {
   error_mem (rw)   : ORIGIN = 0x00003000, LENGTH = 0x00001000
   maskrom_mem (rx) : ORIGIN = 0x00010000, LENGTH = 0x00010000
-  memory_mem (rwx) : ORIGIN = 0x80000000, LENGTH = 0x00008000  /* 32KB; was 8KB, increased for -O0 debug builds */
+  memory_mem (rwx) : ORIGIN = SOCT_MEM_BASE_ADDR, LENGTH = 0x00008000
 }
 
 PHDRS {
@@ -35,7 +37,7 @@ SECTIONS {
   }
   ASSERT(SIZEOF(.data) == 0, "BootROM .data section must be empty")
 
-  .bss 0x80000000 (NOLOAD) : {
+  .bss ORIGIN(memory_mem) (NOLOAD) : {
     . += 8; /* Trap vector */
     PROVIDE(_fbss = .);
     PROVIDE(__global_pointer$ = . + 0x7C0);
@@ -45,8 +47,8 @@ SECTIONS {
     PROVIDE(_ebss = .);
   } >memory_mem
   ASSERT(SIZEOF(.bss) <= 0x4000, "BootROM .bss section must be less than 0x4000 bytes")
-  /* Ensure at least 8KB of stack between BSS end and BOOTROM_MEM_END (0x80008000) */
-  ASSERT(_ebss + 0x2000 <= 0x80008000, "BootROM stack overflow: BSS too large for debug build")
+  /* Ensure at least 8KB of stack between BSS end and BOOTROM_MEM_END */
+  ASSERT(_ebss + 0x2000 <= ORIGIN(memory_mem) + LENGTH(memory_mem), "BootROM stack overflow: BSS too large for debug build")
 
   .note (INFO) : {
     *(.note .note.*)

@@ -16,17 +16,27 @@ object ZCU104 extends FPGA {
 
   override val getPMODPorts: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1; port 2 is I2C
 
-  override def initDDR4Port(i: Int)(implicit bd: SOCTBdBuilder, p: Parameters): DDR4Port =
-    DDR4Port("ddr4_sdram")
+  override def extDDR4Ports: Seq[DDR4PortParams] = Seq(
+    new DDR4PortParams {
+      override val portName: String = "ddr4_sdram"
+    },
+  )
 
-  override def initUARTPort(i: Int)(implicit bd: SOCTBdBuilder, p: Parameters): UARTPort =
-    UARTPort("uart2_pl")
+  override def uartPorts: Seq[UARTPortParams] = Seq(
+    new UARTPortParams {
+      override val portName: String = "uart2_pl"
+    }
+  )
 
-  override def initFastestClock(implicit bd: SOCTBdBuilder, p: Parameters): FPGAClockDomain = {
-    // ZCU104 provides a 300 MHz differential (LVDS) clock pair
-    lazy val dom: FPGAClockDomain = FPGAClockDomain(clk, FPGAResetPort("reset"), 300.0)
+
+  override def initNClockPorts(n: Int)(implicit bd: SOCTBdBuilder, p: Parameters): Seq[FPGAClockDomain] = {
+    lazy val reset = FPGAResetPort("reset")
+    lazy val dom: FPGAClockDomain = FPGAClockDomain(clk, reset, 300.0)
     lazy val clk: FPGADiffClockPort = FPGADiffClockPort("clk_300mhz", () => dom)
-    dom
+    n match {
+      case 1 => Seq(dom)
+      case _ => throw XilinxDesignException(s"ZCU104 only provides a single differential clock input. Requested $n clock domains.")
+    }
   }
 
   override def pmod(pmodPort: Int, pmodPin: RawPMODPin): FPGAPMODPin = {

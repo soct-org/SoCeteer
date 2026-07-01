@@ -168,10 +168,6 @@ class SOCTBd {
     }
   }
 
-  /** Backward compatible name (your old API). */
-  final def removeConnection(from: BdPinPort, toOpt: Option[BdPinPort] = None): Unit =
-    disconnect(from, toOpt)
-
   // ----------------------------
   // Adjacency access (successors/predecessors)
   // ----------------------------

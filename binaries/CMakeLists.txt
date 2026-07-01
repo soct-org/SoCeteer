@@ -49,6 +49,16 @@ add_subdirectory(${SOCTGLUE_DIR} ${CMAKE_BINARY_DIR}/soctglue)
 add_compile_definitions(${SOCT_COMPILE_DEFS})
 
 
+# Promote numeric SOCT_COMPILE_DEFS to linker symbols for linker scripts.
+# Non-integer values (quoted strings, ON/OFF, etc.) are skipped because --defsym accepts integers only.
+foreach(_def IN LISTS SOCT_COMPILE_DEFS)
+    if(_def MATCHES "^([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)$")
+        list(APPEND _link_defs "LINKER:--defsym=${_def}")
+    endif()
+endforeach()
+add_link_options(${_link_defs})
+
+
 # Add each program and bootrom as a subdirectory
 foreach (ENTRY ${ALL_ENTRIES})
     set(ENTRY_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/${ENTRY}")

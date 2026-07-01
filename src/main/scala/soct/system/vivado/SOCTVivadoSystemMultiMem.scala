@@ -14,15 +14,11 @@ import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockDomain, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 
-case class DDR4Info(cap: Bytes, param: DDR4PortParams, port: BdIntfPortMaster, mAxi: AXI4BusInfo)
-
-case class MemPath(ddr4Info: DDR4Info, ddr4Inst: DDR4, memSMC: AXISmartConnect)
-
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
-class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
-
+class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
+  throw new NotImplementedError("SOCTVivadoSystemMultiMem is not yet implemented. Please use SOCTVivadoSystem for now.")
   implicit val bd: SOCTBdBuilder = p(BdBuilderKey).getOrElse(
     throw new XilinxDesignException("SOCTVivadoSystem requires a BdBuilder to be set in parameters for block design generation.")
   )
@@ -115,19 +111,16 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Board / Top init
     // --------------------------------------------------------------------------
     val fpga = p(XilinxFPGAKey).getOrElse(throw new XilinxDesignException("XilinxFPGAKey not set in parameters."))
-    val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.initNClockPorts(1).head
+    val FPGAClockDomain(fpgaClk, fpgaRst, boardClkSpeed) = fpga.initNClockPorts(1).head
 
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
 
-    val Seq(_axiMems, _axiMMIOs, _axiL2Frontends) = top.axi4BusMapping
+    val Seq(axiMems, _axiMMIOs, _axiL2Frontends) = top.axi4BusMapping
     require(_axiMMIOs.size == 1, s"Expected exactly one AXI4 MMIO interface but found ${_axiMMIOs.size}")
     require(_axiL2Frontends.size == 1, s"Expected exactly one AXI4 DMA interface but found ${_axiL2Frontends.size}")
     val axiMMIO = _axiMMIOs.head.bdPin
     val axiDMA = _axiL2Frontends.head.bdPin
-    val extMems = p(RegisteredMems)
-    if (!(_axiMems.length == 1 && extMems.length == 1)) throw XilinxDesignException("SOCTVivadoSystem requires exactly one DDR4 memory controller defined.")
-    val axiMem = _axiMems.head
 
     // The Clock and Reset pins from the top
     val clocks = top.ioClocksMapping.values.toSeq
@@ -150,11 +143,19 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
     )
 
+    val memDomain = new ClockDomain(
+      freqMHz = boardClkSpeed
+    )
+
     // --------------------------------------------------------------------------
     // Board ports
     // --------------------------------------------------------------------------
-    val ddr4Param = extMems.head
-    val ddr4Info: DDR4Info = DDR4Info(ddr4Param.getCap, ddr4Param, ddr4Param.initPort, axiMem)
+    if (axiMems.length != p(RegisteredMems).length)
+      throw XilinxDesignException("The number of AXI4 memory interfaces of the RocketSystem does not match the number of DDR4 memory layouts specified in RegisteredMems.")
+
+    val ddr4Params: Seq[DDR4Info] = p(RegisteredMems).zipWithIndex.map{
+      case (param, i) => DDR4Info(param.getCap, param, param.initPort, axiMems(i))
+    }
 
     val uartParamOpt: Option[UARTPortParams] = {
       if (p(HasUART)) {
@@ -169,16 +170,18 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Components
     // --------------------------------------------------------------------------
 
+    val oz = ClkWiz().withInstanceName("clk_wiz")
     val periphPsr = ProcSysReset().withInstanceName("periph_psr")
     val corePsr = ProcSysReset().withInstanceName("core_psr")
-    val ddrPsr = ProcSysReset().withInstanceName("ddr_psr")
 
     val uartOpt = uartParamOpt.map { uartParams =>
       val port = uartParams.initPort
       AXIUartLite(uartDTSOpt.get, axiMMIO, port, uartParams)
     }
 
-    val memPath = MemPath(ddr4Info, DDR4(ddr4Info.mAxi.bdPin, ddr4Info.port, ddr4Info.param), AXISmartConnect().withInstanceName(s"mem_smc"))
+    val memPaths = ddr4Params.zipWithIndex.map { case (info, i) =>
+      MemPath(info, DDR4(info.mAxi.bdPin, info.port, info.param), AXISmartConnect().withInstanceName(s"mem_smc_$i"))
+    }
 
     val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
     val dmaSMC = AXISmartConnect().withInstanceName("dma_smc")
@@ -189,8 +192,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Derived pins (clock outputs / DDR helper pins)
     // --------------------------------------------------------------------------
 
-    val peripheryClock = memPath.ddr4Inst.ADDN_UI_CLKOUT(1, peripheryDomain)
-    val coreClock = memPath.ddr4Inst.ADDN_UI_CLKOUT(2, coreDomain)
+    val coreClock = oz.CLK_OUT(1, coreDomain)
+    val peripheryClock = oz.CLK_OUT(2, peripheryDomain)
+    val memClock = oz.CLK_OUT(3, memDomain)
 
     // --------------------------------------------------------------------------
     // Timing constraints
@@ -200,35 +204,34 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
     bd.addTimingConstraints(() => coreClockTCL)
 
-    {
-      val ddr4 = memPath.ddr4Inst
-      bd.addTimingConstraints(() => Seq(
-        s"""# Timing constraints for DDR4 controller (${ddr4.instanceName})
-           |set ddrmc_inst [get_cells -hier ${ddr4.instanceName}]
-           |set_false_path -through [get_pins $$ddrmc_inst/${ddr4.SYS_RST.pin}]
-           |set_false_path -through [get_pins $$ddrmc_inst/${ddr4.C0_INIT_CALIB_COMPLETE.pin}]
-           |set ddrc_clock [get_clocks -of_objects [get_pins $$ddrmc_inst/${ddr4.C0_DDR4_UI_CLK.pin}]]
-           |set ddrc_clock_period [get_property -min PERIOD $$ddrc_clock]
-           |set_max_delay -from $$$coreClockObj -to $$ddrc_clock -datapath_only $$ddrc_clock_period
-           |set_max_delay -from $$ddrc_clock -to $$$coreClockObj -datapath_only $$$corePeriodProp
-           |""".stripMargin.tcl
-      ))
+    memPaths.map(_.ddr4Inst).foreach {
+      ddr4 =>
+        bd.addTimingConstraints(() => Seq(
+          s"""# Timing constraints for DDR4 controller (${ddr4.instanceName})
+             |set ddrmc_inst [get_cells -hier ${ddr4.instanceName}]
+             |set_false_path -through [get_pins $$ddrmc_inst/${ddr4.SYS_RST.pin}]
+             |set_false_path -through [get_pins $$ddrmc_inst/${ddr4.C0_INIT_CALIB_COMPLETE.pin}]
+             |set ddrc_clock [get_clocks -of_objects [get_pins $$ddrmc_inst/${ddr4.C0_DDR4_UI_CLK.pin}]]
+             |set ddrc_clock_period [get_property -min PERIOD $$ddrc_clock]
+             |set_max_delay -from $$$coreClockObj -to $$ddrc_clock -datapath_only $$ddrc_clock_period
+             |set_max_delay -from $$ddrc_clock -to $$$coreClockObj -datapath_only $$$corePeriodProp
+             |""".stripMargin.tcl
+        ))
     }
 
     // --------------------------------------------------------------------------
     // Fundamental interconnect (interfaces & major clocks)
     // --------------------------------------------------------------------------
-    {
-      val ddr4 = memPath.ddr4Inst
-      fpgaClk --> ddr4.C0_SYS_CLK
+    memPaths.map(_.ddr4Inst) foreach { ddr4 =>
+      memClock --> ddr4.C0_SYS_CLK_I
       fpgaRst --> ddr4.SYS_RST
-      ddr4.C0_DDR4_UI_CLK --> ddrPsr.SLOWEST_SYNC_CLK
     }
+    fpgaRst --> oz.RESET
+    fpgaClk --> oz.CLK_IN_D(1)
+
     // --------------------------------------------------------------------------
     // Reset strategy
     // --------------------------------------------------------------------------
-    fpgaRst --> ddrPsr.EXT_RESET_IN
-
     // ndreset from the debug module resets core and periphery but not DDR or JTAG:
     // DDR must not be re-initialized on debug reset; JTAG is separately tied off below.
     if (debug.isDefined && !p(soct.FastPnR)) {
@@ -239,12 +242,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
       fpgaRst --> Seq(periphPsr.EXT_RESET_IN, corePsr.EXT_RESET_IN)
     }
 
-    // DDR4 doesn't expose an explicit MMCM-locked pin, but `c0_init_calib_complete`
-    // is a superset: it asserts only after the MMCM has locked AND the DRAM init
-    // calibration is finished. Using it as DCM_LOCKED conservatively holds the
-    // periph and core resets until DDR4 is fully ready — which is what we want
-    // anyway, since nothing useful can run before DRAM is up.
-    memPath.ddr4Inst.C0_INIT_CALIB_COMPLETE --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED, ddrPsr.DCM_LOCKED)
+
+    val calibSignals = memPaths.map(_.ddr4Inst.C0_INIT_CALIB_COMPLETE.asInstanceOf[BdPinOut])
+    val ddr4InitComplete: BdPinOut = calibSignals.zipWithIndex.tail.foldLeft(calibSignals.head) {
+      case (acc, (next, j)) =>
+        AND(acc, next).withInstanceName(s"ddr4_calib_complete_gate_$j").RES
+    }
+
+    oz.LOCKED --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
 
     // Domain clocks:
     // Periphery domain clock drives periph reset sync + periph-ish IP clocks
@@ -258,23 +263,23 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // Core domain clock drives core reset sync + top clocks + one mem SMC clock
     coreClock --> Seq(
       corePsr.SLOWEST_SYNC_CLK,
-      memPath.memSMC.ACLK(0),
       mmioSMC.ACLK(1),
       dmaSMC.ACLK(1),
     )
     coreClock --> clockPins
+    coreClock --> memPaths.map(_.memSMC.ACLK(0)) // Core clock influences all memSMCs
+
+    memPaths.foreach { path =>
+      path.ddr4Inst.C0_DDR4_UI_CLK --> path.memSMC.ACLK(1) // 0 is connected to coreClock
+    }
+
+    // Reset net distribution
     corePsr.PeripheralReset --> resetPins
-
-    memPath.ddr4Inst.C0_DDR4_UI_CLK --> memPath.memSMC.ACLK(1)
-
-    // Reset net distribution (active-low aresetn)
     periphPsr.PeripheralAResetN --> Seq(mmioSMC.ARESETN, dmaSMC.ARESETN)
     uartOpt.foreach(uart => periphPsr.PeripheralAResetN --> uart.S_AXI_ARESETN)
-    ddrPsr.PeripheralAResetN --> memPath.ddr4Inst.C0_DDR4_ARESETN
 
-    // memSMC reset is influenced by BOTH core and DDR domains:
-    // hold in reset if either domain is in reset, release only when BOTH are out of reset.
-    AND(corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN).withInstanceName("memSMC_reset") --> memPath.memSMC.ARESETN
+    corePsr.PeripheralAResetN --> memPaths.map(_.ddr4Inst.C0_DDR4_ARESETN)
+    corePsr.PeripheralAResetN --> memPaths.map(_.memSMC.ARESETN)
 
     // --------------------------------------------------------------------------
     // Interrupt wiring
@@ -294,8 +299,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // AXI wiring (discover the exported AXI4 ports from the SOCT system)
     // --------------------------------------------------------------------------
-    memPath.memSMC.S_AXI(0) <-> axiMem.bdPin
-    memPath.memSMC.M_AXI(0) <-> memPath.ddr4Inst.C0_DDR4_S_AXI
+    memPaths.foreach { path =>
+      path.memSMC.M_AXI(0) <-> path.ddr4Inst.C0_DDR4_S_AXI
+      path.memSMC.S_AXI(0) <-> path.ddr4Info.mAxi.bdPin
+    }
 
     // MMIO path: Rocket MMIO -> mmioSMC -> (UART + SD-lite)
     mmioSMC.S_AXI(0) <-> axiMMIO

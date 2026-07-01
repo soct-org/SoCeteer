@@ -21,7 +21,7 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
 
   private val c = p(HasSOCTConfig)
 
-  private def getAXI4(axi: ModuleValue[HeterogeneousBag[AXI4Bundle]]): AXI4Bundle = {
+  private def getAXI4s(axi: ModuleValue[HeterogeneousBag[AXI4Bundle]]): AXI4Bundle = {
     val axis = Seq(axi).flatten
     if (axis.size != 1) {
       throw new XilinxDesignException(s"Expected exactly one AXI4 bundle for $axi but found ${axis.size}")
@@ -36,14 +36,16 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
    * This is used to determine which AXI4 interfaces are associated with which clock domains, so that we can add the appropriate Vivado annotations to the top-level ports.
    * If not overridden, this will default to the mem, mmio, and l2 frontend buses
    */
-  lazy val axi4BusMapping: Seq[AXI4BusInfo] = Seq(
+  lazy val axi4BusMapping: Seq[Seq[AXI4BusInfo]] = Seq(
     (s.memAXI4Bus, s.mem_axi4, s.memAXI4Node),
     (s.mmioAXI4Bus, s.mmio_axi4, s.mmioAXI4Node),
     (s.l2FrontendAXI4Bus, s.l2_frontend_bus_axi4, s.l2FrontendAXI4Node)).map {
-    case (bus, axiBundle, _) =>
-      val axi = getAXI4(axiBundle)
-      val bdPin = AXIMM(axi)
-      AXI4BusInfo(bus, bdPin, axi)
+    case (bus, axiBundles, _) =>
+      val axis = Seq(axiBundles).flatten
+      axis.map { axi =>
+        val bdPin = AXIMM(axi)
+        AXI4BusInfo(bus, bdPin, axi)
+      }
   }
 
   /**
@@ -73,7 +75,7 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
 
   lazy val ioClocksMapping: Map[ClockBundle, ClkDesc] = {
     // The AXI4 interfaces associated with each clock bundle, if any. We use this information to add the appropriate Vivado annotations to the top-level ports.
-    val axi4IfByClock = axi4BusMapping.map { assocBusIf =>
+    val axi4IfByClock = axi4BusMapping.flatten.map { assocBusIf =>
       val cb = s.clockBundleForBus(assocBusIf.bus)
         .getOrElse(throw new XilinxDesignException(s"Could not find clock bundle for bus ${assocBusIf.bus} associated with AXI4 interface ${assocBusIf.bdPin}"))
       cb -> assocBusIf

@@ -1,9 +1,11 @@
 OUTPUT_ARCH ("riscv")
 ENTRY (_start)
 
+ASSERT(DEFINED(SOCT_MEM_BASE_ADDR), "SOCT_MEM_BASE_ADDR must be defined");
+
 SECTIONS
 {
-    . = DEFINED(SOCT_MEM_BASE_ADDR) ? SOCT_MEM_BASE_ADDR : 0x80000000;
+    . = SOCT_MEM_BASE_ADDR;
     /* Keep under a power of 2 to reserve space for TCB */
     PROVIDE (__stack_size_min = 24K);
 

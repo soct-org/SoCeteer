@@ -1,11 +1,11 @@
 package soct
 
-import freechips.rocketchip.subsystem.{ExtMem, WithExtMemSize, WithNExtTopInterrupts}
+import freechips.rocketchip.subsystem.WithNExtTopInterrupts
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
 import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
 import soct.SOCTUtils.configName
-import soct.system.vivado.SOCTVivado
+import soct.system.vivado.{SOCTVivado, hasMultiMemSupport}
 
 import java.nio.file.Files
 import scala.reflect.io.Path.jfile2path
@@ -65,23 +65,11 @@ object SOCTLauncher {
     if (args.board.isEmpty) {
       throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
     }
-    val board = args.board.get
 
-    // Set the external memory size
-    val memCap =
-      args.extMemCap
-        .orElse(board.intMemCap)
-        .getOrElse(args.xlen match {
-          case 32 => BigInt(0x100000000L) // 4GB
-          case _ => BigInt(0x400000000L) // 16GB
-        })
-    if (memCap < 0x80000000L) {
-      soct.log.warn(s"Neither RocketChip nor SoCeteer really support 2GB or less external memory capacity as the default memory map places the external memory at 0x80000000 (i.e. 2GiB). If you are using a custom memory map, you may be able to use a smaller capacity, but be aware that some software may not run correctly if the memory capacity is too small. It is recommended to use at least 2GB of external memory for Rocket Chip designs.")
-    } else {
-      soct.log.info(s"Using external memory capacity of ${memCap / 1024 / 1024 / 1024}GB")
+    val memConfig = SOCTMem.genMemConfig(args, hasMultiMemSupport(config.topModuleName))
+    if (memConfig.isDefined) {
+      config.params = config.params.orElse(memConfig.get)
     }
-
-    config.params = config.params.orElse(new WithExtMemCapacity(memCap))
     config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
     config.params = config.params.orElse(new soct.RocketVivadoBaseConfig)
 
@@ -140,7 +128,6 @@ object SOCTLauncher {
         SOCTUtils.printFirtoolHelp(args.firtoolPath.get.toString)
         return
       }
-
 
       if (args.syncFromRemote) {
         if (args.remoteDir.isEmpty) {

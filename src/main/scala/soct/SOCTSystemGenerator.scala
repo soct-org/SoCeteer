@@ -174,6 +174,16 @@ object SOCTSystemGenerator {
         compileDef = true
       )
     }
+
+    if (config.params(ExtMem).isDefined) {
+      optionalVars :+= CMakeVar(
+        "SOCT_EXT_MEM_SIZE",
+        config.params(ExtMem).get.master.size.toString,
+        "Size of the external memory",
+        compileDef = true
+      )
+    }
+
     val optional = if (optionalVars.isEmpty) "" else "\n" + CMakeVar.render(optionalVars)
 
     // Additional information for targets

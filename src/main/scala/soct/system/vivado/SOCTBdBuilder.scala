@@ -111,7 +111,7 @@ class SOCTBdBuilder extends SOCTBd {
       k.bdName -> TclVar("The name of the block design to create", s"${config.topModuleName}_bd"),
       k.xilinxPart -> TclVar("The Xilinx part number of the target FPGA", fpga.xilinxPart),
       k.partName -> TclVar("The Xilinx part name of the target FPGA", fpga.partName),
-      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", (Runtime.getRuntime.availableProcessors().doubleValue * .5).toInt.toString),
+      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", "1"),
       k.thisDir -> TclVar(
         "The directory this file is located in - all paths are relative to this directory",
         "[file dirname [file normalize [info script]]]",

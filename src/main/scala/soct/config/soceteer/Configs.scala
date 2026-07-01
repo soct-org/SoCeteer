@@ -5,11 +5,11 @@ import freechips.rocketchip.devices.debug.{DebugModuleKey, DefaultDebugModulePar
 import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, BuiltInErrorDeviceParams, CLINTKey, CLINTParams, DevNullParams, PLICKey, PLICParams}
 import freechips.rocketchip.diplomacy.AddressSet
 import freechips.rocketchip.subsystem._
-import freechips.rocketchip.tile.{LookupByHartId, MaxHartIdBits, PriorityMuxHartIdFromSeq}
+import freechips.rocketchip.tile.MaxHartIdBits
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.fpga.FPGA
+import soct.system.vivado.fpga.{DDR4PortParams, FPGA}
 
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -103,10 +103,23 @@ class WithFastPnR extends Config((_, _, _) => {
 
 
 /*----------------- Memory ---------------*/
+case object RegisteredMems extends Field[Seq[DDR4PortParams]](Nil)
 
-class WithExtMemCapacity(cap: BigInt) extends Config((_, _, up) => {
-  case ExtMem => up(ExtMem).map(x => x.copy(master = x.master.copy(size = cap - x.master.base)))
+
+class WithMultiMemLayout(mems: Seq[DDR4PortParams]) extends Config((_, _, up) => {
+  case ExtMem => up(ExtMem).map(x => x.copy(
+    nMemoryChannels = mems.length,
+    master = x.master.copy(size = mems.map(_.getCap).sum.value)))
+  case RegisteredMems => mems
 })
+
+class WithSingleMemLayout(mem: DDR4PortParams) extends Config((_, _, up) => {
+  case ExtMem => up(ExtMem).map(x => x.copy(
+    nMemoryChannels = 1,
+    master = x.master.copy(size = mem.getCap.value)))
+  case RegisteredMems => Seq(mem)
+})
+
 
 /*----------------- MMIO ---------------*/
 

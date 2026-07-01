@@ -12,7 +12,7 @@ message(STATUS "Adding bootrom: ${SOCT_BOOTROM}")
 set(BOOTROM_ELF ${SOCT_BOOTROM}_elf)
 set(BOOTROM_IMG ${SOCT_BOOTROM}_img)
 
-set(ALL_CFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -mcmodel=medany -nostartfiles -Os -fno-pic -fno-common -g -Wall -Wextra)
+set(ALL_CFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -nostartfiles -Os -fno-pic -fno-common -g -Wall -Wextra)
 set(ALL_LFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -static -nostartfiles -Wall -Wextra)
 
 list(APPEND ALL_CFLAGS ${CFLAGS})
@@ -24,7 +24,7 @@ add_executable(${BOOTROM_ELF} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS} ${CMAKE_ASM_SRCS
 add_dependencies(${BOOTROM_ELF} device_tree)
 
 # Define DEVICE_TREE to point to the compiled DTB
-target_compile_definitions(${BOOTROM_ELF} PRIVATE DEVICE_TREE=\"${SOCT_DTB}\")
+target_compile_definitions(${BOOTROM_ELF} PRIVATE SOCT_DTB=\"${SOCT_DTB}\")
 target_include_directories(${BOOTROM_ELF} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(${BOOTROM_ELF} PRIVATE ${ALL_CFLAGS})
 target_link_options(${BOOTROM_ELF} PRIVATE ${ALL_LFLAGS})

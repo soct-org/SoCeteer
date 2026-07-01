@@ -1,6 +1,15 @@
 package soct.system
 
 package object vivado {
+
+
+  def hasMultiMemSupport(className: String): Boolean = {
+    // TODO: Implement logic to check if the className has multi-memory support
+    // This is a placeholder implementation and should be replaced with actual logic
+    className.contains(classOf[SOCTVivadoSystemMultiMem].getSimpleName)
+  }
+
+
   /**
    * TCL commands container
    *

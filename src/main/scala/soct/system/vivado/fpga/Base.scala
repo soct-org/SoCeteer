@@ -4,8 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
-
-import scala.annotation.unused
+import soct.SOCTBytes._
 
 
 /**
@@ -15,7 +14,8 @@ object FPGARegistry {
 
   // TODO ADD YOUR BOARD HERE! - Use uppercase names as keys
   private val registry: Map[String, FPGA] = Map(
-    "ZCU104" -> ZCU104
+    "ZCU104" -> ZCU104,
+    "VCU118" -> VCU118
   )
 
   def getKnownBoards: Seq[String] = registry.keys.toSeq
@@ -45,18 +45,76 @@ object FPGARegistry {
 }
 
 
-/**
- * Case class representing a DDR4 port on the FPGA board.
- */
-case class DDR4Port(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
-  override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
+trait IsMasterIf {
+  /**
+   * The name of the port in the block design
+   */
+  val portName: String
+
+  /**
+   * The Xilinx interface type for this port in the block design.
+   */
+  def partName: String
+
+
+  /**
+   * Instantiates a BdIntfPortMaster from this CanBePort, using the implicit SOCTBdBuilder and Parameters.
+   * @return the BdIntfPortMaster instance
+   */
+  def initPort(implicit bd: SOCTBdBuilder, p: Parameters): BdIntfPortMaster = {
+    new BdIntfPortMaster {
+      override def portName: String = IsMasterIf.this.portName
+      override def partName: String = IsMasterIf.this.partName
+    }
+  }
 }
 
 
 /**
- * Case class representing a UART port on the FPGA board.
+ * Trait representing the parameters of a DDR4 port on the FPGA board.
  */
-case class UARTPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdIntfPortMaster {
+trait DDR4PortParams extends IsMasterIf {
+
+  override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
+
+
+  /**
+   * Optional offset of the DDR4 memory port in bytes starting from 0 - for example, if the board has two DDR4 ports, the second port may start at an offset equal to the size of the first port
+   */
+  protected var offset: Bytes = 0.B
+
+  /**
+   * Optional capacity of the DDR4 memory port in bytes - only known for on-board memory like on the VCU108
+   */
+  protected var capOpt: Option[Bytes] = None
+
+
+  def getCap: Bytes = {
+    capOpt.getOrElse(throw new Exception(s"DDR4 port ${portName} capacity is not defined"))
+  }
+
+
+  def withCap(cap: Bytes): DDR4PortParams = {
+    capOpt = Some(cap)
+    this
+  }
+
+
+  def getOffset: Bytes = offset
+
+
+  def withOffset(offset: Bytes): DDR4PortParams = {
+    this.offset = offset
+    this
+  }
+
+}
+
+
+/**
+ * Trait representing the parameters of a UART port on the FPGA board.
+ */
+trait UARTPortParams extends IsMasterIf {
   override def partName: String = "xilinx.com:interface:uart_rtl:1.0"
 }
 
@@ -131,15 +189,6 @@ abstract class FPGA extends IsXilinx with HasFriendlyName {
   val xilinxPart: String
 
   /**
-   * The size of the DDR memory on this FPGA board in bytes, if it is a fixed known size
-   * (e.g., a board with soldered-on DDR4 of a specific capacity).
-   * Returns None if the board has no fixed DDR size
-   */
-  @unused
-  val intMemCap: Option[BigInt] = None
-
-
-  /**
    * The PMOD ports available on this FPGA board
    */
   val getPMODPorts: Seq[Int] = Seq.empty
@@ -154,33 +203,13 @@ abstract class FPGA extends IsXilinx with HasFriendlyName {
    */
   def pmod(pmodPort: Int, pmodPin: RawPMODPin): FPGAPMODPin
 
-  /**
-   * Get the i-th DDR4 port available on this FPGA board.
-   *
-   * @param i The index of the DDR4 port to initialize (default is 0)
-   * @throws XilinxDesignException if no DDR4 ports are defined for this FPGA board or if the index is out of range
-   * @return The initialized DDR4 port
-   */
-  @throws[XilinxDesignException]
-  def initDDR4Port(i: Int = 0)(implicit bd: SOCTBdBuilder, p: Parameters): DDR4Port = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any DDR4 ports defined.")
+  def intDDR4Ports: Seq[DDR4PortParams] = Seq.empty
 
+  def extDDR4Ports: Seq[DDR4PortParams] = Seq.empty
 
-  /**
-   * Get the i-th UART port available on this FPGA board.
-   *
-   * @param i The index of the UART port to initialize (default is 0)
-   * @throws XilinxDesignException if no UART ports are defined for this FPGA board or if the index is out of range
-   * @return The initialized UART port
-   */
-  @throws[XilinxDesignException]
-  def initUARTPort(i: Int = 0)(implicit bd: SOCTBdBuilder, p: Parameters): UARTPort = throw XilinxDesignException(s"FPGA ${friendlyName} does not have any UART ports defined.")
+  def uartPorts: Seq[UARTPortParams] = Seq.empty
 
-
-  /**
-   * The clock domain representing the fastest clock available on this FPGA board.
-   */
-  def initFastestClock(implicit bd: SOCTBdBuilder, p: Parameters): FPGAClockDomain
-
+  def initNClockPorts(n: Int)(implicit bd: SOCTBdBuilder, p: Parameters): Seq[FPGAClockDomain]
 
   override def toString: String = friendlyName
 }

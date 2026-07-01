@@ -1,17 +1,16 @@
-#include "common.h"
-
 #define MIP_MSIP (1 << 3)
-
-#ifndef DEVICE_TREE
-#error "DEVICE_TREE is not defined. Please define it to point to the Device Tree binary."
-#endif
 
 .section .text.start, "ax", @progbits
 .globl _start
 _start:
   csrr a0, mhartid
   la a1, _dtb
-  la s0, _ram
+  la t0, _ram_ptr
+#if __riscv_xlen == 32
+  lw s0, 0(t0)
+#else
+  ld s0, 0(t0)
+#endif
   jr s0
 _start_bootrom:
   # a0 - hart ID
@@ -28,7 +27,12 @@ _start_bootrom:
 _hang:
   csrr a0, mhartid
   la a1, _dtb
-  la s0, _ram
+  la t0, _ram_ptr
+#if __riscv_xlen == 32
+  lw s0, 0(t0)
+#else
+  ld s0, 0(t0)
+#endif
   beqz a0, _start_bootrom
 _hartx_loop:
   # write mtvec
@@ -48,4 +52,13 @@ _hartx_loop:
 .globl _dtb
 .align 5, 0
 _dtb:
-  .incbin DEVICE_TREE
+  .incbin SOCT_DTB
+
+.section .rodata.ram_ptr, "a", @progbits
+.align 3
+_ram_ptr:
+#if __riscv_xlen == 32
+  .word _ram
+#else
+  .dword _ram
+#endif

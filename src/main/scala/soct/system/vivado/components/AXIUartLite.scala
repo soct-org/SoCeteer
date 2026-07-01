@@ -3,23 +3,21 @@ package soct.system.vivado.components
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 import soct.system.vivado.abstracts._
-import soct.system.vivado.fpga.UARTPort
+import soct.system.vivado.fpga.UARTPortParams
 import soct.system.vivado.misc.DTSInfo
 
 
 /**
  * AXI UART Lite component for Xilinx FPGAs.
  */
-case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterPin: BdIntfPin)
+case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterPin: BdIntfPin,
+                       uartIntf: BdIntfPortMaster, uartParams: UARTPortParams)
                       (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps with HasAxiSlave with HasDTSInfo {
 
   override def partName: String = "xilinx.com:ip:axi_uartlite:2.0"
 
   override def defaultProperties: Map[String, String] = {
-
-    val uartIntf = bd.singleConnector(UART, p => p.isInstanceOf[UARTPort])
-
     Map(
       "CONFIG.C_BAUDRATE" -> "115200",
       "CONFIG.UARTLITE_BOARD_INTERFACE" -> uartIntf.ref,
@@ -30,6 +28,7 @@ case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterP
   object INTERRUPT extends BdPinOut("interrupt", AXIUartLite.this)
 
   object UART extends BdIntfPin("UART", AXIUartLite.this)
+  UART <-> uartIntf
 
   object S_AXI_ACLK extends BdPinIn("s_axi_aclk", AXIUartLite.this)
 

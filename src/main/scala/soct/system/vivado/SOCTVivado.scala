@@ -3,7 +3,7 @@ package soct.system.vivado
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.soceteer.LastRocketSystem
-import soct.{BdBuilderKey, SOCTArgs, SOCTRemote, VivadoSOCTPaths}
+import soct.{BdBuilderKey, SOCTArgs, SOCTRemote, VivadoSOCTPaths, log}
 
 import java.nio.file.{Files, Path}
 import scala.reflect.io.Path.jfile2path
@@ -181,10 +181,11 @@ object SOCTVivado {
 
     cmd = cmd :+ file.toString
 
-    soct.log.info(s"Running Vivado with command: ${cmd.mkString(" ")}")
+    soct.log.info(s"Running Vivado with command: ${cmd.mkString(" ")}. This may take a while...")
 
     val process = new ProcessBuilder(cmd: _*)
-      .inheritIO()
+      .redirectOutput(if (log.underlying.isDebugEnabled) ProcessBuilder.Redirect.INHERIT else ProcessBuilder.Redirect.DISCARD)
+      .redirectError(ProcessBuilder.Redirect.INHERIT)
       .start()
     val exitCode = process.waitFor()
     if (exitCode != 0) {

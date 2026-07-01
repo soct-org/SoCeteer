@@ -1,10 +1,9 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.abstracts.BdPinPort
-import soct.system.vivado.abstracts.{HasIndexedPins, _}
-import soct.system.vivado.fpga.FPGAResetPortSource
+import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.abstracts.{BdPinIn, HasIndexedPins, _}
+import soct.system.vivado.fpga.{FPGADiffClockPort, FPGAResetPortSource, FPGASingleEndedClockPort}
 
 import scala.collection.mutable
 
@@ -36,6 +35,12 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
     pinConstructor = idx => CLK_IN_I(idx)
   )
 
+  case class CLK_IN_D_I(idx: Int) extends BdIntfPin(s"CLK_IN${idx}_D", ClkWiz.this) with DrivenByNet
+  object CLK_IN_D extends SimpleIndexedPinFactory[CLK_IN_D_I](
+    indexRange = (1, 1),
+    pinConstructor = idx => CLK_IN_D_I(idx)
+  )
+
 
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
@@ -48,18 +53,26 @@ case class ClkWiz()(implicit bd: SOCTBdBuilder, p: Parameters)
     m += "CONFIG.NUM_OUT_CLKS" -> clkouts.size.toString
 
     val clkIn1Src = CLK_IN.get(1).flatMap(bd.sourceOf)
-    clkIn1Src match {
-      case Some(_: soct.system.vivado.fpga.FPGAClockPort) =>
-        m += "CONFIG.USE_BOARD_FLOW" -> "true"
-      case _ =>
-        m += "CONFIG.USE_BOARD_FLOW" -> "false"
+    val clkIn1DSrc = CLK_IN_D.get(1).flatMap(bd.sourceOf)
+
+    if (clkIn1Src.isDefined && clkIn1DSrc.isDefined) {
+      throw XilinxDesignException(s"ClkWiz $instanceName clk_in1 and clk_in1_d cannot both be connected to a source. Only one clock input can be used.")
+    }
+
+    (clkIn1DSrc, clkIn1Src) match {
+      case (Some(_: FPGADiffClockPort), None) =>
+        m += "CONFIG.PRIM_SOURCE" -> "Differential_clock_capable_pin"
+      case (None, Some(_: FPGASingleEndedClockPort)) =>
         m += "CONFIG.PRIM_SOURCE" -> "Global_buffer"
+      case _ =>
+        throw XilinxDesignException(s"ClkWiz $instanceName clk_in1 must be connected to a clock source, but it is not connected to any source.")
     }
 
     bd.sourceOf(RESET) match {
       case Some(r: FPGAResetPortSource) =>
         m += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
       case _ =>
+        throw XilinxDesignException(s"ClkWiz $instanceName reset must be connected to a reset source, but it is not connected to any source.")
     }
 
     m.toMap

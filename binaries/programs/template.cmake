@@ -117,7 +117,11 @@ target_include_directories(${SOCT_PROGRAM} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
-set_target_properties(${SOCT_PROGRAM} PROPERTIES OUTPUT_NAME ${SOCT_PROGRAM}.elf RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR})
+set_target_properties(${SOCT_PROGRAM} PROPERTIES
+        OUTPUT_NAME ${SOCT_PROGRAM}.elf
+        RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR}
+        LINK_DEPENDS ${SOCT_LD_SCRIPT}
+)
 
 add_custom_target(${SOCT_PROGRAM}-info ALL
         COMMAND ${CMAKE_OBJDUMP} -D -M numeric,no-aliases $<TARGET_FILE:${SOCT_PROGRAM}> > ${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.objdump
@@ -133,12 +137,12 @@ add_custom_target(${SOCT_PROGRAM}-info ALL
 # the remote login shell (piping Tcl commands to ssh stdin).
 #
 #   SOCT_FLASH_XSDB              Path to xsdb                                [required for local]
-#   SOCT_FLASH_BOOT_HART         Boot hart index, passed as a0                [default: 0]
-#   SOCT_FLASH_BOOTROM_DTB_ADDR  DTB base address, passed as a1               [default: 0x00010080]
+#   SOCT_FLASH_BOOT_HART         Boot hart index, passed as a0               [default: 0]
+#   SOCT_FLASH_BOOTROM_DTB_ADDR  DTB base address, passed as a1              [default: 0x00010080]
 #
 # Remote mode (SOCT_FLASH_HOST):
 #   SOCT_FLASH_HOST              SSH/SCP host, e.g. "mainframe"
-#   SOCT_FLASH_REMOTE_DIR        Remote directory to upload the ELF into       [default: /tmp]
+#   SOCT_FLASH_REMOTE_DIR        Remote directory to upload the ELF into     [default: /tmp]
 
 if (NOT DEFINED SOCT_FLASH_HOST)
     set(SOCT_FLASH_HOST "" CACHE STRING "SSH/SCP host for flashing — leave empty to flash locally")

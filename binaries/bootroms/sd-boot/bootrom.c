@@ -4,7 +4,6 @@
 #include <ff.h>
 #include <diskio.h>
 
-#include "common.h"
 #include "kprintf.h"
 
 /* Card type flags (card_type) */
@@ -382,7 +381,6 @@ DSTATUS disk_status(BYTE drv) {
 }
 
 DRESULT disk_read(BYTE drv, BYTE * buf, LBA_t sector, UINT count) {
-
     if (!count) return RES_PARERR;
     if (drv_status & STA_NOINIT) return RES_NOTRDY;
 
@@ -496,8 +494,8 @@ static int download(void) {
             size_t size = 0x10000;
             if (size > p_filesz - pos) size = (size_t)(p_filesz - pos);
             if (size > p_memsz - pos) size = (size_t)(p_memsz - pos);
-            if (addr + size > BOOTROM_MEM_ADDR && addr < BOOTROM_MEM_END) {
-                mem = (uint8_t *)(addr - BOOTROM_MEM_ADDR + BOOTROM_MEM_ALT);
+            if (addr + size > SOCT_MEM_BASE_ADDR && addr < BOOTROM_MEM_END) {
+                mem = (uint8_t *)(addr - SOCT_MEM_BASE_ADDR + BOOTROM_MEM_ALT);
                 if (addr + size > BOOTROM_MEM_END) size = BOOTROM_MEM_END - addr;
                 alt_mem = 1;
             }
@@ -515,8 +513,8 @@ static int download(void) {
             uint8_t * mem = (void *)addr;
             size_t size = 0x10000;
             if (size > p_memsz - pos) size = (size_t)p_memsz - pos;
-            if (addr + size > BOOTROM_MEM_ADDR && addr < BOOTROM_MEM_END) {
-                mem = (uint8_t *)(addr - BOOTROM_MEM_ADDR + BOOTROM_MEM_ALT);
+            if (addr + size > SOCT_MEM_BASE_ADDR && addr < BOOTROM_MEM_END) {
+                mem = (uint8_t *)(addr - SOCT_MEM_BASE_ADDR + BOOTROM_MEM_ALT);
                 if (addr + size > BOOTROM_MEM_END) size = BOOTROM_MEM_END - addr;
                 alt_mem = 1;
             }
@@ -536,12 +534,12 @@ static int download(void) {
     asm volatile ("li  a1, %0" :: "n" (BOOTROM_DTB_ADDR)); // Device Tree
     if (alt_mem) {
 #if __riscv_xlen <= 32 || (BOOTROM_MEM_END < 0x80000000 && BOOTROM_MEM_ALT < 0x80000000)
-        asm volatile ("li  t0, %0" :: "n" (BOOTROM_MEM_ADDR));
+        asm volatile ("li  t0, %0" :: "n" (SOCT_MEM_BASE_ADDR));
         asm volatile ("li  t1, %0" :: "n" (BOOTROM_MEM_END));
         asm volatile ("li  t2, %0" :: "n" (BOOTROM_MEM_ALT));
 #elif BOOTROM_MEM_END < 0x8000000000 && BOOTROM_MEM_ALT < 0x8000000000
         /* Argument of "li" instruction is 32-bit signed integer, use shift to avoid sign extension */
-        asm volatile ("li  t0, %0" :: "n" (BOOTROM_MEM_ADDR >> 8));
+        asm volatile ("li  t0, %0" :: "n" (SOCT_MEM_BASE_ADDR >> 8));
         asm volatile ("li  t1, %0" :: "n" (BOOTROM_MEM_END >> 8));
         asm volatile ("li  t2, %0" :: "n" (BOOTROM_MEM_ALT >> 8));
         asm volatile ("slli t0, t0, 8");
