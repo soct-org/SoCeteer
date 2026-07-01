@@ -52,7 +52,7 @@ _hartx_loop:
 .globl _dtb
 .align 5, 0
 _dtb:
-  .incbin SOCT_DTB
+  .incbin DEVICE_TREE
 
 .section .rodata.ram_ptr, "a", @progbits
 .align 3
