@@ -18,13 +18,10 @@ case class DDR4Info(cap: Bytes, param: DDR4PortParams, port: BdIntfPortMaster, m
 
 case class MemPath(ddr4Info: DDR4Info, ddr4Inst: DDR4, memSMC: AXISmartConnect)
 
-/**
- * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
- */
-class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
 
+abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   implicit val bd: SOCTBdBuilder = p(BdBuilderKey).getOrElse(
-    throw new XilinxDesignException("SOCTVivadoSystem requires a BdBuilder to be set in parameters for block design generation.")
+    throw new XilinxDesignException("SOCTVivadoSystemBase requires a BdBuilder to be set in parameters for block design generation.")
   )
 
   /**
@@ -42,7 +39,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
    * @param varBase base TCL variable name (e.g. `"core_clock"`)
    * @return (TCL commands, clockVarName, periodVarName)
    */
-  private def captureClock(pinPath: String, varBase: String): (TCLCommands, String, String) = {
+  def captureClock(pinPath: String, varBase: String): (TCLCommands, String, String) = {
     val clkVar = s"${varBase}_clk"
     val perVar = s"${varBase}_period"
     val cmd =
@@ -59,7 +56,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
   // (must be done before module instantiation since some components bind resources during construction)
   //-------------------------------------------------------------------------
   val plicDev = plicOpt.getOrElse(
-    throw new XilinxDesignException("SOCTVivadoSystem requires a PLIC to be present in the system for interrupt wiring.")
+    throw new XilinxDesignException("SOCTVivadoSystemBase requires a PLIC to be present in the system for interrupt wiring.")
   ).device
 
   var irqIdx = 0
@@ -108,7 +105,14 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTSystem {
     )
     sdDTS
   }
+}
 
+
+
+/**
+ * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
+ */
+class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
   InModuleBody {
 
     // --------------------------------------------------------------------------

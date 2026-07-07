@@ -180,6 +180,18 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[String]("bootrom").action((x, c) => c.copy(userBootrom = Some(x))).text(s"The path to the bootrom binary to use. Must be relative to the \"binaries\" directory. Default is determined by the target:" +
     s" ${Targets.values.map(t => s"${t.name} -> ${t.defaultBootrom}").mkString(", ")}.")
   opt[String]("top")
+    .validate(x =>
+      try {
+        val cls = Class.forName(x)
+        if (classOf[Module].isAssignableFrom(cls) || classOf[LazyModule].isAssignableFrom(cls)) {
+          success
+        } else {
+          failure(s"Invalid top module class: $x. Must extend either chisel3.Module or diplomacy.LazyModule.")
+        }
+      } catch {
+        case _: ClassNotFoundException => failure(s"Top module class not found: $x. Check if the package path is correct and the class is on the classpath.")
+      }
+    )
     .action((x, c) => c.copy(userTop = {
       // The top can either be a class extending Module or LazyModule - we use reflection to determine which one it is
       val cls = Class.forName(x)

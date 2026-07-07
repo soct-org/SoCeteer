@@ -21,16 +21,6 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
 
   private val c = p(HasSOCTConfig)
 
-  private def getAXI4s(axi: ModuleValue[HeterogeneousBag[AXI4Bundle]]): AXI4Bundle = {
-    val axis = Seq(axi).flatten
-    if (axis.size != 1) {
-      throw new XilinxDesignException(s"Expected exactly one AXI4 bundle for $axi but found ${axis.size}")
-    } else {
-      axis.head
-    }
-  }
-
-
   /**
    * Map each TLBusWrapper to its corresponding AXI4Bundle, if it exists.
    * This is used to determine which AXI4 interfaces are associated with which clock domains, so that we can add the appropriate Vivado annotations to the top-level ports.

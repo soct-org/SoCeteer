@@ -111,9 +111,7 @@ else ()
     )
 endif ()
 
-
 target_include_directories(${SOCT_PROGRAM} PRIVATE
-        ${LIBGLOSS_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}
 )
 

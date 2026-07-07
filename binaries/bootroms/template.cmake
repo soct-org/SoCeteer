@@ -36,6 +36,7 @@ set_target_properties(${BOOTROM_ELF} PROPERTIES OUTPUT_NAME ${SOCT_BOOTROM}.elf
 # Build the bootrom image
 add_custom_target(${BOOTROM_IMG} ALL
         COMMAND ${CMAKE_COMMAND} -E remove -f ${SOCT_BOOTROM_IMG}
+        # Subtract offset of .text section (0x10000)
         COMMAND ${CMAKE_OBJCOPY} -O binary --change-addresses=-0x10000 $<TARGET_FILE:${BOOTROM_ELF}> ${SOCT_BOOTROM_IMG}
         DEPENDS ${BOOTROM_ELF}
         COMMENT "Always generating bootrom image at ${SOCT_BOOTROM_IMG}"

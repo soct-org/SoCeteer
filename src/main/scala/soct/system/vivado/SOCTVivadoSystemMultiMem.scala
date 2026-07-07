@@ -17,102 +17,13 @@ import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
-class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
-  throw new NotImplementedError("SOCTVivadoSystemMultiMem is not yet implemented. Please use SOCTVivadoSystem for now.")
-  implicit val bd: SOCTBdBuilder = p(BdBuilderKey).getOrElse(
-    throw new XilinxDesignException("SOCTVivadoSystem requires a BdBuilder to be set in parameters for block design generation.")
-  )
-
-  /**
-   * Bind a clock-output pin (by hierarchical path) to a triple of TCL variables:
-   *   - `<varBase>`: the pin handle
-   *   - `<varBase>_clk`: the `get_clocks` object driving it
-   *   - `<varBase>_period`: its min PERIOD
-   *
-   * Pure TCL plumbing — no topology-specific assumptions baked in. Used by the
-   * timing-constraint block below to turn pin paths into reusable handles.
-   *
-   * @param pinPath hierarchical pin path (typically `<instanceName>/<pin>`),
-   *                e.g. `s"${ddr4.instanceName}/addn_ui_clkout2"`. Matched with
-   *                a leading `*` and `-hier`, so partial paths work.
-   * @param varBase base TCL variable name (e.g. `"core_clock"`)
-   * @return (TCL commands, clockVarName, periodVarName)
-   */
-  private def captureClock(pinPath: String, varBase: String): (TCLCommands, String, String) = {
-    val clkVar = s"${varBase}_clk"
-    val perVar = s"${varBase}_period"
-    val cmd =
-      s"""# Capture clock object from $pinPath
-         |set $varBase [get_pins -quiet -hier *$pinPath]
-         |set $clkVar [get_clocks -of_objects $$$varBase]
-         |set $perVar [get_property -min PERIOD $$$clkVar]
-         |""".stripMargin.tcl
-    (Seq(cmd), clkVar, perVar)
-  }
-
-  //-------------------------------------------------------------------------
-  // Device tree generation
-  // (must be done before module instantiation since some components bind resources during construction)
-  //-------------------------------------------------------------------------
-  val plicDev = plicOpt.getOrElse(
-    throw new XilinxDesignException("SOCTVivadoSystem requires a PLIC to be present in the system for interrupt wiring.")
-  ).device
-
-  var irqIdx = 0
-
-  val uartDTSOpt = if (p(HasUART)) {
-    val dts = DTSInfo(
-      parent = mmioBusDevice.get,
-      regs = Seq(("reg", 0x60010000L, 0x10000L)),
-      irqs = Seq(Irq(plicDev, irqIdx)),
-      compatibles = Seq("riscv,axi-uart-1.0"),
-      extraProps = Map("port-number" -> Seq(ResourceInt(0)))
-    )
-    irqIdx += 1
-    Some(dts)
-  } else None
-
-  uartDTSOpt.foreach { dts =>
-    AxiSlaveBinder.bindSimpleDevice(
-      devname = "uart0",
-      dts = dts,
-      perms = AxiSlaveBinder.mmioPerms
-    )
-  }
-
-  val sdDTSOpt = p(HasSDCardPMOD).map { idx =>
-    val sdDTS = DTSInfo(
-      parent = mmioBusDevice.get,
-      regs = Seq(("reg", 0x60000000L, 0x10000L)),
-      irqs = Seq(Irq(plicDev, irqIdx)),
-      compatibles = Seq("riscv,axi-sd-card-1.0"),
-      extraProps = Map(
-        "clock" -> Seq(ResourceInt(100000000)),
-        "bus-width" -> Seq(ResourceInt(4)),
-        "fifo-depth" -> Seq(ResourceInt(256)),
-        "max-frequency" -> Seq(ResourceInt(300000000)),
-        "cap-sd-highspeed" -> Nil,
-        "cap-mmc-highspeed" -> Nil,
-        "no-sdio" -> Nil
-      )
-    )
-    irqIdx += 1
-    AxiSlaveBinder.bindSimpleDevice(
-      devname = "mmc0",
-      dts = sdDTS,
-      perms = AxiSlaveBinder.mmioPerms
-    )
-    sdDTS
-  }
-
+class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemBase {
   InModuleBody {
 
     // --------------------------------------------------------------------------
     // Board / Top init
     // --------------------------------------------------------------------------
     val fpga = p(XilinxFPGAKey).getOrElse(throw new XilinxDesignException("XilinxFPGAKey not set in parameters."))
-    val FPGAClockDomain(fpgaClk, fpgaRst, boardClkSpeed) = fpga.initNClockPorts(1).head
-
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
 
@@ -121,6 +32,17 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
     require(_axiL2Frontends.size == 1, s"Expected exactly one AXI4 DMA interface but found ${_axiL2Frontends.size}")
     val axiMMIO = _axiMMIOs.head.bdPin
     val axiDMA = _axiL2Frontends.head.bdPin
+
+    val mems = p(RegisteredMems)
+    val fpgaDoms: Seq[FPGAClockDomain] = try {
+       fpga.initNClockPorts(mems.size)
+    } catch {
+      case ex: XilinxDesignException =>
+        soct.log.error("SOCTVivadoSystemMultiMem requires one clock port per memory channel")
+        throw ex
+    }
+    val fpgaRst = fpgaDoms.head.reset
+    println(memAXI4Node.portParams.head.slaves.map(_.address))
 
     // The Clock and Reset pins from the top
     val clocks = top.ioClocksMapping.values.toSeq
@@ -143,17 +65,13 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
       freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
     )
 
-    val memDomain = new ClockDomain(
-      freqMHz = boardClkSpeed
-    )
-
     // --------------------------------------------------------------------------
     // Board ports
     // --------------------------------------------------------------------------
-    if (axiMems.length != p(RegisteredMems).length)
+    if (axiMems.length != mems.length)
       throw XilinxDesignException("The number of AXI4 memory interfaces of the RocketSystem does not match the number of DDR4 memory layouts specified in RegisteredMems.")
 
-    val ddr4Params: Seq[DDR4Info] = p(RegisteredMems).zipWithIndex.map{
+    val ddr4Params: Seq[DDR4Info] = mems.zipWithIndex.map{
       case (param, i) => DDR4Info(param.getCap, param, param.initPort, axiMems(i))
     }
 
@@ -169,8 +87,6 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Components
     // --------------------------------------------------------------------------
-
-    val oz = ClkWiz().withInstanceName("clk_wiz")
     val periphPsr = ProcSysReset().withInstanceName("periph_psr")
     val corePsr = ProcSysReset().withInstanceName("core_psr")
 
@@ -187,20 +103,19 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
     val dmaSMC = AXISmartConnect().withInstanceName("dma_smc")
 
     val interruptConcat = InlineConcat(nExtInterrupts)
+    val mainMem: DDR4 = memPaths.head.ddr4Inst
 
     // --------------------------------------------------------------------------
     // Derived pins (clock outputs / DDR helper pins)
     // --------------------------------------------------------------------------
 
-    val coreClock = oz.CLK_OUT(1, coreDomain)
-    val peripheryClock = oz.CLK_OUT(2, peripheryDomain)
-    val memClock = oz.CLK_OUT(3, memDomain)
+    val coreClock = mainMem.ADDN_UI_CLKOUT(1, coreDomain)
+    val peripheryClock = mainMem.ADDN_UI_CLKOUT(2, peripheryDomain)
 
     // --------------------------------------------------------------------------
     // Timing constraints
     // --------------------------------------------------------------------------
-    val (coreClockTCL, coreClockObj, corePeriodProp) =
-      captureClock(coreClock.ref, "core_clock")
+    val (coreClockTCL, coreClockObj, corePeriodProp) = captureClock(coreClock.ref, "core_clock")
 
     bd.addTimingConstraints(() => coreClockTCL)
 
@@ -222,12 +137,10 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
     // --------------------------------------------------------------------------
     // Fundamental interconnect (interfaces & major clocks)
     // --------------------------------------------------------------------------
-    memPaths.map(_.ddr4Inst) foreach { ddr4 =>
-      memClock --> ddr4.C0_SYS_CLK_I
-      fpgaRst --> ddr4.SYS_RST
+    memPaths.map(_.ddr4Inst).zip (fpgaDoms) foreach { case (ddr4, dom) =>
+      dom.clock --> ddr4.C0_SYS_CLK
+      dom.reset --> ddr4.SYS_RST
     }
-    fpgaRst --> oz.RESET
-    fpgaClk --> oz.CLK_IN_D(1)
 
     // --------------------------------------------------------------------------
     // Reset strategy
@@ -249,7 +162,7 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTSystem {
         AND(acc, next).withInstanceName(s"ddr4_calib_complete_gate_$j").RES
     }
 
-    oz.LOCKED --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
+    ddr4InitComplete --> Seq(periphPsr.DCM_LOCKED, corePsr.DCM_LOCKED)
 
     // Domain clocks:
     // Periphery domain clock drives periph reset sync + periph-ish IP clocks

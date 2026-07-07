@@ -6,17 +6,31 @@ file(GLOB CMAKE_C_SRCS ${CMAKE_CURRENT_LIST_DIR}/*.c)
 set(BOOTROM_SCRATCH_SIZE 0x8000) # BOOTROM_MEM_END - SOCT_MEM_BASE_ADDR
 math(EXPR BOOTROM_MEM_END "${SOCT_MEM_BASE_ADDR} + ${BOOTROM_SCRATCH_SIZE}" OUTPUT_FORMAT HEXADECIMAL)
 # place scratch at top of ext RAM, leaving 8 KiB guard
-math(EXPR BOOTROM_MEM_ALT "${SOCT_MEM_BASE_ADDR} + ${SOCT_EXT_MEM_SIZE} - 0x2000 - ${BOOTROM_SCRATCH_SIZE}" OUTPUT_FORMAT HEXADECIMAL)
+math(EXPR _BOOTROM_MEM_ALT_RAW "${SOCT_MEM_BASE_ADDR} + ${SOCT_EXT_MEM_SIZE} - 0x2000 - ${BOOTROM_SCRATCH_SIZE}")
+math(EXPR _BOOTROM_MEM_ALT_HEX "${_BOOTROM_MEM_ALT_RAW}" OUTPUT_FORMAT HEXADECIMAL)
+
+if (SOCT_XLEN EQUAL 32 AND _BOOTROM_MEM_ALT_RAW GREATER 0xFFFFFFFF)
+    message(FATAL_ERROR
+            "sd-boot: BOOTROM_MEM_ALT=${_BOOTROM_MEM_ALT_HEX} exceeds 32-bit address space with SOCT_XLEN=32. "
+            "Adjust SOCT_MEM_BASE_ADDR/SOCT_EXT_MEM_SIZE, or use RV64.")
+endif ()
+math(EXPR BOOTROM_MEM_ALT "${_BOOTROM_MEM_ALT_RAW}" OUTPUT_FORMAT HEXADECIMAL)
+
+if (SOCT_XLEN EQUAL 32)
+    set(_mcmodel "medany")
+else ()
+    set(_mcmodel "large")
+endif ()
 
 list(APPEND CFLAGS
-        -mcmodel=large
+        -mcmodel=${_mcmodel}
         -DBOOTROM_DTB_ADDR=0x00010080
         -DBOOTROM_MEM_END=${BOOTROM_MEM_END}
         -DBOOTROM_MEM_ALT=${BOOTROM_MEM_ALT}
 )
 
 set(LFLAGS
-        -mcmodel=large
+        -mcmodel=${_mcmodel}
         -T ${CMAKE_CURRENT_LIST_DIR}/bootrom.lds
 )
 
