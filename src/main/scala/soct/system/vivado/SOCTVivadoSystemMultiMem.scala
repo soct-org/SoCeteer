@@ -35,14 +35,13 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
 
     val mems = p(RegisteredMems)
     val fpgaDoms: Seq[FPGAClockDomain] = try {
-       fpga.initNClockPorts(mems.size)
+      fpga.initNClockPorts(mems.size)
     } catch {
       case ex: XilinxDesignException =>
         soct.log.error("SOCTVivadoSystemMultiMem requires one clock port per memory channel")
         throw ex
     }
     val fpgaRst = fpgaDoms.head.reset
-    println(memAXI4Node.portParams.head.slaves.map(_.address))
 
     // The Clock and Reset pins from the top
     val clocks = top.ioClocksMapping.values.toSeq
@@ -71,8 +70,10 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     if (axiMems.length != mems.length)
       throw XilinxDesignException("The number of AXI4 memory interfaces of the RocketSystem does not match the number of DDR4 memory layouts specified in RegisteredMems.")
 
-    val ddr4Params: Seq[DDR4Info] = mems.zipWithIndex.map{
-      case (param, i) => DDR4Info(param.getCap, param, param.initPort, axiMems(i))
+    val ddr4Params: Seq[DDR4Info] = mems.zipWithIndex.map {
+      case (param, i) =>
+        val mem = axiMems(i)
+        DDR4Info(param, param.initPort, mem)
     }
 
     val uartParamOpt: Option[UARTPortParams] = {
@@ -96,7 +97,8 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     }
 
     val memPaths = ddr4Params.zipWithIndex.map { case (info, i) =>
-      MemPath(info, DDR4(info.mAxi.bdPin, info.port, info.param), AXISmartConnect().withInstanceName(s"mem_smc_$i"))
+      val smc = AXISmartConnect().withInstanceName(s"mem_smc_$i")
+      MemPath(DDR4(info), smc)
     }
 
     val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
@@ -137,7 +139,7 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     // --------------------------------------------------------------------------
     // Fundamental interconnect (interfaces & major clocks)
     // --------------------------------------------------------------------------
-    memPaths.map(_.ddr4Inst).zip (fpgaDoms) foreach { case (ddr4, dom) =>
+    memPaths.map(_.ddr4Inst).zip(fpgaDoms) foreach { case (ddr4, dom) =>
       dom.clock --> ddr4.C0_SYS_CLK
       dom.reset --> ddr4.SYS_RST
     }
@@ -214,7 +216,7 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     // --------------------------------------------------------------------------
     memPaths.foreach { path =>
       path.memSMC.M_AXI(0) <-> path.ddr4Inst.C0_DDR4_S_AXI
-      path.memSMC.S_AXI(0) <-> path.ddr4Info.mAxi.bdPin
+      path.memSMC.S_AXI(0) <-> path.ddr4Inst.info.mAxi.bdPin
     }
 
     // MMIO path: Rocket MMIO -> mmioSMC -> (UART + SD-lite)

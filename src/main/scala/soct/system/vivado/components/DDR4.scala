@@ -2,9 +2,10 @@ package soct.system.vivado.components
 
 import freechips.rocketchip.subsystem.ExtMem
 import org.chipsalliance.cde.config.Parameters
+import soct.SOCTBytes
 import soct.system.vivado.abstracts._
-import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockPort, FPGADiffClockPort, FPGAResetPortSource, FPGASingleEndedClockPort}
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.fpga.{FPGADiffClockPort, FPGAResetPortSource}
+import soct.system.vivado.{DDR4Info, SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
 
 import scala.collection.mutable
 
@@ -12,13 +13,13 @@ import scala.collection.mutable
 /**
  * DDR4 memory controller component for Xilinx FPGAs.
  */
-case class DDR4(memMaster: BdIntfPin, ddr4Intf: BdIntfPortMaster, ddr4params: DDR4PortParams)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps with HasIndexedPins with HasBdAddr {
 
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
   object C0_DDR4 extends BdIntfPin("C0_DDR4", DDR4.this)
-  ddr4Intf <-> C0_DDR4
+  info.ddr4Intf <-> C0_DDR4
 
   object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", DDR4.this) with DrivenByNet
 
@@ -46,9 +47,9 @@ case class DDR4(memMaster: BdIntfPin, ddr4Intf: BdIntfPortMaster, ddr4params: DD
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
     val boardRst = bd.singleConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
-    val baseAddr = p(ExtMem).get.master.base + ddr4params.getOffset.value
+    val baseAddr = p(ExtMem).get.master.base + info.param.getOffset.value
 
-    m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> ddr4Intf.ref
+    m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> info.ddr4Intf.ref
     m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
     m += "CONFIG.C0_DDR4_MEMORY_MAP_BASEADDR" -> baseAddr.toLong.toHexString
 
@@ -78,9 +79,9 @@ case class DDR4(memMaster: BdIntfPin, ddr4Intf: BdIntfPortMaster, ddr4params: DD
   }
 
   override def assignAddrTcl: TCLCommands = {
-    val aperture = ddr4params.getCap.value + ddr4params.getOffset.value + p(ExtMem).get.master.base
+    val aperture = info.param.getCap.value + info.param.getOffset.value + p(ExtMem).get.master.base
     Seq(
-      s"assign_bd_address -offset 0 -range $aperture -target_address_space [get_bd_addr_spaces ${memMaster.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
+      s"assign_bd_address -offset 0 -range $aperture -target_address_space [get_bd_addr_spaces ${info.mAxi.bdPin.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
 }

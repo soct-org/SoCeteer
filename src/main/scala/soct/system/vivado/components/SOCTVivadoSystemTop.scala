@@ -1,6 +1,6 @@
 package soct.system.vivado.components
 
-import freechips.rocketchip.amba.axi4.AXI4Bundle
+import freechips.rocketchip.amba.axi4.{AXI4Bundle, AXI4MasterNode, AXI4MasterParameters, AXI4MasterPortParameters, AXI4SlaveNode, AXI4SlaveParameters, AXI4SlavePortParameters}
 import freechips.rocketchip.prci.ClockBundle
 import freechips.rocketchip.subsystem._
 import org.chipsalliance.cde.config.Parameters
@@ -30,11 +30,18 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
     (s.memAXI4Bus, s.mem_axi4, s.memAXI4Node),
     (s.mmioAXI4Bus, s.mmio_axi4, s.mmioAXI4Node),
     (s.l2FrontendAXI4Bus, s.l2_frontend_bus_axi4, s.l2FrontendAXI4Node)).map {
-    case (bus, axiBundles, _) =>
+    case (bus, axiBundles, n) =>
       val axis = Seq(axiBundles).flatten
-      axis.map { axi =>
-        val bdPin = AXIMM(axi)
-        AXI4BusInfo(bus, bdPin, axi)
+      n match {
+        case node: AXI4SlaveNode =>
+          if (node.portParams.size != axis.size)
+            throw new XilinxDesignException(s"AXI4 slave node for bus ${bus.name} has ${node.portParams.size} ports, but ${axis.size} AXI4 bundles were found. This is not supported.")
+          axis.zip(node.portParams).map { case (axi, params: AXI4SlavePortParameters) => AXI4BusInfo(bus, AXIMM(axi), axi, Left(params)) }
+        case node: AXI4MasterNode =>
+          if (node.portParams.size != axis.size)
+            throw new XilinxDesignException(s"AXI4 master node for bus ${bus.name} has ${node.portParams.size} ports, but ${axis.size} AXI4 bundles were found. This is not supported.")
+          axis.zip(node.portParams).map { case (axi, params: AXI4MasterPortParameters) => AXI4BusInfo(bus, AXIMM(axi), axi, Right(params)) }
+        case _ => throw new XilinxDesignException(s"AXI4 node for bus ${bus.name} is neither a master nor a slave node, but ${n.getClass.getName}. This is not supported.")
       }
   }
 

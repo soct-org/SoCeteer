@@ -1,7 +1,7 @@
 package soct.system.vivado.misc
 
 import chisel3.Clock
-import freechips.rocketchip.amba.axi4.AXI4Bundle
+import freechips.rocketchip.amba.axi4.{AXI4Bundle, AXI4MasterNode, AXI4MasterParameters, AXI4MasterPortParameters, AXI4SlaveNode, AXI4SlaveParameters, AXI4SlavePortParameters}
 import freechips.rocketchip.prci.ClockBundle
 import freechips.rocketchip.tilelink.TLBusWrapper
 import org.chipsalliance.cde.config.Parameters
@@ -15,11 +15,11 @@ import scala.collection.mutable
 class BusInfo(val bus: TLBusWrapper, val bdPin: BdPinBase)
 
 
-case class AXI4BusInfo(override val bus: TLBusWrapper, override val bdPin: BdIntfPin, axiBundle: AXI4Bundle) extends BusInfo(bus, bdPin)
+case class AXI4BusInfo(override val bus: TLBusWrapper, override val bdPin: BdIntfPin, axiBundle: AXI4Bundle, axiParams: Either[AXI4SlavePortParameters, AXI4MasterPortParameters]) extends BusInfo(bus, bdPin)
 
 
 /**
- * Description of a clock domain for the purposes of annotating the top-level ports with the appropriate Vivado interface information.
+ * Description of a clock domain to annotate the top-level ports with the appropriate Vivado interface information.
  * @param clkPin the clock pin associated with this clock domain
  * @param assocRstPin the reset pin associated with this clock domain
  * @param assocAXI4Ifs the AXI4 interfaces associated with this clock domain, which will be used to determine the frequency of the clock domain for Vivado annotations. This is optional but if provided, the frequency must also be provided.

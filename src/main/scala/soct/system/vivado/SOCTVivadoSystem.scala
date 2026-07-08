@@ -1,10 +1,10 @@
 package soct.system.vivado
 
 import chisel3._
+import freechips.rocketchip.amba.axi4.AXI4SlaveParameters
 import freechips.rocketchip.resources.ResourceInt
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
-import soct.SOCTBytes.Bytes
 import soct._
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
@@ -14,9 +14,29 @@ import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockDomain, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 
-case class DDR4Info(cap: Bytes, param: DDR4PortParams, port: BdIntfPortMaster, mAxi: AXI4BusInfo)
 
-case class MemPath(ddr4Info: DDR4Info, ddr4Inst: DDR4, memSMC: AXISmartConnect)
+/**
+ * Information about a DDR4 memory controller and its associated AXI4 bus.
+ *
+ * @param param    Several parameters describing the DDR4 memory controller, including its name and offset in the memory map
+ * @param ddr4Intf The interface to the board's DDR4 controller
+ * @param mAxi     Info about the master's (the processor's) axi interface
+ */
+case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI4BusInfo) {
+
+  def slaveParam: AXI4SlaveParameters = mAxi.axiParams.fold(
+    sp => {
+      if (sp.slaves.length != 1) {
+        throw XilinxDesignException(s"AXI4 Slave has ${sp.slaves.length} slaves, but only one is supported.")
+      }
+      sp.slaves.head
+    },
+    _ => throw XilinxDesignException(s"AXI4 Slave is not a slave, but a master.")
+  )
+
+}
+
+case class MemPath(ddr4Inst: DDR4, memSMC: AXISmartConnect)
 
 
 abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
@@ -108,7 +128,6 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
 }
 
 
-
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
  */
@@ -158,7 +177,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
     // Board ports
     // --------------------------------------------------------------------------
     val ddr4Param = extMems.head
-    val ddr4Info: DDR4Info = DDR4Info(ddr4Param.getCap, ddr4Param, ddr4Param.initPort, axiMem)
+    val ddr4Info: DDR4Info = DDR4Info(ddr4Param, ddr4Param.initPort, axiMem)
 
     val uartParamOpt: Option[UARTPortParams] = {
       if (p(HasUART)) {
@@ -182,7 +201,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
       AXIUartLite(uartDTSOpt.get, axiMMIO, port, uartParams)
     }
 
-    val memPath = MemPath(ddr4Info, DDR4(ddr4Info.mAxi.bdPin, ddr4Info.port, ddr4Info.param), AXISmartConnect().withInstanceName(s"mem_smc"))
+    val memPath = MemPath(DDR4(ddr4Info), AXISmartConnect().withInstanceName(s"mem_smc"))
 
     val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
     val dmaSMC = AXISmartConnect().withInstanceName("dma_smc")
