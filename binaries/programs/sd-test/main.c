@@ -257,6 +257,71 @@ static int test_dma_edges(void) {
 }
 
 /* =========================================================================
+ * Multi-block (CMD18) read test
+ *
+ * f_mount() and directory walks only ever issue single-block CMD17 reads,
+ * but the bootrom loads BOOT.ELF segments with large f_read() calls that
+ * become multi-block CMD18 transfers. This test reads N sectors in one
+ * CMD18 transfer and verifies each sector against a CMD17 read of the
+ * same sector into a known-good BSS buffer.
+ * ========================================================================= */
+
+#define MB_MAX_CNT 128u  /* 64 KB — matches the bootrom's 0x10000-byte read chunks */
+static uint8_t __attribute__((aligned(4))) s_mb[MB_MAX_CNT * DMA_BLKSZ];
+
+static int mb_verify(const char *label, uint8_t *buf, UINT count) {
+    memset(buf, DMA_CANARY, count * DMA_BLKSZ);
+    errno = 0;
+    DRESULT dr = disk_read((BYTE) sd_pdrv(), buf, DMA_SECTOR, count);
+    if (dr != RES_OK) {
+        TEST_FAIL(label, "CMD18 disk_read=%d errno=%d addr=0x%" PRIxPTR,
+                  (int)dr, errno, (uintptr_t)buf);
+        return 1;
+    }
+    for (UINT s = 0; s < count; s++) {
+        memset(s_dma_a, DMA_CANARY, DMA_BLKSZ);
+        errno = 0;
+        if (disk_read((BYTE) sd_pdrv(), s_dma_a, DMA_SECTOR + s, 1) != RES_OK) {
+            TEST_FAIL(label, "CMD17 verify of sector %u failed errno=%d", (unsigned)s, errno);
+            return 1;
+        }
+        if (memcmp(buf + s * DMA_BLKSZ, s_dma_a, DMA_BLKSZ) != 0) {
+            TEST_FAIL(label, "sector %u mismatch", (unsigned)s);
+            int shown = 0;
+            for (size_t i = 0; i < DMA_BLKSZ && shown < 8; i++) {
+                if (buf[s * DMA_BLKSZ + i] != s_dma_a[i]) {
+                    printf("         sector %u byte[%3zu]: CMD18 0x%02x CMD17 0x%02x\n",
+                           (unsigned)s, i, buf[s * DMA_BLKSZ + i], s_dma_a[i]);
+                    shown++;
+                }
+            }
+            return 1;
+        }
+    }
+    TEST_PASS(label, "%u sectors OK", (unsigned)count);
+    return 0;
+}
+
+static int test_multiblock(void) {
+    int f = 0;
+    TEST_HDR("Multi-block (CMD18) read test");
+
+    if (sd_pdrv() < 0) {
+        TEST_SKIP("pdrv", "SOCT_SD not found in FF_VOLUME_STRS");
+        return 1;
+    }
+    printf("  buffer addr=0x%" PRIxPTR "\n\n", (uintptr_t) s_mb);
+
+    f += mb_verify("CMD18 x2   (static)", s_mb, 2);
+    f += mb_verify("CMD18 x8   (static)", s_mb, 8);
+    f += mb_verify("CMD18 x32  (static)", s_mb, 32);
+    f += mb_verify("CMD18 x128 (static)", s_mb, MB_MAX_CNT);
+
+    TEST_RESULT("Multi-block read test", f);
+    return f;
+}
+
+/* =========================================================================
  * FAT file-system test
  *
  * Creates TEST.TXT, checks it appears in the directory by name, reads it
@@ -374,6 +439,7 @@ int main(void) {
     int total = 0;
     total += test_dma_mapping();
     total += test_dma_edges();
+    total += test_multiblock();
     total += test_fat_file();
     printf("=== TOTAL: %d failure%s ===\n", total, total == 1 ? "" : "s");
     return total == 0 ? 0 : 1;

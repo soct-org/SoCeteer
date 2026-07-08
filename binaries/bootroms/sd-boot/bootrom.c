@@ -87,6 +87,7 @@
 #define ERR_DATA_CRC        36
 #define ERR_DATA_FIFO       37
 #define ERR_BUF_ALIGNMENT   38
+#define ERR_SEGMENT_ADDR    39
 
 struct sdc_regs {
     volatile uint32_t argument;
@@ -160,6 +161,7 @@ static const char * errno_to_str(void) {
     case ERR_DATA_CRC: return "Data CRC error";
     case ERR_DATA_FIFO: return "Data FIFO error";
     case ERR_BUF_ALIGNMENT: return "Bad buffer alignment";
+    case ERR_SEGMENT_ADDR: return "Load address outside RAM - not a loadable application ELF";
     }
     return "Unknown error";
 }
@@ -265,11 +267,11 @@ static int send_data_cmd(unsigned cmd, unsigned arg, void * buf, unsigned blocks
 
     if (blocks) {
         command |= 1 << 5;
-        if ((intptr_t)buf & 3) {
+        if ((uintptr_t)buf & 3) {
             errno = ERR_BUF_ALIGNMENT;
             return -1;
         }
-        regs->dma_addres = (uint64_t)(intptr_t)buf;
+        regs->dma_addres = (uint64_t)(uintptr_t)buf;
         regs->block_size = 511;
         regs->block_count = blocks - 1;
         regs->data_timeout = 0xFFFFFF;
@@ -467,6 +469,12 @@ static int download(void) {
         p_filesz = read_addr();
         p_memsz = read_addr();
         if (errno) return -1;
+        /* Refuse to DMA outside RAM (e.g. an ELF linked at the ROM address) */
+        if (p_vaddr < SOCT_MEM_BASE_ADDR ||
+            p_vaddr + p_memsz > (uint64_t)SOCT_MEM_BASE_ADDR + SOCT_EXT_MEM_SIZE) {
+            errno = ERR_SEGMENT_ADDR;
+            return -1;
+        }
         errno = f_lseek(&fd, p_offset);
         if (errno) return -1;
         addr = p_vaddr;

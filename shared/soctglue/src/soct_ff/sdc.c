@@ -293,11 +293,11 @@ static int send_data_cmd(BYTE pdrv, unsigned cmd, unsigned arg, void *buf, unsig
             default:
                 break;
         }
-        if ((intptr_t)buf & 3) {
+        if ((uintptr_t)buf & 3) {
             errno = ERR_BUF_ALIGNMENT;
             return -1;
         }
-        s_regs[pdrv]->dma_addres    = (uint64_t)(intptr_t)buf;
+        s_regs[pdrv]->dma_addres    = (uint64_t)(uintptr_t)buf;
         s_regs[pdrv]->block_size    = 511;
         s_regs[pdrv]->block_count   = blocks - 1;
         s_regs[pdrv]->data_timeout  = 0xFFFFFF;
