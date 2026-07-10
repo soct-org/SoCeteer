@@ -88,12 +88,46 @@ function(install_verilator)
                    "to the path where Win Flex Bison is installed.")
            endif()
        endif()
-       if (NOT DEFINED CMAKE_GENERATOR)
-           if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.31" AND MSVC_VERSION VERSION_GREATER_EQUAL 1940)
-               set(_generator "Visual Studio 18 2026")
-           else()
-               set(_generator "Visual Studio 17 2022")
+       # Select the generator for the Verilator HOST-TOOL build independently of the
+       # outer project: verilator_bin is only a code generator, so its compiler does
+       # not need to match the simulation toolchain. MinGW-built Verilator is fragile
+       # across runner-image toolchain bumps (GCC 15.2 from the June 2026 windows-latest
+       # image produces a verilator_bin.exe that crashes with 'Access violation'), so
+       # build it with MSVC - Verilator's supported Windows compiler.
+       # NOTE: CMAKE_GENERATOR is ALWAYS defined in project mode (it is the OUTER
+       # project's generator, e.g. Ninja), so it must never gate this choice - that
+       # was the bug that silently kept Verilator on MinGW.
+       if (DEFINED ENV{SOCT_VERILATOR_GENERATOR})
+           set(_generator "$ENV{SOCT_VERILATOR_GENERATOR}")
+           message(STATUS "Verilator generator overridden via SOCT_VERILATOR_GENERATOR: ${_generator}")
+       else()
+           # Locate the Visual Studio C++ toolset via vswhere (installed with any VS or Build Tools)
+           set(_vswhere "$ENV{ProgramFiles\(x86\)}/Microsoft Visual Studio/Installer/vswhere.exe")
+           set(_vs_year "")
+           if (EXISTS "${_vswhere}")
+               execute_process(
+                   COMMAND "${_vswhere}" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property catalog_productLineVersion
+                   OUTPUT_VARIABLE _vs_year
+                   OUTPUT_STRIP_TRAILING_WHITESPACE
+                   ERROR_QUIET
+               )
            endif()
+           if (_vs_year STREQUAL "2026" AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.31")
+               set(_generator "Visual Studio 18 2026")
+           elseif (_vs_year MATCHES "^(2026|2022)$")
+               set(_generator "Visual Studio 17 2022")
+           elseif (_vs_year STREQUAL "2019")
+               set(_generator "Visual Studio 16 2019")
+           else()
+               message(FATAL_ERROR
+                   "No usable Visual Studio C++ toolset found (vswhere reported: '${_vs_year}'). "
+                   "Verilator is built with MSVC on Windows because MinGW-built binaries are "
+                   "known to crash at runtime (e.g. MinGW GCC 15.2 -> 'Access violation'). "
+                   "Install the Visual Studio Build Tools C++ workload, or set the environment "
+                   "variable SOCT_VERILATOR_GENERATOR=Ninja to explicitly accept building "
+                   "Verilator with the current MinGW toolchain.")
+           endif()
+           list(APPEND _cfg_cmd -A x64)
        endif()
        list(APPEND _cfg_cmd "-DWIN_FLEX_BISON=${WIN_FLEX_BISON}")
     elseif(APPLE)
