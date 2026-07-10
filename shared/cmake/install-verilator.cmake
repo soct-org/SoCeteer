@@ -101,26 +101,36 @@ function(install_verilator)
            set(_generator "$ENV{SOCT_VERILATOR_GENERATOR}")
            message(STATUS "Verilator generator overridden via SOCT_VERILATOR_GENERATOR: ${_generator}")
        else()
-           # Locate the Visual Studio C++ toolset via vswhere (installed with any VS or Build Tools)
+           # Locate the Visual Studio C++ toolset via vswhere (installed with any VS or
+           # Build Tools). Use installationVersion (plain "major.minor..."), NOT
+           # catalog_productLineVersion: the latter returns "2022" for VS 2022 but "18"
+           # for VS 2026 - Microsoft changed the naming scheme.
            set(_vswhere "$ENV{ProgramFiles\(x86\)}/Microsoft Visual Studio/Installer/vswhere.exe")
-           set(_vs_year "")
+           set(_vs_version "")
+           set(_vs_major "")
            if (EXISTS "${_vswhere}")
                execute_process(
-                   COMMAND "${_vswhere}" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property catalog_productLineVersion
-                   OUTPUT_VARIABLE _vs_year
+                   COMMAND "${_vswhere}" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion
+                   OUTPUT_VARIABLE _vs_version
                    OUTPUT_STRIP_TRAILING_WHITESPACE
                    ERROR_QUIET
                )
+               string(REGEX MATCH "^[0-9]+" _vs_major "${_vs_version}")
            endif()
-           if (_vs_year STREQUAL "2026" AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.31")
+           if (_vs_major STREQUAL "18")
+               if (CMAKE_VERSION VERSION_LESS "3.31")
+                   message(FATAL_ERROR
+                       "Visual Studio 2026 (v${_vs_version}) found, but CMake ${CMAKE_VERSION} is too old "
+                       "for the 'Visual Studio 18 2026' generator (needs >= 3.31). Update CMake.")
+               endif()
                set(_generator "Visual Studio 18 2026")
-           elseif (_vs_year MATCHES "^(2026|2022)$")
+           elseif (_vs_major STREQUAL "17")
                set(_generator "Visual Studio 17 2022")
-           elseif (_vs_year STREQUAL "2019")
+           elseif (_vs_major STREQUAL "16")
                set(_generator "Visual Studio 16 2019")
            else()
                message(FATAL_ERROR
-                   "No usable Visual Studio C++ toolset found (vswhere reported: '${_vs_year}'). "
+                   "No usable Visual Studio C++ toolset found (vswhere installationVersion: '${_vs_version}'). "
                    "Verilator is built with MSVC on Windows because MinGW-built binaries are "
                    "known to crash at runtime (e.g. MinGW GCC 15.2 -> 'Access violation'). "
                    "Install the Visual Studio Build Tools C++ workload, or set the environment "
