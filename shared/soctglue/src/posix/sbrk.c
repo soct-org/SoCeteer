@@ -22,15 +22,18 @@
  * initial one when no DTB is available - fails with ENOMEM, so malloc returns
  * NULL instead of silently growing into unbacked or foreign memory.
  *
- * NOTE for >2 GiB heaps: LEGACY newlib NANO malloc (libc_nano; e.g. newlib
- * 4.5.0.20241231, verified by disassembly) has two hard 32-bit limits:
- *   1. requests >= 2 GiB are rejected outright (MAX_ALLOC_SIZE), and
- *   2. the first-fit remainder is computed in a 32-bit int, so a free chunk is
- *      never split when the remainder would be >= 2 GiB - after freeing a
- *      multi-GiB block, even small allocations may fail with memory free.
- * Newer newlib builds fix both, so behavior depends on the host toolchain's
- * newlib vintage (heap-test probes the linked libc and reports). The full libc
- * (SOCT_LIBC c) has neither limitation in any vintage we checked.
+ * NOTE for >2 GiB heaps (newlib 4.5.0.20241231, verified by disassembly and
+ * on-target by heap-test):
+ *   1. BOTH allocators reject single requests >= 2 GiB with ENOMEM (explicit
+ *      guards in _malloc_r of libc_nano AND libc) - the largest possible
+ *      malloc is just under 2 GiB regardless of SOCT_LIBC.
+ *   2. NANO malloc additionally computes the first-fit remainder in a 32-bit
+ *      int, so it never splits a free chunk when the remainder would be
+ *      >= 2 GiB - after freeing a multi-GiB block, even small allocations can
+ *      fail with gigabytes free. The full libc (SOCT_LIBC c) splits correctly.
+ * So: total heap size is bounded only by RAM (this file), but single
+ * allocations are < 2 GiB, and multi-GiB free-chunk reuse needs the full libc.
+ * These are toolchain-vintage dependent; heap-test probes and reports them.
  */
 
 extern char _end[];
