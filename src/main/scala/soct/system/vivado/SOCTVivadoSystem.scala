@@ -9,7 +9,7 @@ import soct._
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
-import soct.system.vivado.components._
+import soct.system.vivado.components.{AXIAddrDeinterleaver, _}
 import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockDomain, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
@@ -18,11 +18,16 @@ import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 /**
  * Information about a DDR4 memory controller and its associated AXI4 bus.
  *
- * @param param    Several parameters describing the DDR4 memory controller, including its name and offset in the memory map
- * @param ddr4Intf The interface to the board's DDR4 controller
- * @param mAxi     Info about the master's (the processor's) axi interface
+ * @param param         Several parameters describing the DDR4 memory controller, including its name and offset in the memory map
+ * @param ddr4Intf      The interface to the board's DDR4 controller
+ * @param mAxi          Info about the master's (the processor's) axi interface
+ * @param deinterleaver Optional address deinterleaver sitting between the master and the DDR4 controller.
+ *                      Present when the memory channels are cache-line interleaved (multi-channel designs):
+ *                      it compacts the channel's sparse address view onto a dense range starting at the
+ *                      memory base, so the configured channel offset is ignored in that case.
  */
-case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI4BusInfo) {
+case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI4BusInfo,
+                    deinterleaver: Option[AXIAddrDeinterleaver] = None) {
 
   def slaveParam: AXI4SlaveParameters = mAxi.axiParams.fold(
     sp => {
@@ -33,6 +38,12 @@ case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI
     },
     _ => throw XilinxDesignException(s"AXI4 Slave is not a slave, but a master.")
   )
+
+  /**
+   * The AXI address space from which the DDR4 controller's address segment is reached:
+   * the deinterleaver's dense-side master port if present, otherwise the processor's port directly.
+   */
+  def axiAddrSpacePin: BdIntfPin = deinterleaver.map(d => d.M_AXI: BdIntfPin).getOrElse(mAxi.bdPin)
 
 }
 

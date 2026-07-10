@@ -4,10 +4,8 @@ import firtoolresolver.FirtoolBinary
 import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
 import soct.SOCTBytes.{ByteUnitOpsInt, Bytes}
-import soct.SOCTLauncher.SOCTConfig
 import soct.SOCTUtils.MAX_MEM_SIZE_32_BIT
-import soct.system.vivado.fpga.DDR4PortParams
-import soct.system.vivado.hasMultiMemSupport
+import soct.system.vivado.fpga.{PartRegistry, DDR4PortParams}
 
 import java.nio.file.{Path, Paths}
 import scala.util.Try
@@ -134,7 +132,6 @@ object SOCTMem {
     }
 
     var remaining = maxSize
-    var nextOffset = 0.B
 
     mems
       .sortBy(_.getCap.value)(Ordering.Long.reverse)
@@ -144,8 +141,7 @@ object SOCTMem {
           None
         } else {
           val capped = if (mem.getCap <= remaining) mem.getCap else remaining
-          val updated = mem.withOffset(nextOffset).withCap(capped)
-          nextOffset = nextOffset + capped
+          val updated = mem.withCap(capped)
           remaining = remaining - capped
           Some(updated)
         }
@@ -160,28 +156,50 @@ object SOCTMem {
       // Requires memory inserted by the user - we don't know its capacity
       // Note that we don't support internal and external memory at the same time
       val extMem = if (board.extDDR4Ports.nonEmpty) {
-        val nPorts = board.extDDR4Ports.length
-        if (args.extMemCaps.nonEmpty) {
-          if (args.extMemCaps.length != nPorts) {throw new IllegalArgumentException(s"Number of external memory capacities provided (${args.extMemCaps.length}) does not match the number of external DDR4 ports on the board ${board.friendlyName}: ($nPorts). Please provide a capacity for each external DDR4 port.")}
-          // Creates offsets of form 0, cap0, cap0+cap1, ...
-          args.extMemCaps
-            .scanLeft(0.B)(_ + _)
-            .dropRight(1) // per-port offsets, drop the last one which is the total size
-            .zip(args.extMemCaps)
-            .zip(board.extDDR4Ports)
-            .map { case ((offset, cap), port) => port.withCap(cap).withOffset(offset)}
-        } else {
-          val defaultSize = args.xlen match {
-            case 32 => MAX_MEM_SIZE_32_BIT
-            case _ => 16.GiB
+        val ports = board.extDDR4Ports
+        val nPorts = ports.length
+
+        if (args.extMemParts.nonEmpty && args.extMemParts.length != nPorts) {
+          throw new IllegalArgumentException(s"Number of memory parts provided via --ext-mem-part (${args.extMemParts.length}) does not match the number of external DDR4 ports on the board ${board.friendlyName}: ($nPorts). Please provide a part for each external DDR4 port.")
+        }
+
+        // The DDR4 board flow locks the controller to the board-interface preset DIMM
+        // (C0.DDR4_MemoryPart is a disabled parameter; set_property on it is ignored), so the
+        // preset is the single source of truth for what the hardware can address. The capacity
+        // (ExtMem, DTB, address aperture) is derived from that part. Selecting a different DIMM
+        // requires a custom, non-board-flow DDR4 interface - not implemented yet.
+        ports.zipWithIndex.map { case (port, i) =>
+          val requestedOpt = args.extMemParts.lift(i)
+          val presetOpt = port.defaultMemoryPart
+
+          val part = (requestedOpt, presetOpt) match {
+            case (Some(requested), Some(preset)) =>
+              if (PartRegistry.vivadoPartName(requested) != PartRegistry.vivadoPartName(preset)) {
+                throw new NotImplementedError(s"Port ${port.portName}: the board interface enforces memory part '$preset' (Vivado's board flow locks C0.DDR4_MemoryPart to the board preset), but '$requested' was requested. Using a different DIMM requires a custom DDR4 interface, which is not implemented yet.")
+              }
+              preset
+            case (Some(requested), None) =>
+              throw new NotImplementedError(s"Port ${port.portName}: --ext-mem-part '$requested' was provided, but the board definition of ${board.friendlyName} does not declare the part enforced by its DDR4 board interface. The board flow locks the part to its preset, so a requested part cannot be honored - declare defaultMemoryPart for the port instead (and note that a DIMM differing from the preset requires a custom DDR4 interface, which is not implemented yet).")
+            case (None, Some(preset)) =>
+              soct.log.info(s"Port ${port.portName}: using the board-preset memory part '$preset'.")
+              preset
+            case (None, None) =>
+              throw new IllegalArgumentException(s"Port ${port.portName}: the board definition of ${board.friendlyName} does not declare the memory part enforced by its DDR4 board interface. Declare defaultMemoryPart for the port (see DDR4PortParams).")
           }
-          val defaultPort = board.extDDR4Ports.head
-          soct.log.warn(s"No external memory capacities provided for external DDR4 ports on the board. Using a single port (${defaultPort.portName}) with capacity of $defaultSize. You can provide a capacity for each external DDR4 port using the --ext-mem argument.")
-          Seq(defaultPort.withCap(defaultSize).withOffset(0.B))
+
+          val cap = PartRegistry.capacityOf(part).getOrElse(
+            throw new IllegalArgumentException(s"The capacity of memory part '$part' could not be derived from its name. Add it to PartRegistry (known parts: ${PartRegistry.knownParts.mkString(", ")}).")
+          )
+          soct.log.info(s"Port ${port.portName}: capacity $cap derived from memory part '$part'.")
+          port.withCap(cap).withMemoryPart(part)
         }
       } else {
+        if (args.extMemParts.nonEmpty) {
+          throw new IllegalArgumentException(s"--ext-mem-part was provided, but the board ${board.friendlyName} has no external DDR4 ports. Memory parts can only be selected for user-insertable (external) DIMMs.")
+        }
         Seq.empty
       }
+
       extMem ++ board.intDDR4Ports
     }
 

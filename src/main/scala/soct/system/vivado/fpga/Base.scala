@@ -6,45 +6,6 @@ import soct.system.vivado.abstracts._
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
 import soct.SOCTBytes._
 
-
-/**
- * Registry for known FPGA boards.
- */
-object FPGARegistry {
-
-  // TODO ADD YOUR BOARD HERE! - Use uppercase names as keys
-  private val registry: Map[String, FPGA] = Map(
-    "ZCU104" -> ZCU104,
-    "VCU118" -> VCU118
-  )
-
-  def getKnownBoards: Seq[String] = registry.keys.toSeq
-
-  /** name -> Board (throws if not found) */
-  def n2b(name: String): FPGA = {
-    registry.getOrElse(name.toUpperCase, throw new Exception(s"Unknown FPGA board: $name"))
-  }
-
-  /** name -> Board */
-  def n2bOpt(name: String): Option[FPGA] = {
-    registry.get(name.toUpperCase)
-  }
-
-  /** Board -> name (throws if not found) */
-  def b2n(fpga: FPGA): String = {
-    registry.find(_._2 == fpga) match {
-      case Some((name, _)) => name
-      case None => throw new Exception(s"FPGA '${fpga.friendlyName}' not found in registry")
-    }
-  }
-
-  /** Board -> name */
-  def b2nOpt(fpga: FPGA): Option[String] = {
-    registry.find(_._2 == fpga).map(_._1)
-  }
-}
-
-
 trait IsMasterIf {
   /**
    * The name of the port in the block design
@@ -77,16 +38,28 @@ trait DDR4PortParams extends IsMasterIf {
 
   override def partName: String = "xilinx.com:interface:ddr4_rtl:1.0"
 
-
   /**
-   * Optional offset of the DDR4 memory port in bytes starting from 0 - for example, if the board has two DDR4 ports, the second port may start at an offset equal to the size of the first port
+   * The DIMM enforced by the board's DDR4 board-interface preset. Vivado's board flow locks the
+   * controller's C0.DDR4_MemoryPart to this preset (the parameter is disabled and set_property
+   * on it is ignored), so it defines what the generated design can actually address - regardless
+   * of the module physically inserted in the slot. Board definitions using board-flow DDR4
+   * interfaces should declare it; the port's default capacity is derived from it.
+   * None if unknown (e.g. future custom, non-board-flow interfaces).
    */
-  protected var offset: Bytes = 0.B
+  def defaultMemoryPart: Option[String] = None
 
   /**
    * Optional capacity of the DDR4 memory port in bytes - only known for on-board memory like on the VCU108
    */
   protected var capOpt: Option[Bytes] = None
+
+  /**
+   * Optional Vivado memory part name for this port (e.g. "MTA8ATF1G64HZ-2G6E1"). Needed whenever the
+   * inserted DIMM differs from the board preset: the DDR4 IP sizes its address decode window from the
+   * selected part, so a mismatch silently truncates the usable memory to the preset's capacity.
+   * The part must be available in the Vivado DDR4 IP part catalog for the target board.
+   */
+  protected var memoryPartOpt: Option[String] = None
 
 
   def getCap: Bytes = {
@@ -100,14 +73,13 @@ trait DDR4PortParams extends IsMasterIf {
   }
 
 
-  def getOffset: Bytes = offset
+  def getMemoryPart: Option[String] = memoryPartOpt
 
 
-  def withOffset(offset: Bytes): DDR4PortParams = {
-    this.offset = offset
+  def withMemoryPart(part: String): DDR4PortParams = {
+    memoryPartOpt = Some(part)
     this
   }
-
 }
 
 

@@ -202,7 +202,7 @@ class SOCTBdBuilder extends SOCTBd {
     // Instantiations:
     lazy val instantiateCommands = nodes.collect {
       case inst: BdComp => inst.instTcl
-    }.flatten.toSeq
+    }.flatten.toSeq.distinct
 
 
     // Property settings:
@@ -377,10 +377,7 @@ class SOCTBdBuilder extends SOCTBd {
        |set wrapper_name "${k.bdName}"
        |append wrapper_name "_wrapper"
        |
-       |# Create/import wrapper if it doesn't exist yet
-       |if { [get_files -quiet -of_objects $$source_fileset [list "*/$${wrapper_name}.v"]] == "" } {
-       |  make_wrapper -files [get_files $$bd_file] -top -import
-       |}
+       |make_wrapper -files [get_files $$bd_file] -top -import -force
        |
        |# Set wrapper as top
        |set_property top $$wrapper_name $$source_fileset

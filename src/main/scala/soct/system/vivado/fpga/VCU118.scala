@@ -22,12 +22,10 @@ object VCU118 extends FPGA {
       new DDR4PortParams {
         override val portName: String = "ddr4_sdram_c1"
         override def getCap: Bytes = cap
-        override def getOffset: Bytes = 0.B
       },
       new DDR4PortParams {
         override val portName: String = "ddr4_sdram_c2"
         override def getCap: Bytes = cap
-        override def getOffset: Bytes = cap
       }
     )
   }

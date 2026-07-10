@@ -2,7 +2,6 @@ package soct.system.vivado.components
 
 import freechips.rocketchip.subsystem.ExtMem
 import org.chipsalliance.cde.config.Parameters
-import soct.SOCTBytes
 import soct.system.vivado.abstracts._
 import soct.system.vivado.fpga.{FPGADiffClockPort, FPGAResetPortSource}
 import soct.system.vivado.{DDR4Info, SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
@@ -47,11 +46,10 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
     val boardRst = bd.singleConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
-    val baseAddr = p(ExtMem).get.master.base + info.param.getOffset.value
 
     m += "CONFIG.C0_DDR4_BOARD_INTERFACE" -> info.ddr4Intf.ref
     m += "CONFIG.RESET_BOARD_INTERFACE" -> boardRst.ref
-    m += "CONFIG.C0_DDR4_MEMORY_MAP_BASEADDR" -> baseAddr.toLong.toHexString
+    m += "CONFIG.C0_DDR4_MEMORY_MAP_BASEADDR" -> p(ExtMem).get.master.base.toLong.toHexString
 
     val clkIn1Src = bd.sourceOf(C0_SYS_CLK_I)
     val clkIn1DSrc = bd.sourceOf(C0_SYS_CLK)
@@ -79,9 +77,21 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
   }
 
   override def assignAddrTcl: TCLCommands = {
-    val aperture = info.param.getCap.value + info.param.getOffset.value + p(ExtMem).get.master.base
+    // assign_bd_address requires a power-of-two range, but the aperture
+    // (memory base + capacity) is not one whenever capacity != base, e.g.
+    // 2 GiB base + 16 GiB DIMM = 18 GiB. Round up to the next power of two;
+    // the DDR4 controller only responds within [BASEADDR, BASEADDR + capacity),
+    // so the oversized head/tail of the segment is never addressed.
+    val aperture = BigInt(info.param.getCap.value) + p(ExtMem).get.master.base
+    if (aperture <= 0) {
+      throw XilinxDesignException(s"DDR4 $instanceName has a non-positive address aperture ($aperture). Check the memory capacity and ExtMem base address.")
+    }
+    val range = BigInt(1) << (aperture - 1).bitLength
+    if (range != aperture) {
+      soct.log.debug(s"DDR4 $instanceName aperture 0x${aperture.toString(16)} is not a power of two; assigning address range 0x${range.toString(16)} instead.")
+    }
     Seq(
-      s"assign_bd_address -offset 0 -range $aperture -target_address_space [get_bd_addr_spaces ${info.mAxi.bdPin.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
+      s"assign_bd_address -offset 0 -range 0x${range.toString(16).toUpperCase} -target_address_space [get_bd_addr_spaces ${info.axiAddrSpacePin.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
 }

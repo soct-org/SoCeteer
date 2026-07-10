@@ -1,18 +1,14 @@
 package soct.system.vivado
 
 import chisel3._
-import freechips.rocketchip.resources.ResourceInt
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
-import soct.SOCTBytes.Bytes
 import soct._
-import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
-import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockDomain, UARTPortParams}
+import soct.system.vivado.fpga.{FPGAClockDomain, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
-import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado
@@ -70,10 +66,28 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     if (axiMems.length != mems.length)
       throw XilinxDesignException("The number of AXI4 memory interfaces of the RocketSystem does not match the number of DDR4 memory layouts specified in RegisteredMems.")
 
+    // Multi-channel memory ports are cache-line interleaved by RocketChip: each channel only sees
+    // addresses whose channel-select bits match its index. A deinterleaver per channel compacts
+    // that sparse view onto a dense range at the memory base before it reaches the DDR4 controller.
     val ddr4Params: Seq[DDR4Info] = mems.zipWithIndex.map {
       case (param, i) =>
         val mem = axiMems(i)
-        DDR4Info(param, param.initPort, mem)
+        val deintOpt = AXIAddrDeinterleaver.fromBusInfo(mem).map(_.withInstanceName(s"mem_deint_$i"))
+        DDR4Info(param, param.initPort, mem, deintOpt)
+    }
+
+    // Sanity-check the interleave geometry across channels: all channels must agree on block size,
+    // channel count and base, and together they must cover every channel index exactly once.
+    locally {
+      val geos = ddr4Params.flatMap(_.deinterleaver).map(_.geometry)
+      if (geos.nonEmpty) {
+        if (geos.size != mems.size)
+          throw XilinxDesignException(s"Only ${geos.size} of ${mems.size} memory channels are interleaved. Mixed interleaved/contiguous channels are not supported.")
+        if (geos.map(g => (g.dropLsb, g.dropBits, g.base)).distinct.size != 1)
+          throw XilinxDesignException(s"Memory channels disagree on interleave geometry: ${geos.mkString(", ")}")
+        if (geos.head.nChannels != mems.size || geos.map(_.channelIndex).distinct.size != mems.size)
+          throw XilinxDesignException(s"Interleave geometry does not match the number of memory channels (${mems.size}): ${geos.mkString(", ")}")
+      }
     }
 
     val uartParamOpt: Option[UARTPortParams] = {
@@ -183,6 +197,8 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     )
     coreClock --> clockPins
     coreClock --> memPaths.map(_.memSMC.ACLK(0)) // Core clock influences all memSMCs
+    // Deinterleavers are combinational; the clock only associates their AXI interfaces with the core domain
+    coreClock --> memPaths.flatMap(_.ddr4Inst.info.deinterleaver).map(_.ACLK)
 
     memPaths.foreach { path =>
       path.ddr4Inst.C0_DDR4_UI_CLK --> path.memSMC.ACLK(1) // 0 is connected to coreClock
@@ -214,9 +230,16 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     // --------------------------------------------------------------------------
     // AXI wiring (discover the exported AXI4 ports from the SOCT system)
     // --------------------------------------------------------------------------
+    // Memory path per channel: Rocket mem AXI -> (deinterleaver) -> memSMC (CDC + width conversion) -> DDR4
     memPaths.foreach { path =>
       path.memSMC.M_AXI(0) <-> path.ddr4Inst.C0_DDR4_S_AXI
-      path.memSMC.S_AXI(0) <-> path.ddr4Inst.info.mAxi.bdPin
+      path.ddr4Inst.info.deinterleaver match {
+        case Some(deint) =>
+          deint.S_AXI <-> path.ddr4Inst.info.mAxi.bdPin
+          path.memSMC.S_AXI(0) <-> deint.M_AXI
+        case None =>
+          path.memSMC.S_AXI(0) <-> path.ddr4Inst.info.mAxi.bdPin
+      }
     }
 
     // MMIO path: Rocket MMIO -> mmioSMC -> (UART + SD-lite)

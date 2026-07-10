@@ -8,10 +8,9 @@ import org.chipsalliance.cde.config
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import soct.system.sim.SOCTSimSystem
 import soct.system.vivado.SOCTVivadoSystem
-import soct.system.vivado.fpga.{FPGA, FPGARegistry}
+import soct.system.vivado.fpga.{PartRegistry, FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
-import soct.SOCTBytes.Bytes
 import soct.SOCTNames.{LATEST_SOCT_SYSTEM_CMAKE_FILE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.SOCTPaths.projectRoot
 
@@ -115,7 +114,7 @@ case class SOCTArgs(
                      coreFreq: Option[BigInt] = Some(100 * 1000 * 1000), // Default to 100 MHz
                      peripheryFreq: BigInt = 100 * 1000 * 1000, // Default to 100 MHz
                      overrideVivadoProject: Boolean = true,
-                     extMemCaps: Seq[Bytes] = Seq.empty,
+                     extMemParts: Seq[String] = Seq.empty,
                      fastPnR: Boolean = false,
 
                      // Remote development
@@ -238,11 +237,14 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |""".stripMargin
     )
   opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the out-dir directory.")
-  opt[String]("ext-mem")
+  opt[String]("ext-mem-part")
     .unbounded()
-    .action((x, c) => c.copy(extMemCaps = c.extMemCaps :+ Bytes(x)))
-    .validate(x => if (Bytes(x).isPowerOfTwo) success else failure(s"Invalid external memory capacity $x. Must be a power of two in -ibytes (e.g., 4GiB, 512MiB, 1TiB)."))
-    .text(s"The capacity of the external memory to use for the design. Can be specified multiple times for multiple external memories (first occurrence is used to specify the first external memory port, second occurrence for the second one, etc.). If not specified, the default is determined by the board and the XLEN. Must be in -ibytes (e.g., 4GiB, 512MiB, 1TiB).")
+    .action((x, c) => c.copy(extMemParts = c.extMemParts :+ x))
+    .validate(x => PartRegistry.capacityOf(x) match {
+      case Some(_) => success
+      case None => failure(s"Unknown DDR4 memory part '$x'. Its capacity could not be derived from the part name. Add the part to PartRegistry (known parts: ${PartRegistry.knownParts.mkString(", ")}).")
+    })
+    .text("The Vivado DDR4 memory part name of the DIMM to use (e.g., MTA8ATF51264HZ-2G1). Can be specified multiple times for multiple external memory ports (first occurrence configures the first external memory port, second occurrence the second one, etc.). The memory capacity is derived from the part name (see PartRegistry - unknown parts must be added there). If omitted, the board's preset part is used. NOTE: Vivado's board flow locks the DDR4 controller to the board-preset DIMM, so a part differing from the preset is rejected as not implemented until custom (non-board-flow) DDR4 interfaces are supported.")
 
   opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(s"Enable fast place&route mode to simplify generated logic at the cost of removing some of the more advanced features. The exact tradeoff depends on the block design and the FPGA board being targeted")
 

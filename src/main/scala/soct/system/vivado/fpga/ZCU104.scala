@@ -19,6 +19,10 @@ object ZCU104 extends FPGA {
   override def extDDR4Ports: Seq[DDR4PortParams] = Seq(
     new DDR4PortParams {
       override val portName: String = "ddr4_sdram"
+
+      // The ZCU104 board files preset the DDR4 SODIMM interface to this 4 GiB part and the
+      // board flow locks the controller to it.
+      override def defaultMemoryPart: Option[String] = Some("MTA8ATF51264HZ-2G1")
     },
   )
 
