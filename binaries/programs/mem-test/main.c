@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "soct/smoldtb.h"
 #include "soct-test.h"
@@ -228,6 +229,14 @@ static size_t compute_windows(const ram_range_t *ranges, size_t n_ranges,
      * by one stack of __stack_size per hart (crt0 indexes stacks by hartid). */
     uint64_t reserved_end = (uint64_t) (uintptr_t) __stack_start
                             + (uint64_t) dtb_nharts() * (uint64_t) (uintptr_t) __stack_size;
+
+    /* soctglue's sbrk grows the heap ABOVE the stacks (bounded by the DTB RAM
+     * end), so anything already handed to malloc - e.g. stdio buffers - lives
+     * up here too. Exclude the live break plus headroom; mem-test itself does
+     * not allocate after this point. */
+    uint64_t brk = (uint64_t) (uintptr_t) sbrk(0);
+    if (brk + (1ull << 20) > reserved_end) reserved_end = brk + (1ull << 20);
+
     reserved_end = (reserved_end + (WIN_BYTES - 1)) & ~(WIN_BYTES - 1); /* margin */
 
     uint64_t addr_limit = (uint64_t) UINTPTR_MAX;

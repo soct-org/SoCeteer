@@ -20,6 +20,15 @@ endif ()
 
 get_filename_component(SOCT_PROGRAM ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 
+if (DEFINED SOCT_PROGRAM_PREFIX)
+    set(SOCT_PROGRAM ${SOCT_PROGRAM_PREFIX}${SOCT_PROGRAM})
+endif ()
+
+if (DEFINED SOCT_PROGRAM_SUFFIX)
+    message(STATUS "Adding suffix ${SOCT_PROGRAM_SUFFIX} to program ${SOCT_PROGRAM}")
+    set(SOCT_PROGRAM ${SOCT_PROGRAM}${SOCT_PROGRAM_SUFFIX})
+endif ()
+
 add_executable(${SOCT_PROGRAM} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS})
 
 
@@ -119,6 +128,30 @@ set_target_properties(${SOCT_PROGRAM} PROPERTIES
         OUTPUT_NAME ${SOCT_PROGRAM}.elf
         RUNTIME_OUTPUT_DIRECTORY ${SOCT_ELFS_DIR}
         LINK_DEPENDS ${SOCT_LD_SCRIPT}
+)
+
+# ---- Static stack-usage checking --------------------------------------
+# -fstack-usage emits a .su file per translation unit (function, frame bytes,
+# qualifier); -Wstack-usage warns at compile time for any single function whose
+# frame exceeds the threshold. This catches oversized static frames (large
+# local arrays etc.) - it does NOT bound call-chain depth, recursion, or
+# indirect calls (GCC marks such frames "dynamic"/"bounded" in the .su files).
+# The per-hart stack is only __stack_size bytes (see soct.ld), so warn well
+# below it. Override the threshold with -DSOCT_STACK_WARN=<bytes>.
+if (NOT DEFINED SOCT_STACK_WARN)
+    set(SOCT_STACK_WARN 2048)
+endif ()
+target_compile_options(${SOCT_PROGRAM} PRIVATE
+        -fstack-usage
+        -Wstack-usage=${SOCT_STACK_WARN}
+)
+
+# Prints the largest static stack frames of this program (from the .su files)
+add_custom_target(${SOCT_PROGRAM}-stack-report
+        COMMAND sh -c "echo 'Largest static stack frames of ${SOCT_PROGRAM} (bytes, qualifier):' && find ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${SOCT_PROGRAM}.dir -name '*.su' -exec cat {} + | sort -k2 -rn | head -25"
+        DEPENDS ${SOCT_PROGRAM}
+        VERBATIM
+        COMMENT "Static stack usage report for ${SOCT_PROGRAM}"
 )
 
 add_custom_target(${SOCT_PROGRAM}-info ALL

@@ -114,11 +114,26 @@ SECTIONS
     . = ALIGN (8);
     PROVIDE (_end = .);
 
-    /* Reserve heap space */
-    PROVIDE(__heap_size = 128K);
-    . += __heap_size;
-    . = ALIGN (4K);
-    PROVIDE (__heap_end = .);
+    /* ---- Program size budget ----
+       The program image (text/data/bss) plus at least __heap_size of early
+       heap must fit into SOCT_PROGRAM_MAX_SIZE. The stacks sit at the FIXED
+       budget boundary, so everything between _end and the boundary is early
+       heap (available before the DTB is parsed), and everything above the
+       stacks is claimed by _sbrk up to the RAM end advertised by the DTB
+       (see posix/sbrk.c). Override the budget per program with:
+         target_link_options(<prog> PRIVATE "LINKER:--defsym=SOCT_PROGRAM_MAX_SIZE=<bytes>") */
+    __soct_program_max = DEFINED (SOCT_PROGRAM_MAX_SIZE) ? SOCT_PROGRAM_MAX_SIZE : 4M;
+
+    /* Minimum early heap that must remain inside the budget */
+    PROVIDE (__heap_size = 128K);
+    ASSERT (_end + __heap_size <= SOCT_MEM_BASE_ADDR + __soct_program_max,
+            "Program image exceeds SOCT_PROGRAM_MAX_SIZE minus the minimum early heap (__heap_size). Increase the budget via --defsym=SOCT_PROGRAM_MAX_SIZE=<bytes> or shrink the program.")
+
+    /* MAX keeps the location counter monotonic so an oversized program hits
+       the readable ASSERT above instead of ld's 'cannot move location counter
+       backwards' error. */
+    . = MAX (., SOCT_MEM_BASE_ADDR + __soct_program_max);
+    PROVIDE (__heap_end = .); /* end of the early-heap region (= stack base) */
 
     /* Place Thread Control Block (TCB) at bottom of hart stack */
     PROVIDE (__tcb_size = __tbss_end - __tdata_start);

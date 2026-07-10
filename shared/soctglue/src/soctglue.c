@@ -13,6 +13,10 @@
 static uint8_t s_dtb_tree[SOCT_DTB_MAX_SIZE];
 static size_t s_dtb_parsed_len = 0;
 
+// Set once dtb_init has successfully parsed the blob. Guards DTB queries from
+// code that may run before initialization (e.g. _sbrk during early setup).
+static volatile bool s_dtb_ready = false;
+
 // Boot sync barrier — released by primary, waited on by secondaries
 static volatile int __boot_sync = 0;
 
@@ -125,7 +129,7 @@ void _soct_start_main(int hartid, void *dtb_blob) {
         .free = dtb_free,
         .on_error = dtb_on_error
     };
-    dtb_init((uintptr_t) dtb_blob, ops);
+    s_dtb_ready = dtb_init((uintptr_t) dtb_blob, ops);
 
     // Always register the UART handler. soct_init_from_dtb_uart() updates
     // s_uart_base from the DTB when available; if the DTB is missing or
@@ -172,6 +176,49 @@ size_t soct_hart_id(void) {
     size_t hart_id;
     asm volatile ("csrr %0, mhartid" : "=r"(hart_id));
     return hart_id;
+}
+
+
+uintptr_t soct_ram_end(void) {
+    static uintptr_t cached = 0;
+    if (cached != 0 || !s_dtb_ready)
+        return cached;
+
+    // The RAM range that contains this program: scan every /memory node's reg pairs
+    extern char _end[];
+    const uintmax_t here = (uintmax_t) (uintptr_t) _end;
+
+    dtb_node *root = dtb_find("/");
+    if (!root)
+        return 0;
+    for (dtb_node *n = dtb_get_child(root); n; n = dtb_get_sibling(n)) {
+        dtb_prop *dtype = dtb_find_prop(n, "device_type");
+        if (!dtype)
+            continue;
+        const char *val = dtb_read_prop_string(dtype, 0);
+        if (!val || __builtin_strcmp(val, "memory") != 0)
+            continue;
+        dtb_prop *reg = dtb_find_prop(n, "reg");
+        if (!reg)
+            continue;
+
+        const dtb_pair layout = {dtb_get_addr_cells_for(n), dtb_get_size_cells_for(n)};
+        dtb_pair vals[8];
+        size_t pairs = dtb_read_prop_2(reg, layout, NULL);
+        if (pairs > sizeof(vals) / sizeof(vals[0]))
+            pairs = sizeof(vals) / sizeof(vals[0]);
+        dtb_read_prop_2(reg, layout, vals);
+
+        for (size_t i = 0; i < pairs; i++) {
+            const uintmax_t base = (uintmax_t) vals[i].a;
+            const uintmax_t end = base + (uintmax_t) vals[i].b;
+            if (here >= base && here < end) {
+                cached = end > (uintmax_t) UINTPTR_MAX ? UINTPTR_MAX : (uintptr_t) end;
+                return cached;
+            }
+        }
+    }
+    return 0;
 }
 
 
