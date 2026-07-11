@@ -431,7 +431,10 @@ class SOCTBdBuilder extends SOCTBd {
     }.groupBy(_.xdcName()(this))
 
 
-    xdcByName.iterator.map { case (xdcName, emitters) =>
+    xdcByName.iterator.filter { case (_, emitters) =>
+      // Components may emit conditionally (e.g. DDR4 pin LOCs only in custom mode)
+      emitters.exists(_.xdcCommands()(this).nonEmpty)
+    }.map { case (xdcName, emitters) =>
       val cmds = emitters.flatMap(_.xdcCommands()(this))
       val path = basePath.resolve(s"$xdcName.xdc")
       val content =

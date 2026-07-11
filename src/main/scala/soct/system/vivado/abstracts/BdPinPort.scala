@@ -143,14 +143,34 @@ object BdPinPort {
   }
 
   def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
-    val isIntf = source.vivadoKind match {
-      case VivadoHandleKind.IntfPin | VivadoHandleKind.IntfPort => true
-      case _ => false
+    (source, sink) match {
+      case (port: ExternalizedIntfPort, pin) => externalizePin(port.asInstanceOf[BdIntfPortBase], pin)
+      case (pin, port: ExternalizedIntfPort) => externalizePin(port.asInstanceOf[BdIntfPortBase], pin)
+      case _ =>
+        val isIntf = source.vivadoKind match {
+          case VivadoHandleKind.IntfPin | VivadoHandleKind.IntfPort => true
+          case _ => false
+        }
+
+        val cmd = if (isIntf) s"connect_bd_intf_net ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
+        else s"connect_bd_net      ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
+
+        cmd.tcl
     }
+  }
 
-    val cmd = if (isIntf) s"connect_bd_intf_net ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
-    else s"connect_bd_net      ${vivadoGetExpr(source)} ${vivadoGetExpr(sink)}"
-
-    cmd.tcl
+  /**
+   * Create an external interface port by externalizing the given (already configured) IP pin.
+   * This clones the pin's live signal widths into the port - see [[ExternalizedIntfPort]].
+   * The port name is set via -name directly (make_bd_intf_pins_external does not reliably
+   * return the created port object across Vivado versions). Emitted as a single multi-line
+   * command so the statements stay together when the connect commands are sorted.
+   */
+  private def externalizePin(port: BdIntfPortBase, pin: BdPinPort): TCLCommand = {
+    if (pin.vivadoKind != VivadoHandleKind.IntfPin) {
+      throw XilinxDesignException(s"ExternalizedIntfPort ${port.instanceName} must be connected to exactly one interface pin, but got ${pin.ref} (${pin.vivadoKind}).")
+    }
+    s"""make_bd_intf_pins_external -name ${port.instanceName} ${vivadoGetExpr(pin)}
+       |set ${port.instanceName} [get_bd_intf_ports ${port.instanceName}]""".stripMargin.tcl
   }
 }

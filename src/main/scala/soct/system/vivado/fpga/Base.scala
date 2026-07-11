@@ -32,6 +32,20 @@ trait IsMasterIf {
 
 
 /**
+ * A single FPGA pin of a DDR4 interface.
+ *
+ * @param signal     Logical DDR4 signal name matching the wrapper port suffix (e.g. "adr", "cs_n", "dq")
+ * @param index      Bit index within the signal vector, None for scalar signals (act_n, reset_n)
+ * @param loc        FPGA package pin (e.g. "AH16")
+ * @param ioStandard Explicit IOSTANDARD, only where the board files declare one (e.g. reset_n:
+ *                   LVCMOS12); all other DDR4 pins get their standards from the IP's own XDC
+ * @param drive      Explicit DRIVE strength, only where the board files declare one
+ */
+case class DDR4Pin(signal: String, index: Option[Int], loc: String,
+                   ioStandard: Option[String] = None, drive: Option[Int] = None)
+
+
+/**
  * Trait representing the parameters of a DDR4 port on the FPGA board.
  */
 trait DDR4PortParams extends IsMasterIf {
@@ -80,6 +94,64 @@ trait DDR4PortParams extends IsMasterIf {
     memoryPartOpt = Some(part)
     this
   }
+
+  // ------------------------------------------------------------------------
+  // CUSTOM (non board-flow) interface support: the board flow locks the DDR4
+  // IP to the preset DIMM. Selecting a different module requires configuring
+  // the IP without the board interface and providing the pin LOCs ourselves.
+  // Boards declare the data below to enable this (validated live on Vivado
+  // 2025.2: the IP accepts non-preset parts in Custom mode, derives timing
+  // from the part, generates its own IOSTANDARD constraints, and only the
+  // PACKAGE_PIN LOCs must come from a user XDC).
+  // ------------------------------------------------------------------------
+
+  /** DDR4 memory clock period in ps for custom mode (from the board preset, e.g. 938 = DDR4-2133) */
+  def ddr4TimePeriodPs: Option[Int] = None
+
+  /** DDR4 input (system) clock period in ps for custom mode (from the board preset, e.g. 3335) */
+  def ddr4InputClockPeriodPs: Option[Int] = None
+
+  /** DDR4 memory type for custom mode (matches the IP's C0.DDR4_MemoryType values) */
+  def ddr4MemoryType: String = "SODIMMs"
+
+  /** DDR4 data width for custom mode */
+  def ddr4DataWidth: Int = 64
+
+  /** Full FPGA pin map of the DDR4 interface (from the board files' part0_pins.xml), required for custom mode */
+  def ddr4PinMap: Option[Seq[DDR4Pin]] = None
+
+  /** True if this board port carries everything needed for a custom (non board-flow) DDR4 interface */
+  def supportsCustomInterface: Boolean =
+    ddr4PinMap.isDefined && ddr4TimePeriodPs.isDefined && ddr4InputClockPeriodPs.isDefined
+
+  protected var customInterface: Boolean = false
+
+  /** True if this port is configured as a custom (non board-flow) DDR4 interface */
+  def isCustomInterface: Boolean = customInterface
+
+  def withCustomInterface(): DDR4PortParams = {
+    if (!supportsCustomInterface) {
+      throw XilinxDesignException(s"DDR4 port $portName cannot use a custom interface: the board definition must declare ddr4PinMap, ddr4TimePeriodPs and ddr4InputClockPeriodPs.")
+    }
+    customInterface = true
+    this
+  }
+
+  /**
+   * Custom-interface ports are created by externalizing the configured controller pin instead of
+   * create_bd_intf_port, so the port inherits the DIMM-dependent signal widths (a dual-rank
+   * module widens cs_n/cke/odt/ck) - see [[soct.system.vivado.abstracts.ExternalizedIntfPort]].
+   */
+  override def initPort(implicit bd: SOCTBdBuilder, p: Parameters): BdIntfPortMaster = {
+    if (isCustomInterface) {
+      new BdIntfPortMaster with ExternalizedIntfPort {
+        override def portName: String = DDR4PortParams.this.portName
+        override def partName: String = DDR4PortParams.this.partName
+      }
+    } else {
+      super.initPort
+    }
+  }
 }
 
 
@@ -92,19 +164,32 @@ trait UARTPortParams extends IsMasterIf {
 
 
 /**
+ * Package pin location of a single-ended board signal (e.g. a reset pushbutton). Only needed
+ * when the port has to be placed by an explicit XDC instead of a board interface association -
+ * e.g. a DDR4 controller in custom (non board-flow) mode, where dropping RESET_BOARD_INTERFACE
+ * also drops the board-file placement of the reset pin.
+ */
+case class BoardPin(loc: String, ioStandard: String)
+
+/**
  * Case class representing a reset port on the FPGA board
  */
 abstract class FPGAResetPortSource(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with ProvidesReset {
   override def ifType: String = "rst"
+
+  /** Package pin of this reset input (e.g. ZCU104 CPU_RESET: M11/LVCMOS33), if the board defines it. */
+  def pinLoc: Option[BoardPin] = None
 }
 
-case class FPGAResetPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
+case class FPGAResetPort(override val portName: String, override val pinLoc: Option[BoardPin] = None)
+                        (implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with Reset {
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.POLARITY" -> "ACTIVE_HIGH"
   )
 }
 
-case class FPGAResetNPort(override val portName: String)(implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with ResetN {
+case class FPGAResetNPort(override val portName: String, override val pinLoc: Option[BoardPin] = None)
+                         (implicit bd: SOCTBdBuilder, p: Parameters) extends FPGAResetPortSource with ResetN {
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.POLARITY" -> "ACTIVE_LOW"
   )
@@ -130,8 +215,22 @@ case class FPGASingleEndedClockPort(override val portName: String, dom: () => Cl
   override def partName: String = "xilinx.com:interface:clk_rtl:1.0"
 }
 
+/**
+ * Package pin locations of a differential clock input pair.
+ *
+ * Only needed when the port has to be placed by an explicit XDC instead of a board interface
+ * association - e.g. a DDR4 controller in custom (non board-flow) mode, where dropping
+ * C0_CLOCK_BOARD_INTERFACE also drops the board-file placement of the system clock pins.
+ *
+ * @param clkP       Package pin of the positive leg (e.g. ZCU104: "AH18")
+ * @param clkN       Package pin of the negative leg (e.g. ZCU104: "AH17")
+ * @param ioStandard IOSTANDARD applied to both legs (e.g. "DIFF_SSTL12")
+ */
+case class DiffClockPins(clkP: String, clkN: String, ioStandard: String)
+
 /** Differential (LVDS) clock input from the FPGA board (e.g. ZCU104 300 MHz diff pair) */
-case class FPGADiffClockPort(override val portName: String, dom: () => ClockDomain)
+case class FPGADiffClockPort(override val portName: String, dom: () => ClockDomain,
+                             pinLocs: Option[DiffClockPins] = None)
                             (implicit bd: SOCTBdBuilder, p: Parameters)
   extends FPGAClockPort {
   override def partName: String = "xilinx.com:interface:diff_clock_rtl:1.0"

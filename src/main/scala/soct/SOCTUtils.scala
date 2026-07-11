@@ -175,11 +175,18 @@ object SOCTMem {
           val part = (requestedOpt, presetOpt) match {
             case (Some(requested), Some(preset)) =>
               if (PartRegistry.vivadoPartName(requested) != PartRegistry.vivadoPartName(preset)) {
-                throw new NotImplementedError(s"Port ${port.portName}: the board interface enforces memory part '$preset' (Vivado's board flow locks C0.DDR4_MemoryPart to the board preset), but '$requested' was requested. Using a different DIMM requires a custom DDR4 interface, which is not implemented yet.")
+                // Vivado's board flow locks C0.DDR4_MemoryPart to the board preset, so a
+                // different DIMM needs the custom (non board-flow) interface: full IP config
+                // plus pin LOCs from the board definition's ddr4PinMap.
+                if (!port.supportsCustomInterface) {
+                  throw new NotImplementedError(s"Port ${port.portName}: the board interface enforces memory part '$preset' and the board definition of ${board.friendlyName} does not provide custom-interface data (ddr4PinMap/ddr4TimePeriodPs/ddr4InputClockPeriodPs), so '$requested' cannot be used. Add the custom-interface data to the board definition (see DDR4PortParams).")
+                }
+                soct.log.info(s"Port ${port.portName}: memory part '$requested' differs from the board preset '$preset' - using a custom (non board-flow) DDR4 interface with pin constraints from the board definition.")
+                port.withCustomInterface()
               }
-              preset
+              requestedOpt.get
             case (Some(requested), None) =>
-              throw new NotImplementedError(s"Port ${port.portName}: --ext-mem-part '$requested' was provided, but the board definition of ${board.friendlyName} does not declare the part enforced by its DDR4 board interface. The board flow locks the part to its preset, so a requested part cannot be honored - declare defaultMemoryPart for the port instead (and note that a DIMM differing from the preset requires a custom DDR4 interface, which is not implemented yet).")
+              throw new NotImplementedError(s"Port ${port.portName}: --ext-mem-part '$requested' was provided, but the board definition of ${board.friendlyName} does not declare the part enforced by its DDR4 board interface (defaultMemoryPart), so preset and request cannot be compared. Declare defaultMemoryPart for the port.")
             case (None, Some(preset)) =>
               soct.log.info(s"Port ${port.portName}: using the board-preset memory part '$preset'.")
               preset

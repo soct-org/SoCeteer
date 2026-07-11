@@ -91,11 +91,35 @@ abstract class BdIntfPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends
   /**
    * Emit the TCL command to create the port for this component
    */
-  override def instTcl: TCLCommands = {
-    Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]".tcl)
+  override def instTcl: TCLCommands = this match {
+    case _: ExternalizedIntfPort =>
+      Seq.empty // Created during the connect phase via make_bd_intf_pins_external - see ExternalizedIntfPort
+    case _ =>
+      Seq(s"set $instanceName [create_bd_intf_port -mode $mode -vlnv $partName $instanceName]".tcl)
   }
 
   override val vivadoKind: VivadoHandleKind = VivadoHandleKind.IntfPort
+}
+
+
+/**
+ * Marker for interface ports that must be created by externalizing their already-configured
+ * IP pin (make_bd_intf_pins_external) instead of create_bd_intf_port.
+ *
+ * create_bd_intf_port sizes the port's physical signals from the bus-definition DEFAULTS, and
+ * Vivado never resizes them afterwards - not on connect and not on validate. For interfaces
+ * whose signal widths depend on the IP configuration this leaves dangling bits: e.g. a
+ * dual-rank DDR4 DIMM widens cs_n/cke/odt/ck_t/ck_c on the controller, while a default-created
+ * port stays single-rank, failing at opt_design with "[Mig 66-99] ... not connected to top
+ * level". Externalizing the connected pin clones the live signal widths instead (verified on
+ * Vivado 2025.2 with a dual-rank custom-mode DDR4).
+ *
+ * The port is created during the CONNECT phase (after all IP properties are applied), so a port
+ * mixing this in must not declare defaultProperties of its own - they would be applied before
+ * the port exists.
+ */
+trait ExternalizedIntfPort {
+  this: BdIntfPortBase =>
 }
 
 
