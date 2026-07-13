@@ -24,8 +24,7 @@
 ### Documentation
 
 This README is only the quick start. The full documentation is local to the repository -
-open **[docs/docs.html](docs/docs.html)** in a browser for the guides (architecture & hardware flow,
-bare-metal programs & soctglue, FPGA memory & custom DDR4) and the API reference
+open **[docs/docs.html](docs/docs.html)** in a browser for the guides and the API reference
 (regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain soct.SOCTLauncher --help"`.
 
 ---

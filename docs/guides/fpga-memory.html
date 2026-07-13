@@ -83,9 +83,8 @@
     <tr><td>Clock pin pair (<code>pinLocs</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ClocksAndResets.scala"><code>FPGADiffClockPort</code></a></td><td>AH18/AH17, DIFF_SSTL12</td></tr>
     <tr><td>Reset pin (<code>pinLoc</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ClocksAndResets.scala"><code>FPGAResetPort</code></a></td><td>M11, LVCMOS33</td></tr>
   </table>
-  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a> declares all of this, so any DIMM in the Vivado DDR4 catalog works there
-  (validated with a dual-rank 16&nbsp;GiB <code>MTA16ATF2G64HZ-2G3</code> on Vivado 2025.2). For a
-  new board, copy the data out of the Vivado board files
+  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a> declares all of this, so any DIMM in the Vivado DDR4 catalog works there.
+  For a new board, copy the data out of the Vivado board files
   (<code>&lt;vivado&gt;/data/xhub/boards/&hellip;/part0_pins.xml</code> and <code>preset.xml</code>).</p>
 
   <h2>Multi-channel memory and the address deinterleaver</h2>

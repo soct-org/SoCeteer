@@ -15,27 +15,15 @@
   provided by <code>soctglue</code>.</p>
 
   <h2>Directory layout</h2>
+  <p>Programs and boot ROMs are auto-discovered subdirectories that include a shared CMake
+  template; the runtime library lives next to them under <code>shared/</code>:</p>
 <pre><code>binaries/
-  CMakeLists.txt           # Top-level build file
-  programs/
-    template.cmake         # Reusable CMake template for programs
-    hello-hart/            # Example: multi-hart hello-world
-    sd-test/               # Example: SD card read/write test
-    mem-test/              # Full-range DRAM validation (capacity probe, line-edge, sweeps)
-    heap-test/             # Heap capacity/allocator behavior test
-    syscall-test/          # Syscall layer smoke test
-    gemmini-basic/         # Gemmini accelerator smoke test
-    gemmini-mnist/         # Gemmini MNIST inference demo
-  bootroms/
-    template.cmake         # Reusable CMake template for boot ROMs
-    testchipip-boot/       # Minimal boot ROM (testchipip-compatible)
-    sd-boot/               # SD card boot ROM with FatFs
-shared/
-  soctglue/                # Runtime library linked into every program
-    CMakeLists.txt
-    soct.ld                # Linker script for programs
-    include/soct/          # Public headers
-    src/                   # crt0, stdio wrappers, syscall layer, FatFs glue</code></pre>
+  programs/&lt;name&gt;/         # One directory per program (e.g. hello-hart), auto-discovered
+  programs/template.cmake  # Shared CMake template for programs
+  bootroms/&lt;name&gt;/         # Same pattern for boot ROMs (e.g. sd-boot)
+shared/soctglue/           # Runtime library: soct.ld, crt0, syscall layer, FatFs glue</code></pre>
+  <p>Browse <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/programs"><code>binaries/programs</code></a>
+  for the bundled examples and hardware-validation tools.</p>
 
   <h2>soctglue</h2>
   <p><a href="https://github.com/soct-org/SoCeteer/tree/main/shared/soctglue"><code>soctglue</code></a> is a static C library (<code>libsoctglue.a</code>) that every program
