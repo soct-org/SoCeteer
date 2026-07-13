@@ -48,8 +48,10 @@ case class FPGAResetNPort(override val portName: String, override val pinLoc: Op
  * Concrete subclasses differ only in the Xilinx interface type (single-ended vs differential).
  */
 abstract class FPGAClockPort(implicit bd: SOCTBdBuilder, p: Parameters)
-  extends BdIntfPortSlave with DrivesNet {
+  extends BdIntfPort with DrivesNet {
   def dom: () => ClockDomain
+
+  override def mode: PortMode = PortMode.Slave
 
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.FREQ_HZ" -> dom().freq.toHz.toLong.toString

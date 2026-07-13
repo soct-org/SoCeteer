@@ -2,7 +2,7 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.abstracts.BdIntfPortMaster
+import soct.system.vivado.abstracts.{BdIntfPort, PortMode}
 
 /**
  * A board interface that can be instantiated as a master interface port in the block design
@@ -21,16 +21,12 @@ trait IsMasterIf {
 
 
   /**
-   * Instantiates a BdIntfPortMaster from this interface, using the implicit SOCTBdBuilder and Parameters.
+   * Instantiates the master interface port for this board interface.
    *
-   * @return the BdIntfPortMaster instance
+   * @return the port
    */
-  def initPort(implicit bd: SOCTBdBuilder, p: Parameters): BdIntfPortMaster = {
-    new BdIntfPortMaster {
-      override def portName: String = IsMasterIf.this.portName
-      override def partName: String = IsMasterIf.this.partName
-    }
-  }
+  def initPort(implicit bd: SOCTBdBuilder, p: Parameters): BdIntfPort =
+    BdIntfPort(portName, partName, PortMode.Master)
 }
 
 

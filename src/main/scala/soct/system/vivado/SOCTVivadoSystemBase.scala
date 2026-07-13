@@ -27,7 +27,7 @@ import scala.annotation.unused
  *                      it compacts the channel's sparse address view onto a dense range starting at the
  *                      memory base, so the configured channel offset is ignored in that case.
  */
-case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI4BusInfo,
+case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPort, mAxi: AXI4BusInfo,
                     deinterleaver: Option[AXIAddrDeinterleaver] = None) {
 
   /**

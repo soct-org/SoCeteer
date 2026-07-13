@@ -15,6 +15,8 @@ import soct.system.vivado.intf.AXIMM
 import soct.system.vivado.misc.{AXI4BusInfo, ClkDesc, MarkClockAndResets, MarkIOClocks}
 import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 
+import scala.collection.immutable.SeqMap
+
 
 /**
  * The elaborated RocketSystem as a block-design module: exposes the system's AXI4 buses and
@@ -104,7 +106,9 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
           buses = buses
         )
         cb -> desc.copy(freq = freqMapping(cb, desc))
-    }.toMap
+        // Insertion-ordered map: ClockBundle keys hash by identity, so a plain HashMap would
+        // iterate in a different order every JVM run and make the emitted TCL nondeterministic.
+    }.to(SeqMap)
   }
 
   lazy val INTERRUPTS: BdChiselPin = portToBdPin(s.module.interrupts)

@@ -251,9 +251,14 @@ class SOCTBdBuilder extends SOCTBd {
     }.flatten.toSeq.distinct
 
 
-    // Property settings:
+    // Property settings. Externalized interface ports are skipped: they do not exist yet at
+    // this point (they are created during the connect phase) and apply their own properties
+    // right after creation - see PortCreation.Externalize.
     lazy val propertyCommands = nodes.collect {
-      case c: BdComp if c.defaultProperties.nonEmpty =>
+      case c: BdComp if c.defaultProperties.nonEmpty && !(c match {
+        case port: BdIntfPort => port.creation == PortCreation.Externalize
+        case _ => false
+      }) =>
         def tclLiteral(v: String): String =
           if (v.startsWith("$") || v.startsWith("[")) v
           else s"{${v.replace("}", "\\}")}}"

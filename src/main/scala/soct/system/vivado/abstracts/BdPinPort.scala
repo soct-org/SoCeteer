@@ -72,10 +72,10 @@ object BdPinPort {
   implicit def intfPinAuto[A <: BdIntfPin, B <: BdIntfPin]: AutoConnect[A, B] =
     (ths, that, bd) => bd.addEdge(ths, that)
 
-  implicit def anyToIntfPortAuto[A <: BdPinPort, B <: BdIntfPortBase]: AutoConnect[A, B] =
+  implicit def anyToIntfPortAuto[A <: BdPinPort, B <: BdIntfPort]: AutoConnect[A, B] =
     (ths, that, bd) => bd.addEdge(ths, that)
 
-  implicit def intfPortToAnyAuto[A <: BdIntfPortBase, B <: BdPinPort]: AutoConnect[A, B] =
+  implicit def intfPortToAnyAuto[A <: BdIntfPort, B <: BdPinPort]: AutoConnect[A, B] =
     (ths, that, bd) => bd.addEdge(ths, that)
 
   // -------------------------------------------------
@@ -119,7 +119,7 @@ object BdPinPort {
     name.toLowerCase.replace(".", "_")
   }
 
-  private def vivadoGetExpr(p: BdPinPort): String = {
+  private[vivado] def vivadoGetExpr(p: BdPinPort): String = {
     val x = p.ref.replaceAll("\\[(\\d+)]", "_$1") // Replace all occurrences of [N] with _N (mainly chisel Vecs)
     p.vivadoKind match {
       case VivadoHandleKind.ScalarPin => s"[get_bd_pins $x]"
@@ -157,7 +157,7 @@ object BdPinPort {
    * @param source the driving endpoint
    * @param sinks  the driven endpoints
    * @return one TCL connect command per sink
-   * @throws soct.system.vivado.VivadoDesignException if an [[ExternalizedIntfPort]] endpoint is paired with a non-interface pin
+   * @throws soct.system.vivado.VivadoDesignException if an externalized port endpoint is paired with a non-interface pin
    */
   private[vivado] def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
     sinks.map(sink => connect(source, sink)).toSeq
@@ -165,18 +165,19 @@ object BdPinPort {
 
   /**
    * Emit the connect command joining two endpoints, choosing `connect_bd_net` or
-   * `connect_bd_intf_net` from the endpoint kind. [[ExternalizedIntfPort]] endpoints are
-   * created here (via `make_bd_intf_pins_external`) instead of being connected.
+   * `connect_bd_intf_net` from the endpoint kind. Externalized interface ports
+   * ([[PortCreation.Externalize]]) are created by this connection instead - the emission is
+   * owned by the port (see [[BdIntfPort.externalizeTcl]]).
    *
    * @param source the driving endpoint
    * @param sink   the driven endpoint
    * @return the TCL command
-   * @throws soct.system.vivado.VivadoDesignException if an [[ExternalizedIntfPort]] endpoint is paired with a non-interface pin
+   * @throws soct.system.vivado.VivadoDesignException if an externalized port is paired with a non-interface pin or has more than one connection
    */
   private[vivado] def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
     (source, sink) match {
-      case (port: ExternalizedIntfPort, pin) => externalizePin(port.asInstanceOf[BdIntfPortBase], pin)
-      case (pin, port: ExternalizedIntfPort) => externalizePin(port.asInstanceOf[BdIntfPortBase], pin)
+      case (port: BdIntfPort, pin) if port.creation == PortCreation.Externalize => port.externalizeTcl(pin)
+      case (pin, port: BdIntfPort) if port.creation == PortCreation.Externalize => port.externalizeTcl(pin)
       case _ =>
         val isIntf = source.vivadoKind match {
           case VivadoHandleKind.IntfPin | VivadoHandleKind.IntfPort => true
@@ -188,20 +189,5 @@ object BdPinPort {
 
         cmd.tcl
     }
-  }
-
-  /**
-   * Create an external interface port by externalizing the given (already configured) IP pin.
-   * This clones the pin's live signal widths into the port - see [[ExternalizedIntfPort]].
-   * The port name is set via -name directly (make_bd_intf_pins_external does not reliably
-   * return the created port object across Vivado versions). Emitted as a single multi-line
-   * command so the statements stay together when the connect commands are sorted.
-   */
-  private def externalizePin(port: BdIntfPortBase, pin: BdPinPort): TCLCommand = {
-    if (pin.vivadoKind != VivadoHandleKind.IntfPin) {
-      throw VivadoDesignException(s"ExternalizedIntfPort ${port.instanceName} must be connected to exactly one interface pin, but got ${pin.ref} (${pin.vivadoKind}).")
-    }
-    s"""make_bd_intf_pins_external -name ${port.instanceName} ${vivadoGetExpr(pin)}
-       |set ${port.instanceName} [get_bd_intf_ports ${port.instanceName}]""".stripMargin.tcl
   }
 }

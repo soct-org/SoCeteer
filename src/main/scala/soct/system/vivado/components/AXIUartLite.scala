@@ -11,7 +11,7 @@ import soct.system.vivado.misc.DTSInfo
  * AXI UART Lite component for Xilinx FPGAs.
  */
 case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterPin: BdIntfPin,
-                       uartIntf: BdIntfPortMaster, uartParams: UARTPortParams)
+                       uartIntf: BdIntfPort, uartParams: UARTPortParams)
                       (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps with HasAxiSlave with HasDTSInfo {
 

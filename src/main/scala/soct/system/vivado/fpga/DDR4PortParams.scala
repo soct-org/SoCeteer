@@ -2,7 +2,7 @@ package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTBytes._
-import soct.system.vivado.abstracts.{BdIntfPortMaster, ExternalizedIntfPort}
+import soct.system.vivado.abstracts.{BdIntfPort, PortCreation, PortMode}
 import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 
 
@@ -150,16 +150,10 @@ trait DDR4PortParams extends IsMasterIf {
   /**
    * Custom-interface ports are created by externalizing the configured controller pin instead of
    * create_bd_intf_port, so the port inherits the DIMM-dependent signal widths (a dual-rank
-   * module widens cs_n/cke/odt/ck) - see [[soct.system.vivado.abstracts.ExternalizedIntfPort]].
+   * module widens cs_n/cke/odt/ck) - see [[soct.system.vivado.abstracts.PortCreation.Externalize]].
    */
-  override def initPort(implicit bd: SOCTBdBuilder, p: Parameters): BdIntfPortMaster = {
-    if (isCustomInterface) {
-      new BdIntfPortMaster with ExternalizedIntfPort {
-        override def portName: String = DDR4PortParams.this.portName
-        override def partName: String = DDR4PortParams.this.partName
-      }
-    } else {
-      super.initPort
-    }
+  override def initPort(implicit bd: SOCTBdBuilder, p: Parameters): BdIntfPort = {
+    val creation = if (isCustomInterface) PortCreation.Externalize else PortCreation.Declare
+    BdIntfPort(portName, partName, PortMode.Master, creation)
   }
 }
