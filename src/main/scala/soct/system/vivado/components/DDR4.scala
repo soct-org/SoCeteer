@@ -4,7 +4,7 @@ import freechips.rocketchip.subsystem.ExtMem
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.abstracts._
 import soct.system.vivado.fpga.{FPGADiffClockPort, FPGAResetPortSource, PartRegistry}
-import soct.system.vivado.{DDR4Info, SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{DDR4Info, SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 
 import scala.collection.mutable
 
@@ -53,6 +53,10 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
     pinConstructor = (idx, dom) => ADDN_UI_CLKOUT_I(idx, dom)
   )
 
+  /**
+   * @throws soct.system.vivado.VivadoDesignException if custom mode has no memory part set,
+   *                                                  or both clock inputs are driven at once
+   */
   override def defaultProperties: Map[String, String] = {
     val m = mutable.Map.empty[String, String]
 
@@ -66,7 +70,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
       // the requested part. The IP derives all part-dependent timing (CAS latency, rank count)
       // itself; pin LOCs are emitted via xdcCommands below.
       val part = info.param.getMemoryPart.getOrElse(
-        throw XilinxDesignException(s"DDR4 $instanceName uses a custom interface but no memory part is set.")
+        throw VivadoDesignException(s"DDR4 $instanceName uses a custom interface but no memory part is set.")
       )
       m += "CONFIG.C0.DDR4_MemoryType" -> info.param.ddr4MemoryType
       m += "CONFIG.C0.DDR4_MemoryPart" -> PartRegistry.vivadoPartName(part)
@@ -83,7 +87,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
     val clkIn1DSrc = bd.sourceOf(C0_SYS_CLK)
 
     if (clkIn1Src.isDefined && clkIn1DSrc.isDefined) {
-      throw XilinxDesignException(s"DDR4 $instanceName C0_SYS_CLK and c0_sys_clk_i cannot both be connected to a source. Only one clock input can be used.")
+      throw VivadoDesignException(s"DDR4 $instanceName C0_SYS_CLK and c0_sys_clk_i cannot both be connected to a source. Only one clock input can be used.")
     }
 
     (clkIn1DSrc, clkIn1Src) match {
@@ -103,7 +107,9 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
 
     ADDN_UI_CLKOUT.all.foreach {
       case (idx, clk) =>
-        m += s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ" -> clk.dom.freqMHz.toInt.toString
+        // Xilinx quirk: the parameter is named ..._FREQ_HZ but the IP expects the value in MHz
+        // (the catalog lists values like "50", "100").
+        m += s"CONFIG.ADDN_UI_CLKOUT${idx}_FREQ_HZ" -> clk.dom.freq.toMHz.toInt.toString
     }
 
     m.toMap
@@ -113,10 +119,15 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
    * (there the board files place the pins). IOSTANDARD etc. always come from the IP's own XDC. */
   override def xdcName()(implicit bd: SOCTBdBuilder): String = s"${instanceName}_pins"
 
+  /**
+   * @throws soct.system.vivado.VivadoDesignException if custom mode is active but the board
+   *                                                  definition lacks the DDR4 pin map, the
+   *                                                  clock pin locations, or the reset pin location
+   */
   override def xdcCommands()(implicit bd: SOCTBdBuilder): TCLCommands = {
     if (!info.param.isCustomInterface) return Seq.empty
     val pins = info.param.ddr4PinMap.getOrElse(
-      throw XilinxDesignException(s"DDR4 $instanceName uses a custom interface but the board definition provides no ddr4PinMap.")
+      throw VivadoDesignException(s"DDR4 $instanceName uses a custom interface but the board definition provides no ddr4PinMap.")
     )
     val portPrefix = info.ddr4Intf.portName
     val ddr4Cmds = pins.flatMap { pin =>
@@ -135,7 +146,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
     val clkCmds = bd.sourceOf(C0_SYS_CLK) match {
       case Some(c: FPGADiffClockPort) =>
         val locs = c.pinLocs.getOrElse(
-          throw XilinxDesignException(s"DDR4 $instanceName uses a custom interface, but the differential system clock port ${c.portName} has no pin locations (FPGADiffClockPort.pinLocs). Add them to the board definition.")
+          throw VivadoDesignException(s"DDR4 $instanceName uses a custom interface, but the differential system clock port ${c.portName} has no pin locations (FPGADiffClockPort.pinLocs). Add them to the board definition.")
         )
         Seq(s"${c.portName}_clk_p" -> locs.clkP, s"${c.portName}_clk_n" -> locs.clkN).flatMap {
           case (port, loc) => Seq(
@@ -153,7 +164,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
       val boardRst = bd.singleConnector(SYS_RST, p => p.isInstanceOf[FPGAResetPortSource])
         .asInstanceOf[FPGAResetPortSource]
       val pin = boardRst.pinLoc.getOrElse(
-        throw XilinxDesignException(s"DDR4 $instanceName uses a custom interface, but the board reset port ${boardRst.portName} has no pin location (FPGAResetPortSource.pinLoc). Add it to the board definition.")
+        throw VivadoDesignException(s"DDR4 $instanceName uses a custom interface, but the board reset port ${boardRst.portName} has no pin location (FPGAResetPortSource.pinLoc). Add it to the board definition.")
       )
       Seq(
         s"set_property PACKAGE_PIN ${pin.loc} [get_ports {${boardRst.portName}}]".tcl,
@@ -163,6 +174,9 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
     ddr4Cmds ++ clkCmds ++ rstCmds
   }
 
+  /**
+   * @throws soct.system.vivado.VivadoDesignException if the address aperture is not positive
+   */
   override def assignAddrTcl: TCLCommands = {
     // assign_bd_address requires a power-of-two range, but the aperture
     // (memory base + capacity) is not one whenever capacity != base, e.g.
@@ -171,7 +185,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
     // so the oversized head/tail of the segment is never addressed.
     val aperture = BigInt(info.param.getCap.value) + p(ExtMem).get.master.base
     if (aperture <= 0) {
-      throw XilinxDesignException(s"DDR4 $instanceName has a non-positive address aperture ($aperture). Check the memory capacity and ExtMem base address.")
+      throw VivadoDesignException(s"DDR4 $instanceName has a non-positive address aperture ($aperture). Check the memory capacity and ExtMem base address.")
     }
     val range = BigInt(1) << (aperture - 1).bitLength
     if (range != aperture) {

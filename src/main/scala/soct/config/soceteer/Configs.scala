@@ -7,6 +7,7 @@ import freechips.rocketchip.diplomacy.AddressSet
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tile.MaxHartIdBits
 import org.chipsalliance.cde.config.{Config, Field}
+import soct.SOCTFreq._
 import soct.SOCTLauncher.SOCTConfig
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.fpga.{DDR4PortParams, FPGA}
@@ -14,6 +15,8 @@ import soct.system.vivado.fpga.{DDR4PortParams, FPGA}
 import java.util.concurrent.atomic.AtomicBoolean
 
 /*----------------- Base Configs ---------------*/
+
+/** Foundation of every SOCT design: bus layout, boot ROM, debug module, CLINT and PLIC. */
 class BaseSubsystemConfig extends Config((site, here, up) => {
   // Tile parameters
   case MaxXLen => (site(PossibleTileLocations).flatMap(loc => site(TilesLocated(loc)))
@@ -49,6 +52,7 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
 })
 
 
+/** Common Rocket setup shared by the simulation and Vivado base configs. */
 class RocketBaseConfig extends Config(
   new WithTimebase(BigInt(1000000)) ++ // 1 MHz timebase
     new WithEdgeDataBits(64) ++
@@ -59,6 +63,7 @@ class RocketBaseConfig extends Config(
     new BaseSubsystemConfig
 )
 
+/** Base config of the Verilator simulation target. */
 class RocketSimBaseConfig extends Config(
   new WithNExtTopInterrupts(8) ++ // We don't know how many interrupts are needed, so we just use 8
     new WithDTS("freechips,rocketchip-unknown", Nil) ++
@@ -68,6 +73,7 @@ class RocketSimBaseConfig extends Config(
     new RocketBaseConfig
 )
 
+/** Base config of the Vivado FPGA target: block-design builder, JTAG debug, SD card and UART. */
 class RocketVivadoBaseConfig extends Config(
   new WithDTS("freechips,rocketchip-vivado", Nil) ++
     new WithBdBuilder(new SOCTBdBuilder) ++
@@ -81,6 +87,8 @@ class RocketVivadoBaseConfig extends Config(
 )
 
 /*----------------- SoCeteer ---------------*/
+
+/** Field holding the resolved output paths of the current run. */
 case object HasSOCTPaths extends Field[SOCTPaths]
 
 class WithSOCTPaths(paths: SOCTPaths) extends Config((_, _, _) => {
@@ -88,6 +96,7 @@ class WithSOCTPaths(paths: SOCTPaths) extends Config((_, _, _) => {
 }
 )
 
+/** Field holding the launcher's resolved SOCT configuration. */
 case object HasSOCTConfig extends Field[SOCTConfig]
 
 class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
@@ -95,6 +104,7 @@ class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
 }
 )
 
+/** Field enabling faster place-and-route at the cost of timing closure quality. */
 case object FastPnR extends Field[Boolean](false)
 
 class WithFastPnR extends Config((_, _, _) => {
@@ -103,9 +113,12 @@ class WithFastPnR extends Config((_, _, _) => {
 
 
 /*----------------- Memory ---------------*/
+
+/** Field holding the DDR4 memory ports (with resolved parts/capacities) of the design. */
 case object RegisteredMems extends Field[Seq[DDR4PortParams]](Nil)
 
 
+/** Registers several memory channels and sizes ExtMem to their summed capacity. */
 class WithMultiMemLayout(mems: Seq[DDR4PortParams]) extends Config((_, _, up) => {
   case ExtMem => up(ExtMem).map(x => x.copy(
     nMemoryChannels = mems.length,
@@ -113,6 +126,7 @@ class WithMultiMemLayout(mems: Seq[DDR4PortParams]) extends Config((_, _, up) =>
   case RegisteredMems => mems
 })
 
+/** Registers a single memory channel and sizes ExtMem to its capacity. */
 class WithSingleMemLayout(mem: DDR4PortParams) extends Config((_, _, up) => {
   case ExtMem => up(ExtMem).map(x => x.copy(
     nMemoryChannels = 1,
@@ -148,28 +162,31 @@ class WithUART extends Config((site, here, up) => {
 /*----------------- Clock Speeds ---------------*/
 
 /**
- * Field to specify the periphery clock domain frequency in Mhz - for parts like the SDCard controller and UART.
+ * Field to specify the periphery clock domain frequency - for parts like the SDCard controller and UART.
  */
-case object PeripheryClockDomain extends Field[Double](100.0)
+case object PeripheryClockDomain extends Field[Freq](100.MHz)
 
 /**
- * Field to specify the system bus clock frequency in MHz.
+ * Class to set the periphery clock domain frequency.
+ *
+ * @param freq the periphery clock frequency
  */
-class WithPeripheryClockSpeed(freqMHz: Double) extends Config((site, here, up) => {
-  case PeripheryClockDomain => freqMHz
+class WithPeripheryClockSpeed(freq: Freq) extends Config((site, here, up) => {
+  case PeripheryClockDomain => freq
 })
 
 /**
  * Class to set all clock domains to the same frequency. This is a common case for simpler designs, and is also useful for testing and simulation.
+ * (RocketChip's With*BusFrequency fragments take the value in MHz.)
  *
- * @param freqMHz the frequency in MHz to set for all clock domains
+ * @param freq the frequency to set for all clock domains
  */
-class WithSingleBusClockSpeed(freqMHz: Double) extends Config(
-  new WithPeripheryBusFrequency(freqMHz) ++
-    new WithSystemBusFrequency(freqMHz) ++
-    new WithMemoryBusFrequency(freqMHz) ++
-    new WithFrontBusFrequency(freqMHz) ++
-    new WithControlBusFrequency(freqMHz)
+class WithSingleBusClockSpeed(freq: Freq) extends Config(
+  new WithPeripheryBusFrequency(freq.toMHz) ++
+    new WithSystemBusFrequency(freq.toMHz) ++
+    new WithMemoryBusFrequency(freq.toMHz) ++
+    new WithFrontBusFrequency(freq.toMHz) ++
+    new WithControlBusFrequency(freq.toMHz)
 )
 
 /*----------------- FPGA ---------------*/

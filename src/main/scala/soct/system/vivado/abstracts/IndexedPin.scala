@@ -1,6 +1,6 @@
 package soct.system.vivado.abstracts
 
-import soct.system.vivado.XilinxDesignException
+import soct.system.vivado.VivadoDesignException
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -17,13 +17,12 @@ trait HasIndexedPins {
   }
 
   /** Thrown when attempting to instantiate the same indexed pin more than once. */
-  class IndexedPinReinstantiationException(message: String) extends XilinxDesignException(message)
+  class IndexedPinReinstantiationException(message: String) extends VivadoDesignException(message)
 
   private def validateIndexRange(idx: Int, indexRange: (Int, Int), kind: String): Unit = {
-    require(
-      idx >= indexRange._1 && idx <= indexRange._2,
-      s"$kind index must be between ${indexRange._1} and ${indexRange._2}, got $idx"
-    )
+    if (idx < indexRange._1 || idx > indexRange._2) {
+      throw VivadoDesignException(s"$kind index must be between ${indexRange._1} and ${indexRange._2}, got $idx")
+    }
   }
 
   private def reinstantiationError(kind: String, idx: Int): String = {
@@ -44,7 +43,15 @@ trait HasIndexedPins {
     private val cache: mutable.Map[Int, T] = mutable.Map.empty
     private val kind: String = implicitly[ClassTag[T]].runtimeClass.getSimpleName
 
-    /** Create or retrieve the indexed pin at the given index. */
+    /**
+     * Create the indexed pin at the given index.
+     *
+     * @param idx  the index to create the pin at
+     * @param data the data passed to the pin constructor
+     * @return the newly created pin
+     * @throws soct.system.vivado.VivadoDesignException if `idx` is outside the factory's index range
+     * @throws IndexedPinReinstantiationException if a pin at `idx` was already created
+     */
     def apply(idx: Int, data: D): T = {
       validateIndexRange(idx, indexRange, kind)
 
@@ -75,6 +82,7 @@ trait HasIndexedPins {
      * @param idx The index of the pin to get or initialize
      * @param data The data to use for pin construction if initialization is needed
      * @return If a pin at this index has already been instantiated, it is returned. Otherwise, a new pin is created and returned.
+     * @throws soct.system.vivado.VivadoDesignException if `idx` is outside the factory's index range
      */
     def getOrElseInit(idx: Int, data: => D): T = {
       validateIndexRange(idx, indexRange, kind)
@@ -103,7 +111,14 @@ trait HasIndexedPins {
     private val cache: mutable.Map[Int, T] = mutable.Map.empty
     private val kind: String = implicitly[ClassTag[T]].runtimeClass.getSimpleName
 
-    /** Create or retrieve the indexed pin at the given index. */
+    /**
+     * Create the indexed pin at the given index.
+     *
+     * @param idx the index to create the pin at
+     * @return the newly created pin
+     * @throws soct.system.vivado.VivadoDesignException if `idx` is outside the factory's index range
+     * @throws IndexedPinReinstantiationException if a pin at `idx` was already created
+     */
     def apply(idx: Int): T = {
       validateIndexRange(idx, indexRange, kind)
 
@@ -130,6 +145,7 @@ trait HasIndexedPins {
      * Get or initialize a pin at the given index.
      * @param idx The index of the pin to get or initialize
      * @return If a pin at this index has already been instantiated, it is returned. Otherwise, a new pin is created and returned.
+     * @throws soct.system.vivado.VivadoDesignException if `idx` is outside the factory's index range
      */
     def getOrElseInit(idx: Int): T = {
       validateIndexRange(idx, indexRange, kind)

@@ -5,172 +5,61 @@
 </p>
 
 > [!IMPORTANT]
-> This project is in early development and is NOT ready for any serious use. We recomment using **SoCeteer** for experimentation and learning purposes only at this time.
+> This project is in early development and is NOT ready for any serious use. We recommend using **SoCeteer** for experimentation and learning purposes only at this time.
 > For a more stable experience, please use the tagged releases.
-
-
-> [!NOTE]
-> Please take a look at [Known Issues](#known-issues-hints-and-limitations) for a list of current limitations and issues.
-> Feel free to open issues and contribute to the project if you find any problems or have ideas for improvements!
 
 ### Features
 
 * Included generators contain: **[RocketChip](https://github.com/chipsalliance/rocket-chip)**,
  **[BOOM](https://github.com/riscv-boom/riscv-boom)**,
  **[Gemmini](https://github.com/ucb-bar/gemmini)** and more!
-
-* Emit designs for Simulation using [Verilator](https://www.veripool.org/wiki/verilator),
+* Emit designs for Simulation using [Verilator](https://www.veripool.org/wiki/verilator) or
  FPGA synthesis using [Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html)
- and [Yosys](https://github.com/YosysHQ/yosys)-based flows for open-source FPGA toolchains (in development)
-
-* Built-in Vivado Block Design DSL: Describe Vivado IP block designs directly in Scala - components, ports, connections, clock domains, timing constraints and TCL generation, all without hand-writing TCL
-
+* Built-in Vivado Block Design DSL: components, ports, connections, clock domains, timing constraints and TCL generation - all in Scala, without hand-writing TCL
+* Custom DIMM support: select the inserted memory module with `--ext-mem-part`; capacities, device tree and address decode follow automatically
 * Support for edu.berkeley.cs.chisel (3.6.1) and org.chipsalliance.chisel (7.11.0)
+* CMake projects for building bootroms and binaries for the generated designs (simulation and FPGA)
+* Docker images for x86_64 and ARM64 hosts; runs natively on Linux, macOS and Windows
 
-* CMake projects for building bootroms and binaries to run on the generated designs (both in simulation and on FPGA)
+### Documentation
 
-* Very fast design generation (several times faster than other SoC builders)
-
-* Docker images available for easy setup and use, with support for both x86_64 and ARM64 hosts (including Apple Silicon)
-
-* Runs natively on Linux, macOS(ARM / x86_64), and Windows
+This README is only the quick start. The full documentation is local to the repository -
+open **[docs/docs.html](docs/docs.html)** in a browser for the guides (architecture & hardware flow,
+bare-metal programs & soctglue, FPGA memory & custom DDR4) and the API reference
+(regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain soct.SOCTLauncher --help"`.
 
 ---
 
-## Setup and Dependencies
+## Setup
 
-The recommended way to use **SoCeteer** is via IntelliJ IDEA with the Scala plugin, which provides excellent support for sbt projects.
-However, you can also use it via the command line (CLI) with sbt (either in a docker container or natively).
+Clone with submodules and install the system dependencies (full reference: [Dockerfile](Dockerfile)):
 
-
-* Clone the repository with recursive submodules to get the included generators and other dependencies.
 ```bash
-# Clone the main branch with submodules:
 git clone --recurse-submodules https://github.com/soct-org/SoCeteer.git
-
-# Clone the latest release with submodules:
-git clone --recurse-submodules --branch v<latest-version> https://github.com/soct-org/SoCeteer.git
-
-# If already cloned without --recurse-submodules:
-git submodule update --init --recursive
+# If already cloned without submodules: git submodule update --init --recursive
 ```
 
-⚠️ Don't open the project in an IDE before initializing submodules, as it may add directories for uninitialized
-submodules which can cause issues with cloning.
+⚠️ Don't open the project in an IDE before initializing submodules.
 
+* **Java 11+ & [SBT](https://www.scala-sbt.org/1.x/docs/Setup.html)** (or IntelliJ IDEA with the Scala plugin)
+* **CMake & Ninja**, **Device Tree Compiler (dtc)**, **Flex & Bison**:
 
-Next, ensure you have the necessary tools installed. For a full setup refer to the [Dockerfile](Dockerfile).
+```bash
+# Ubuntu/Debian:  sudo apt-get install cmake ninja-build device-tree-compiler flex bison
+# Arch Linux:     sudo pacman -S cmake ninja dtc flex bison
+# macOS:          brew install cmake ninja dtc flex bison
+# Windows:        choco install cmake ninja dtc-msys2 winflexbison3
+```
+
+The RISC-V toolchain ([xpack-dev-tools](https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack)) and
+[Verilator](shared/verilator) are downloaded/built automatically on first use.
 
 ---
 
-#### Java (11+) & SBT
-
-* **IntelliJ IDEA:** Install the Scala plugin and set a JDK 11+ (`File -> Project Structure -> SDK`).
-* **CLI:** Install Java 11+ and [SBT](https://www.scala-sbt.org/1.x/docs/Setup.html). Ensure `java` and `sbt` are in your system `PATH`.
-
----
-
-#### System Dependencies
-
-The following tools are required for building bootroms/binaries, compiling device trees, and compiling Verilator for simulation:
-* **CMake & Ninja**: For building C/C++ projects.
-* **Device Tree Compiler (dtc)**: For compiling `.dts` to `.dtb`.
-* **Flex & Bison**: Required by Verilator.
+## Quick Start: Simulation
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install cmake ninja-build device-tree-compiler flex bison
-
-# Arch Linux
-sudo pacman -S cmake ninja dtc flex bison
-
-# macOS
-brew install cmake ninja dtc flex bison
-
-# Windows (via Chocolatey)
-choco install cmake ninja dtc-msys2 winflexbison3
-```
-
----
-
-#### Auto-Installed Tooling
-
-The following tools are automatically downloaded or built when running **SoCeteer**:
-* **RISC-V Toolchain [(xpack-dev-tools)](https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack)**: For compiling RISC-V programs and bootroms.
-* **Verilator** (for Simulation): A maintained [submodule](shared/verilator) is built automatically during the first simulation run. (Windows requires Visual Studio 2022 and MinGW).
-
----
-
-## Quick Start (Simulation)
-
-Running **SoCeteer** with `--target verilator` elaborates the Chisel design and emits Verilog into the output directory.
-The CMake project in [sim](sim) then verilates that Verilog and compiles a C++ harness
-(using `main.cpp`, `dpi-c.cpp`, FESVR, and the RISC-V ISA disassembler) into a native simulator binary.
-
-The simulator loads a RISC-V ELF, communicates with the program's syscalls via **FESVR** (Front-End Server)
-over the Debug Transport Module (DTM) using DPI-C.
-A remote JTAG bitbang interface is also exposed for live debugging with OpenOCD/GDB.
-
-**SoCeteer** emits a `SOCTSystem.cmake` file alongside the Verilog files.
-This file contains CMake variables (architecture, core count, ABI, source paths, etc.) consumed by both the
-simulator CMake project and the binaries CMake project.
-
-#### CLI usage
-```bash
-# Emit the simulation design:
-sbt "runMain soct.SOCTLauncher --target verilator [options]"
-```
-
-Key simulation options (pass `--help` for a full list):
-
-| Option | Description |
-|-|-|
-| `--config <class>` | Generator config class (default: `soct.RocketB1`). |
-| `--xlen 32/64` | RISC-V word width (default: 64). |
-| `--core-freq-mhz <f>` | Sets all bus clock frequencies in MHz (default: 100). |
-| `--periphery-freq-mhz <f>` | Periphery bus frequency in MHz (default: 100). |
-| `--out-dir <path>` | Output directory (default: workspace subdirectory). |
-
-#### Simulator CMake options
-
-The simulator CMake project ([sim](sim)) accepts the following CMake variables:
-
-| Variable | Description |
-|-|-|
-| `SOCT_SYSTEM` | **(Required)** Absolute path to the emitted `SOCTSystem.cmake` file. |
-| `VL_THREADS` | Number of Verilator threads (default: `SOCT_NCPUS + 1`). |
-| `VL_TRACE` | Enable VCD waveform tracing (off by default). |
-| `VL_TRACE_DEPTH` | Hierarchy depth limit for tracing (default: 2). |
-| `PASS_UNKNOWN_SYSCALLS` | Forward unknown syscalls to the host OS. |
-| `ENABLE_TRACE` | Enable `TRACE`-level simulator log output. |
-| `FORCE_ASSERTS` | Enable assertions in release builds. |
-
-#### Runtime simulator options
-
-```bash
-# Run the simulator (pass ELF as first positional argument):
-workspace/RocketB1-64/sim/build/sim-build/simulator <elf> [options]
-```
-
-| Option | Description |
-|-|-|
-| `<elf>` | RISC-V ELF binary to run. |
-| `--reset-cycles=<n>` | Number of reset cycles before releasing reset (default: 100). |
-| `--log-level=<level>` | Log level: `trace`, `debug`, `info`, `warn`, `error`. |
-| `--log-file=<path>` | Write simulator logs to a file. |
-| `--all2console` | Mirror all log output to the console regardless of level. |
-| `--vcd-file=<path>` | VCD output path when `VL_TRACE` is enabled (default: `dump.vcd`). |
-
-#### Build and run end-to-end
-
-**IntelliJ IDEA / CLion:** Run the `main` method in [./src/main/scala/soct/SOCTLauncher.scala](./src/main/scala/soct/SOCTLauncher.scala) to emit the design, then open
-`binaries` and `sim` as separate CLion projects and add `-DSOCT_SYSTEM=/path/to/workspace/RocketB1-64/sim/SOCTSystem.cmake` to CMake options.
-Then build the `hello-hart` target in the binaries project to build the example ELF, and build the default target in the sim project to build the simulator.
-Finally, run the simulator binary with the ELF as the first positional argument to run the example program on the generated design.
-
-**CLI:**
-```bash
-# 1. Emit the design
+# 1. Emit the design (default config, Verilator target)
 sbt "runMain soct.SOCTLauncher"
 
 # Or via Docker:
@@ -188,81 +77,44 @@ cmake --build workspace/RocketB1-64/sim/build/sim-build
 workspace/RocketB1-64/sim/build/sim-build/simulator workspace/RocketB1-64/sim/elfs/hello-hart.elf
 ```
 
-#### What gets generated
+Every emit writes `workspace/RocketB1-64/sim/SOCTSystem.cmake` (variables for arch, core count, ABI, paths) and updates the
+`SOCTSystem-latest.cmake` symlink at the project root, which all CMake projects fall back to when no
+explicit `SOCT_SYSTEM` is passed. Pick a different system with
+`--config <class>` (default: `soct.RocketB1`) and `--xlen 32/64`.
 
-After running the launcher with `--target verilator`, the output directory contains:
-* Verilog source files (`*.v` / `*.sv`) for the full SoC
-* `SOCTSystem.cmake` - CMake variables for arch, core count, paths, ABI, etc.
-* FIRRTL intermediate files (low FIRRTL + optimised Verilog)
-* Device tree source (`.dts`) and blob (`.dtb`)
-* Register map files
-
-The [Simulation Tests](src/test/scala/soct/tests/SimulationSpec.scala) show all supported configurations.
-The [GitHub Workflow](.github/workflows/test-simulation-on-push-native.yml) shows the full native setup for Windows, Linux and macOS.
+**IntelliJ IDEA / CLion:** run the `main` method in [./src/main/scala/soct/SOCTLauncher.scala](./src/main/scala/soct/SOCTLauncher.scala), then open
+`binaries` and `sim` as CLion projects with `-DSOCT_SYSTEM=/path/to/workspace/RocketB1-64/sim/SOCTSystem.cmake` in the CMake options.
 
 ---
 
-## FPGA Deployment
+## Quick Start: FPGA (ZCU104)
 
-**SoCeteer** targets Xilinx FPGAs via Vivado. It emits Verilog, a Vivado block design (TCL), timing constraints (XDC), and
-optionally runs Vivado to generate the project automatically.
-
-* **Vivado:** Required for synthesis. Download from [here](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools.html).
-* **Supported boards:** ZCU104 - add new boards by extending `FPGA` and registering in `FPGARegistry`.
-
-#### CLI usage
 ```bash
-# Emit a design for the ZCU104 board and (optionally) run Vivado to create the project:
-sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --vivado /path/to/vivado [options]"
+# Emit the design, generate the Vivado project, block design and constraints:
+sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --vivado /path/to/vivado"
 ```
 
-Key options for Vivado synthesis:
+Open the generated project (`workspace/<config>/ZCU104/vivado-project`), run synthesis and
+implementation, and program the bitstream. Programs are then loaded over JTAG - see the
+[Bare-Metal Programs guide](docs/guides/binaries.html) for the `<program>-flash` targets.
 
-| Option | Description |
-|-|-|
-| `--board <name>` | Target FPGA board (required). Available: ZCU104 |
-| `--vivado <path>` | Path to the `vivado` executable. If omitted, only the TCL/Verilog files are emitted. |
-| `--core-freq-mhz <f>` | Core/bus frequency in MHz (default: 100). |
-| `--periphery-freq-mhz <f>` | Periphery bus frequency in MHz (default: 100). |
-| `--no-override-vivado-project` | Do not overwrite an existing Vivado project in the output directory. |
-| `--remote-dir <path>` | Sync design files and run Vivado on a remote machine (requires `--ssh-config`). |
-| `--ssh-config <name>` | [OpenSSH](https://linux.die.net/man/5/ssh_config) config entry to use for remote Vivado. |
-| `--use-remote-vivado` | Treat the `--vivado` path as a path on the remote machine. |
+**Using the DIMM that is actually inserted:** Vivado's board flow locks the DDR4 controller to the
+board-preset module (ZCU104 preset: 4 GiB). If your board carries a different DIMM, pass its
+Vivado part name - the design switches to a custom DDR4 interface and sizes memory, device tree and
+address decode from the part:
 
-#### What gets generated
+```bash
+# Example: 16 GiB dual-rank SODIMM in the ZCU104 slot
+sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --ext-mem-part MTA16ATF2G64HZ-2G3 --vivado /path/to/vivado"
+```
 
-After running, the output directory contains:
-* Verilog source files (top-level `.v` + supporting modules)
-* `SOCTSystem.cmake` - CMake variables for arch, core count, paths, ABI, etc. (same as simulation)
-* `init.tcl` - Vivado project initialisation script
-* `bd.tcl` - Block design TCL (AXI interconnect, clocks, DDR4, UART, JTAG, etc.)
-* `synth.tcl` - Synthesis run script
-* `timing.tcl` - Timing constraints
-* `xdc/` - Per-component XDC constraint files
-* Device tree source (`.dts`) and blob (`.dtb`)
-* Register map files
-
-### Vivado Block Design DSL
-
-**SoCeteer** includes a Scala-embedded DSL for describing Vivado IP block designs (`soct.system.vivado`). Rather than
-hand-writing TCL scripts, you compose a design programmatically:
-
-* **Components** (`soct.system.vivado.components`) - pre-built wrappers for common Xilinx IPs: AXI SmartConnect,
-  ClkWiz, DDR4, UART Lite, JTAG, Proc System Reset, SD Card PMOD, and more.
-* **Connections & Ports** - typed pin/port abstractions handle signal connections, clock domains, and resets.
-* **FPGA targets** (`soct.system.vivado.fpga`) - board-specific definitions (e.g. ZCU104). Add new boards by extending `FPGA`.
-* **TCL generation** - the `SOCTBdBuilder` traverses the design graph and emits the TCL commands needed to recreate the block design in Vivado.
-
-Custom components can be added by extending `BdComp` and implementing the TCL emission logic.
+Details (part registry, custom interface internals, on-hardware validation with `mem-test`):
+[FPGA Memory & Custom DDR4](docs/guides/fpga-memory.html). Supported boards:
+ZCU104, VCU118 - add new boards by extending `FPGA` and registering them in `FPGARegistry`.
 
 ---
 
-## Known Issues, Hints and Limitations
-* Every time **SoCeteer** emits a design it creates (or updates) a symbolic link at the project root `SOCTSystem-latest.cmake` pointing to the latest emitted `SOCTSystem.cmake`.
-All CMake projects in the repository use this if no explicit SOCT_SYSTEM variable is provided.
-* The [firtool](https://github.com/llvm/circt/releases) binary needed for Chisel is only available for x86_64 architecture, requiring Rosetta to run on ARM64 hosts. Make sure it is installed and configured correctly.
-To force installation run `softwareupdate --install-rosetta --agree-to-license` in the terminal.
-* If you are using Docker via CLI, we recommend not opening the project in an IDE as it may cause issues with file permissions and generated files. Rather use two separate cloned repositories - one for CLI usage via Docker and one for IDE usage.
-* If UART to the board fails, close the Vivado hardware manager. Sometimes the /dev/ttyUSB* disappears where `udevadm trigger` can help. We also advice against using USB hubs for the board connection as they can cause issues with the serial connection.
-* On Windows, Verilator requires Visual Studio 2022 while building a simulation binary requires MinGW. Make sure both are installed and configured correctly.
-* On Windows, the `CreateProcessA` function restricts the number of characters to 32767. When building a simulation binary, Verilator is passed all the Verilog source files as arguments which can exceed this limit. If you encounter issues with building the simulator on Windows, try moving the project to a directory with a shorter path or pass `--single-verilog-file` to the launcher to emit a single concatenated Verilog file instead of separate files.
+## Hints
+* The [firtool](https://github.com/llvm/circt/releases) binary needed for Chisel is x86_64-only; ARM64 macOS needs Rosetta (`softwareupdate --install-rosetta --agree-to-license`).
+* If UART to the board fails, close the Vivado hardware manager; if `/dev/ttyUSB*` disappears, `udevadm trigger` can help. Avoid USB hubs for the board connection.
+* On Windows, Verilator requires Visual Studio and building the simulator requires MinGW. For command-length errors during Verilator builds, move the project to a shorter path or pass `--single-verilog-file`.

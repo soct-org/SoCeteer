@@ -7,14 +7,22 @@ import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.ModuleValue
 import org.chipsalliance.diplomacy.nodes.HeterogeneousBag
 import soct.HasSOCTConfig
+import soct.SOCTFreq.Freq
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.AXIMM
 import soct.system.vivado.misc.{AXI4BusInfo, ClkDesc, MarkClockAndResets, MarkIOClocks}
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 
 
+/**
+ * The elaborated RocketSystem as a block-design module: exposes the system's AXI4 buses and
+ * clock bundles to the DSL and, during finalization, annotates the top-level Verilog ports
+ * with Vivado clock/reset/interface attributes.
+ *
+ * @param s the elaborated SOCT system
+ */
 // TODO this only works for a single clock domain for now - we should enable multiple clock domains for different buses
 class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdBuilder)
   extends ChiselModuleTop with IsModule {
@@ -25,6 +33,8 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
    * Map each TLBusWrapper to its corresponding AXI4Bundle, if it exists.
    * This is used to determine which AXI4 interfaces are associated with which clock domains, so that we can add the appropriate Vivado annotations to the top-level ports.
    * If not overridden, this will default to the mem, mmio, and l2 frontend buses
+   *
+   * @throws VivadoDesignException if a bus's node port count does not match its bundles, or a node is neither master nor slave
    */
   lazy val axi4BusMapping: Seq[Seq[AXI4BusInfo]] = Seq(
     (s.memAXI4Bus, s.mem_axi4, s.memAXI4Node),
@@ -35,13 +45,13 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
       n match {
         case node: AXI4SlaveNode =>
           if (node.portParams.size != axis.size)
-            throw new XilinxDesignException(s"AXI4 slave node for bus ${bus.name} has ${node.portParams.size} ports, but ${axis.size} AXI4 bundles were found. This is not supported.")
+            throw new VivadoDesignException(s"AXI4 slave node for bus ${bus.name} has ${node.portParams.size} ports, but ${axis.size} AXI4 bundles were found. This is not supported.")
           axis.zip(node.portParams).map { case (axi, params: AXI4SlavePortParameters) => AXI4BusInfo(bus, AXIMM(axi), axi, Left(params)) }
         case node: AXI4MasterNode =>
           if (node.portParams.size != axis.size)
-            throw new XilinxDesignException(s"AXI4 master node for bus ${bus.name} has ${node.portParams.size} ports, but ${axis.size} AXI4 bundles were found. This is not supported.")
+            throw new VivadoDesignException(s"AXI4 master node for bus ${bus.name} has ${node.portParams.size} ports, but ${axis.size} AXI4 bundles were found. This is not supported.")
           axis.zip(node.portParams).map { case (axi, params: AXI4MasterPortParameters) => AXI4BusInfo(bus, AXIMM(axi), axi, Right(params)) }
-        case _ => throw new XilinxDesignException(s"AXI4 node for bus ${bus.name} is neither a master nor a slave node, but ${n.getClass.getName}. This is not supported.")
+        case _ => throw new VivadoDesignException(s"AXI4 node for bus ${bus.name} is neither a master nor a slave node, but ${n.getClass.getName}. This is not supported.")
       }
   }
 
@@ -53,14 +63,14 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
    *
    * @param cb   the clock bundle for which to determine the frequency
    * @param desc the clock description for the given clock bundle, which includes the associated AXI4 interfaces and buses
-   * @return
+   * @return the frequency, or None if no associated bus declares one
    */
-  def freqMapping(cb: ClockBundle, desc: ClkDesc): Option[BigInt] = {
-    if (desc.freqHz.isDefined) {
-      soct.log.debug(s"Using explicitly defined frequency ${desc.freqHz.get} for clock bundle $cb")
-      return desc.freqHz
+  def freqMapping(cb: ClockBundle, desc: ClkDesc): Option[Freq] = {
+    if (desc.freq.isDefined) {
+      soct.log.debug(s"Using explicitly defined frequency ${desc.freq.get} for clock bundle $cb")
+      return desc.freq
     }
-    val freqs = desc.buses.flatMap(_.dtsFrequency).distinct
+    val freqs = desc.buses.flatMap(_.dtsFrequency).distinct.map(hz => Freq(hz.toDouble))
     if (freqs.size > 1) {
       soct.log.warn(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundle $cb based on associated buses ${desc.buses.map(_.name).mkString(", ")}. This may result in incorrect Vivado annotations. Using the first frequency ${freqs.head} found.")
     }
@@ -70,11 +80,17 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
     freqs.headOption
   }
 
+  /**
+   * Description of every top-level clock bundle: its clock/reset pins, associated AXI4
+   * interfaces, driven buses and derived frequency.
+   *
+   * @throws VivadoDesignException if an AXI4 interface's bus has no clock bundle
+   */
   lazy val ioClocksMapping: Map[ClockBundle, ClkDesc] = {
     // The AXI4 interfaces associated with each clock bundle, if any. We use this information to add the appropriate Vivado annotations to the top-level ports.
     val axi4IfByClock = axi4BusMapping.flatten.map { assocBusIf =>
       val cb = s.clockBundleForBus(assocBusIf.bus)
-        .getOrElse(throw new XilinxDesignException(s"Could not find clock bundle for bus ${assocBusIf.bus} associated with AXI4 interface ${assocBusIf.bdPin}"))
+        .getOrElse(throw new VivadoDesignException(s"Could not find clock bundle for bus ${assocBusIf.bus} associated with AXI4 interface ${assocBusIf.bdPin}"))
       cb -> assocBusIf
     }.toMap
 
@@ -87,7 +103,7 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
           assocAXI4Ifs = axi4IfByClock.get(cb).toSeq,
           buses = buses
         )
-        cb -> desc.copy(freqHz = freqMapping(cb, desc))
+        cb -> desc.copy(freq = freqMapping(cb, desc))
     }.toMap
   }
 

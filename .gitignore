@@ -43,3 +43,4 @@ cmake-build-*
 /vivado-projects/
 /test_run_dir/
 SOCTSystem-latest.cmake
+docs/api/

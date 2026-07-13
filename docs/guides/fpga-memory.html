@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPGA Memory &amp; Custom DDR4 — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / FPGA Memory &amp; Custom DDR4</p>
+  <h1>FPGA Memory &amp; Custom DDR4</h1>
+  <p class="lead">How SoCeteer decides how much DRAM your design can address, how to select the
+  DIMM that is actually inserted in the board with <code>--ext-mem-part</code>, and what happens
+  under the hood when that DIMM differs from the board preset.</p>
+
+  <h2>The memory part is the single source of truth</h2>
+  <p>The Vivado DDR4 IP sizes its address decode window from the selected <em>memory part</em>
+  (the DIMM's Vivado catalog name, e.g. <code>MTA8ATF51264HZ-2G1</code>). SoCeteer derives
+  everything else from that part, so the ExtMem configuration, the generated device tree and the
+  controller's decode window stay consistent by construction:</p>
+  <ul>
+    <li>the capacity (via the <code>PartRegistry</code>),</li>
+    <li>the <code>ExtMem</code> size seen by RocketChip,</li>
+    <li>the <code>memory</code> node in the DTB (what programs and <code>mem-test</code> see),</li>
+    <li>the block design's address aperture.</li>
+  </ul>
+  <p>A mismatch between the selected part and the physical DIMM silently truncates usable memory
+  to the smaller of the two &mdash; which is why the part is a launcher argument.</p>
+
+  <h2>Selecting a DIMM: <code>--ext-mem-part</code></h2>
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
+  --ext-mem-part MTA16ATF2G64HZ-2G3 --vivado /path/to/vivado"</code></pre>
+  <ul>
+    <li>Pass it once per external DDR4 port (first occurrence configures the first port, and so on).</li>
+    <li>If omitted, the board's preset part is used (ZCU104: <code>MTA8ATF51264HZ-2G1</code>, 4&nbsp;GiB).</li>
+    <li>Physical module labels often carry a die-revision suffix
+      (<code>MTA16ATF2G64HZ-2G3<strong>H1</strong></code>); SoCeteer strips it automatically, since
+      the Vivado catalog lists parts without it.</li>
+  </ul>
+
+  <h3>The part registry</h3>
+  <p>Capacity resolution (see <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/PartRegistry.scala"><code>PartRegistry</code></a>) works in two steps:</p>
+  <ol>
+    <li><strong>Exact match</strong> against the registry (base part name without the speed grade).</li>
+    <li><strong>Micron pattern fallback</strong>: <code>MTA&lt;n&gt;ATF&lt;depth&gt;&lt;width&gt;&hellip;</code>
+      encodes the organisation, e.g. <code>MTA8ATF2G64HZ</code> = 2G locations &times; 64&nbsp;bit
+      = 16&nbsp;GiB (ECC x72 check bits are not addressable and don't count).</li>
+  </ol>
+  <p>Parts from other vendors or with non-standard names must be added to the registry &mdash; the
+  launcher fails loudly at argument-validation time if a part's capacity cannot be derived.</p>
+
+  <h2>Board flow vs. custom interface</h2>
+  <p>Vivado's <em>board flow</em> configures the DDR4 IP from the board preset &mdash; convenient,
+  but the preset locks <code>C0.DDR4_MemoryPart</code> (the parameter is disabled;
+  <code>set_property</code> on it is silently ignored). The board's preset DIMM is therefore the
+  hard limit of what board-flow designs can address, regardless of what is physically inserted.</p>
+  <p>When the requested part differs from the preset, SoCeteer switches that port to a
+  <strong>custom (non board-flow) interface</strong>:</p>
+  <ul>
+    <li>The DDR4 IP is configured explicitly (memory part, type, data width, clock timing) instead
+      of via the board association. The IP derives all part-dependent timing (CAS latency, rank
+      count) from the part itself.</li>
+    <li>Pin locations come from the board definition's <code>ddr4PinMap</code> (taken from the
+      board files' <code>part0_pins.xml</code>, including second-rank pins the single-rank preset
+      never uses) and are emitted as a generated XDC.</li>
+    <li>The interface port is created by <em>externalizing</em> the configured controller pin
+      (<code>make_bd_intf_pins_external</code>) instead of <code>create_bd_intf_port</code>, so the
+      port inherits DIMM-dependent signal widths &mdash; a dual-rank module widens
+      <code>cs_n</code>/<code>cke</code>/<code>odt</code>/<code>ck</code>.</li>
+    <li>The board associations placed three things that the custom interface must now place
+      itself: the DDR4 pins, the differential system clock pair, and the board reset pin. All
+      three are emitted into the same XDC; missing board data fails at generation time, not hours
+      into implementation.</li>
+  </ul>
+
+  <h3>What a board definition needs to support custom DDR4</h3>
+  <table>
+    <tr><th>Board data</th><th>Where</th><th>Example (ZCU104)</th></tr>
+    <tr><td><code>defaultMemoryPart</code></td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/DDR4PortParams.scala"><code>DDR4PortParams</code></a></td><td><code>MTA8ATF51264HZ-2G1</code></td></tr>
+    <tr><td><code>ddr4PinMap</code></td><td><code>DDR4PortParams</code></td><td>121 pins from <code>part0_pins.xml</code></td></tr>
+    <tr><td><code>ddr4TimePeriodPs</code> / <code>ddr4InputClockPeriodPs</code></td><td><code>DDR4PortParams</code></td><td>938 / 3335</td></tr>
+    <tr><td>Clock pin pair (<code>pinLocs</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ClocksAndResets.scala"><code>FPGADiffClockPort</code></a></td><td>AH18/AH17, DIFF_SSTL12</td></tr>
+    <tr><td>Reset pin (<code>pinLoc</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ClocksAndResets.scala"><code>FPGAResetPort</code></a></td><td>M11, LVCMOS33</td></tr>
+  </table>
+  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a> declares all of this, so any DIMM in the Vivado DDR4 catalog works there
+  (validated with a dual-rank 16&nbsp;GiB <code>MTA16ATF2G64HZ-2G3</code> on Vivado 2025.2). For a
+  new board, copy the data out of the Vivado board files
+  (<code>&lt;vivado&gt;/data/xhub/boards/&hellip;/part0_pins.xml</code> and <code>preset.xml</code>).</p>
+
+  <h2>Multi-channel memory and the address deinterleaver</h2>
+  <p>With multiple memory channels, RocketChip distributes cache lines round-robin across the
+  channels: each channel's exported address sets pin the channel-select bits, so the addresses
+  arriving at one channel are sparse &mdash; every other cache line is a hole. A DDR controller fed
+  these raw addresses would waste 1&minus;1/N of its capacity.</p>
+  <p>SoCeteer inserts an <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIAddrDeinterleaver.scala"><code>AXIAddrDeinterleaver</code></a> per channel (a purely combinational
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/resources/deinterleaver/axi_addr_deinterleaver.v"><code>AXI4 pass-through module</code></a>) that drops the constant channel-select bits and compacts the sparse
+  view onto the dense range <code>[base, base + capacity)</code>. The interleave geometry is
+  derived automatically from the diplomacy address sets; contiguous (single-channel) designs get no
+  deinterleaver.</p>
+
+  <h2>Validating on hardware</h2>
+  <p>Two bundled programs verify the result end to end:</p>
+  <ul>
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/mem-test/main.c"><code>mem-test</code></a> &mdash; reads the memory range from the DTB, then runs a capacity
+      probe (detects aliasing/wrap-around from a mis-sized decode window), a cache-line-edge test,
+      and moving-inversion sweeps over the full range.</li>
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/heap-test/main.c"><code>heap-test</code></a> &mdash; allocates the DTB-bounded heap and probes the newlib
+      allocator limits.</li>
+  </ul>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+</body>
+</html>

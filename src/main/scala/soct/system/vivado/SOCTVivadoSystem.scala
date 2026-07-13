@@ -14,6 +14,8 @@ import soct.system.vivado.fpga.{DDR4PortParams, FPGAClockDomain, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 
+import scala.annotation.unused
+
 
 /**
  * Information about a DDR4 memory controller and its associated AXI4 bus.
@@ -29,14 +31,21 @@ import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, DTSInfo, Irq}
 case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI4BusInfo,
                     deinterleaver: Option[AXIAddrDeinterleaver] = None) {
 
+  /**
+   * The single AXI4 slave the processor-side bus exposes for this memory channel.
+   *
+   * @return the slave parameters
+   * @throws VivadoDesignException if the bus carries no or multiple slaves, or is a master
+   */
+  @unused // library API
   def slaveParam: AXI4SlaveParameters = mAxi.axiParams.fold(
     sp => {
       if (sp.slaves.length != 1) {
-        throw XilinxDesignException(s"AXI4 Slave has ${sp.slaves.length} slaves, but only one is supported.")
+        throw VivadoDesignException(s"AXI4 Slave has ${sp.slaves.length} slaves, but only one is supported.")
       }
       sp.slaves.head
     },
-    _ => throw XilinxDesignException(s"AXI4 Slave is not a slave, but a master.")
+    _ => throw VivadoDesignException(s"AXI4 Slave is not a slave, but a master.")
   )
 
   /**
@@ -47,12 +56,26 @@ case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPortMaster, mAxi: AXI
 
 }
 
+/**
+ * One memory channel of the design: the DDR4 controller instance and the SmartConnect
+ * bridging the processor's memory AXI port (clock-domain crossing + width conversion) to it.
+ *
+ * @param ddr4Inst the DDR4 controller component
+ * @param memSMC   the SmartConnect in front of the controller's S_AXI
+ */
 case class MemPath(ddr4Inst: DDR4, memSMC: AXISmartConnect)
 
 
+/**
+ * Shared base of the Vivado top-level systems: binds the common MMIO devices (UART, SD card)
+ * into the device tree and provides TCL helpers for the timing constraints.
+ *
+ * @throws VivadoDesignException during construction if no BdBuilder is set in the parameters
+ *                               or the system has no PLIC for interrupt wiring
+ */
 abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   implicit val bd: SOCTBdBuilder = p(BdBuilderKey).getOrElse(
-    throw new XilinxDesignException("SOCTVivadoSystemBase requires a BdBuilder to be set in parameters for block design generation.")
+    throw new VivadoDesignException("SOCTVivadoSystemBase requires a BdBuilder to be set in parameters for block design generation.")
   )
 
   /**
@@ -70,7 +93,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
    * @param varBase base TCL variable name (e.g. `"core_clock"`)
    * @return (TCL commands, clockVarName, periodVarName)
    */
-  def captureClock(pinPath: String, varBase: String): (TCLCommands, String, String) = {
+  protected def captureClock(pinPath: String, varBase: String): (TCLCommands, String, String) = {
     val clkVar = s"${varBase}_clk"
     val perVar = s"${varBase}_period"
     val cmd =
@@ -86,13 +109,15 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   // Device tree generation
   // (must be done before module instantiation since some components bind resources during construction)
   //-------------------------------------------------------------------------
-  val plicDev = plicOpt.getOrElse(
-    throw new XilinxDesignException("SOCTVivadoSystemBase requires a PLIC to be present in the system for interrupt wiring.")
+  private val plicDev = plicOpt.getOrElse(
+    throw new VivadoDesignException("SOCTVivadoSystemBase requires a PLIC to be present in the system for interrupt wiring.")
   ).device
 
-  var irqIdx = 0
+  /** Next free PLIC interrupt index; bumped for every bound MMIO device. */
+  protected var irqIdx = 0
 
-  val uartDTSOpt = if (p(HasUART)) {
+  /** Device-tree entry of the UART, if the design has one ([[HasUART]]). */
+  protected val uartDTSOpt: Option[DTSInfo] = if (p(HasUART)) {
     val dts = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60010000L, 0x10000L)),
@@ -112,7 +137,8 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     )
   }
 
-  val sdDTSOpt = p(HasSDCardPMOD).map { idx =>
+  /** Device-tree entry of the SD-card controller, if the design has one ([[HasSDCardPMOD]]). */
+  protected val sdDTSOpt: Option[DTSInfo] = p(HasSDCardPMOD).map { idx =>
     val sdDTS = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60000000L, 0x10000L)),
@@ -148,19 +174,19 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
     // --------------------------------------------------------------------------
     // Board / Top init
     // --------------------------------------------------------------------------
-    val fpga = p(XilinxFPGAKey).getOrElse(throw new XilinxDesignException("XilinxFPGAKey not set in parameters."))
+    val fpga = p(XilinxFPGAKey).getOrElse(throw new VivadoDesignException("XilinxFPGAKey not set in parameters."))
     val FPGAClockDomain(fpgaClk, fpgaRst, _) = fpga.initNClockPorts(1).head
 
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
 
     val Seq(_axiMems, _axiMMIOs, _axiL2Frontends) = top.axi4BusMapping
-    require(_axiMMIOs.size == 1, s"Expected exactly one AXI4 MMIO interface but found ${_axiMMIOs.size}")
-    require(_axiL2Frontends.size == 1, s"Expected exactly one AXI4 DMA interface but found ${_axiL2Frontends.size}")
+    if (_axiMMIOs.size != 1) throw VivadoDesignException(s"Expected exactly one AXI4 MMIO interface but found ${_axiMMIOs.size}")
+    if (_axiL2Frontends.size != 1) throw VivadoDesignException(s"Expected exactly one AXI4 DMA interface but found ${_axiL2Frontends.size}")
     val axiMMIO = _axiMMIOs.head.bdPin
     val axiDMA = _axiL2Frontends.head.bdPin
     val extMems = p(RegisteredMems)
-    if (!(_axiMems.length == 1 && extMems.length == 1)) throw XilinxDesignException("SOCTVivadoSystem requires exactly one DDR4 memory controller defined.")
+    if (!(_axiMems.length == 1 && extMems.length == 1)) throw VivadoDesignException("SOCTVivadoSystem requires exactly one DDR4 memory controller defined.")
     val axiMem = _axiMems.head
 
     // The Clock and Reset pins from the top
@@ -172,16 +198,16 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
     // Clock domains
     // --------------------------------------------------------------------------
     val peripheryDomain = new ClockDomain(
-      freqMHz = p(PeripheryClockDomain),
+      freq = p(PeripheryClockDomain),
     )
 
     // TODO Currently, this design only supports a single clock domain for the buses, but we should enable multiple clock domains for different buses in the future.
-    val freqs = clocks.flatMap(_.freqHz).distinct
+    val freqs = clocks.flatMap(_.freq).distinct
     if (freqs.size != 1) {
-      throw new XilinxDesignException(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundles ${clocks.map(_.clkPin).mkString(", ")}. This is not currently supported in SOCTVivadoSystem, which only supports a single clock domain for the buses.")
+      throw new VivadoDesignException(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundles ${clocks.map(_.clkPin).mkString(", ")}. This is not currently supported in SOCTVivadoSystem, which only supports a single clock domain for the buses.")
     }
     val coreDomain = new ClockDomain(
-      freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
+      freq = freqs.head,
     )
 
     // --------------------------------------------------------------------------
@@ -193,7 +219,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
     val uartParamOpt: Option[UARTPortParams] = {
       if (p(HasUART)) {
         if (fpga.uartPorts.isEmpty) {
-          throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasUART is set to true in parameters.")
+          throw new VivadoDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasUART is set to true in parameters.")
         }
         Some(fpga.uartPorts.head)
       } else None

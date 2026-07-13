@@ -19,13 +19,13 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     // --------------------------------------------------------------------------
     // Board / Top init
     // --------------------------------------------------------------------------
-    val fpga = p(XilinxFPGAKey).getOrElse(throw new XilinxDesignException("XilinxFPGAKey not set in parameters."))
+    val fpga = p(XilinxFPGAKey).getOrElse(throw new VivadoDesignException("XilinxFPGAKey not set in parameters."))
     val top = new SOCTVivadoSystemTop(this)
     bd.init(p, top, fpga)
 
     val Seq(axiMems, _axiMMIOs, _axiL2Frontends) = top.axi4BusMapping
-    require(_axiMMIOs.size == 1, s"Expected exactly one AXI4 MMIO interface but found ${_axiMMIOs.size}")
-    require(_axiL2Frontends.size == 1, s"Expected exactly one AXI4 DMA interface but found ${_axiL2Frontends.size}")
+    if (_axiMMIOs.size != 1) throw VivadoDesignException(s"Expected exactly one AXI4 MMIO interface but found ${_axiMMIOs.size}")
+    if (_axiL2Frontends.size != 1) throw VivadoDesignException(s"Expected exactly one AXI4 DMA interface but found ${_axiL2Frontends.size}")
     val axiMMIO = _axiMMIOs.head.bdPin
     val axiDMA = _axiL2Frontends.head.bdPin
 
@@ -33,7 +33,7 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     val fpgaDoms: Seq[FPGAClockDomain] = try {
       fpga.initNClockPorts(mems.size)
     } catch {
-      case ex: XilinxDesignException =>
+      case ex: VivadoDesignException =>
         soct.log.error("SOCTVivadoSystemMultiMem requires one clock port per memory channel")
         throw ex
     }
@@ -48,23 +48,23 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     // Clock domains
     // --------------------------------------------------------------------------
     val peripheryDomain = new ClockDomain(
-      freqMHz = p(PeripheryClockDomain),
+      freq = p(PeripheryClockDomain),
     )
 
     // TODO Currently, this design only supports a single clock domain for the buses, but we should enable multiple clock domains for different buses in the future.
-    val freqs = clocks.flatMap(_.freqHz).distinct
+    val freqs = clocks.flatMap(_.freq).distinct
     if (freqs.size != 1) {
-      throw new XilinxDesignException(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundles ${clocks.map(_.clkPin).mkString(", ")}. This is not currently supported in SOCTVivadoSystem, which only supports a single clock domain for the buses.")
+      throw new VivadoDesignException(s"Multiple frequencies ${freqs.mkString(", ")} found for clock bundles ${clocks.map(_.clkPin).mkString(", ")}. This is not currently supported in SOCTVivadoSystem, which only supports a single clock domain for the buses.")
     }
     val coreDomain = new ClockDomain(
-      freqMHz = freqs.head.toDouble / 1e6, // Convert from Hz to MHz
+      freq = freqs.head,
     )
 
     // --------------------------------------------------------------------------
     // Board ports
     // --------------------------------------------------------------------------
     if (axiMems.length != mems.length)
-      throw XilinxDesignException("The number of AXI4 memory interfaces of the RocketSystem does not match the number of DDR4 memory layouts specified in RegisteredMems.")
+      throw VivadoDesignException("The number of AXI4 memory interfaces of the RocketSystem does not match the number of DDR4 memory layouts specified in RegisteredMems.")
 
     // Multi-channel memory ports are cache-line interleaved by RocketChip: each channel only sees
     // addresses whose channel-select bits match its index. A deinterleaver per channel compacts
@@ -82,18 +82,18 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
       val geos = ddr4Params.flatMap(_.deinterleaver).map(_.geometry)
       if (geos.nonEmpty) {
         if (geos.size != mems.size)
-          throw XilinxDesignException(s"Only ${geos.size} of ${mems.size} memory channels are interleaved. Mixed interleaved/contiguous channels are not supported.")
+          throw VivadoDesignException(s"Only ${geos.size} of ${mems.size} memory channels are interleaved. Mixed interleaved/contiguous channels are not supported.")
         if (geos.map(g => (g.dropLsb, g.dropBits, g.base)).distinct.size != 1)
-          throw XilinxDesignException(s"Memory channels disagree on interleave geometry: ${geos.mkString(", ")}")
+          throw VivadoDesignException(s"Memory channels disagree on interleave geometry: ${geos.mkString(", ")}")
         if (geos.head.nChannels != mems.size || geos.map(_.channelIndex).distinct.size != mems.size)
-          throw XilinxDesignException(s"Interleave geometry does not match the number of memory channels (${mems.size}): ${geos.mkString(", ")}")
+          throw VivadoDesignException(s"Interleave geometry does not match the number of memory channels (${mems.size}): ${geos.mkString(", ")}")
       }
     }
 
     val uartParamOpt: Option[UARTPortParams] = {
       if (p(HasUART)) {
         if (fpga.uartPorts.isEmpty) {
-          throw new XilinxDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasUART is set to true in parameters.")
+          throw new VivadoDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasUART is set to true in parameters.")
         }
         Some(fpga.uartPorts.head)
       } else None

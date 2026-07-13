@@ -12,13 +12,17 @@ import soct.build.BuildInfo.gemminiDir
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
+import scala.annotation.unused
 
+
+@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4Fp extends Config(
   new WithGemminiFp(4, 64).orElse(
     new WithInclusiveCache).orElse(
     new WithNBigCores(1)))
 
 
+@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4 extends Config(
   new WithGemmini(4, 64).orElse(
     new RocketB1()).orElse(

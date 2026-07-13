@@ -19,19 +19,29 @@ class SOCTBdBuilder extends SOCTBd {
    */
   val args = new SOCTBdVars
 
-  /**
-   * Get the top-level instance representing the design in the block design
-   */
-  var topInstance: () => ChiselModuleTop = () => {
-    throw XilinxDesignException("Please call init before accessing topInstance")
+  private var topInstanceFn: () => ChiselModuleTop = () => {
+    throw VivadoDesignException("Please call init before accessing topInstance")
+  }
+
+  private var fpgaInstanceFn: () => FPGA = () => {
+    throw VivadoDesignException("Please call init before accessing fpgaInstance")
   }
 
   /**
-   * Get the target FPGA
+   * Accessor for the top-level instance representing the design in the block design.
+   *
+   * @return a function yielding the top instance
+   * @throws VivadoDesignException when the returned function is applied before [[init]] was called
    */
-  var fpgaInstance: () => FPGA = () => {
-    throw XilinxDesignException("Please call init before accessing fpgaInstance")
-  }
+  def topInstance: () => ChiselModuleTop = topInstanceFn
+
+  /**
+   * Accessor for the target FPGA board.
+   *
+   * @return a function yielding the board definition
+   * @throws VivadoDesignException when the returned function is applied before [[init]] was called
+   */
+  def fpgaInstance: () => FPGA = fpgaInstanceFn
 
 
   private val portMappingsGens = mutable.ListBuffer.empty[() => Map[String, Seq[String]]]
@@ -41,7 +51,9 @@ class SOCTBdBuilder extends SOCTBd {
   private val configTCLGens = mutable.ListBuffer.empty[() => TCLCommands]
 
   /**
-   * Add Vivado port mappings to the given lines
+   * Insert the registered Vivado port annotations (see [[addPortMapping]]) above the matching
+   * port declarations of the top-level Verilog module. Finalizes the design first if that has
+   * not happened yet.
    *
    * @param portLines Lines of the Verilog file containing the port declarations
    * @return Modified lines with Vivado annotations added
@@ -92,8 +104,8 @@ class SOCTBdBuilder extends SOCTBd {
     val paths = p(HasSOCTPaths).asInstanceOf[VivadoSOCTPaths]
     val config = p(HasSOCTConfig)
     val aggressive = config.args.overrideVivadoProject
-    topInstance = () => topInst
-    fpgaInstance = () => fpga
+    topInstanceFn = () => topInst
+    fpgaInstanceFn = () => fpga
 
     def rel(path: Path, base: Path = paths.vivadoSourceDir, baseVar: String = k.thisDir): String = {
       val relative = base.relativize(path).toString.replace("\\", "/")
@@ -131,7 +143,7 @@ class SOCTBdBuilder extends SOCTBd {
   private def checkInit(): Unit = {
     // check if vars is initialized
     if (args.vars.isEmpty) {
-      throw XilinxDesignException("BDBuilder not initialized - call init(p: Parameters) before generating scripts")
+      throw VivadoDesignException("BDBuilder not initialized - call init(p: Parameters) before generating scripts")
     }
   }
 
@@ -155,18 +167,42 @@ class SOCTBdBuilder extends SOCTBd {
        |}""".stripMargin
   }
 
+  /**
+   * Register a generator of timing-constraint TCL commands, evaluated lazily when
+   * [[generateTimingConstraintsTcl]] runs.
+   *
+   * @param constraints generator returning the timing-constraint commands
+   */
   def addTimingConstraints(constraints: () => TCLCommands): Unit = {
     timingConstraintsGens += constraints
   }
 
+  /**
+   * Register a generator of Verilog port annotations (port name -> attribute lines), evaluated
+   * lazily when [[addPortMappings]] patches the top-level module.
+   *
+   * @param portMapping generator returning the port-to-annotations map
+   */
   def addPortMapping(portMapping: () => Map[String, Seq[String]]): Unit = {
     portMappingsGens += portMapping
   }
 
+  /**
+   * Register a generator of configuration TCL commands appended at the end of the board TCL,
+   * evaluated lazily when [[generateBoardTcl]] runs.
+   *
+   * @param configTcl generator returning the configuration commands
+   */
   def addConfigTcl(configTcl: () => TCLCommands): Unit = {
     configTCLGens += configTcl
   }
 
+  /**
+   * Dump the collateral files (module sources etc.) of every [[HasCollaterals]] component into
+   * the given directory. Finalizes the design first if that has not happened yet.
+   *
+   * @param outDir the directory to dump into
+   */
   def emitCollaterals(outDir: Path): Unit = {
     checkFinalized()
     nodes.collect {
@@ -175,11 +211,13 @@ class SOCTBdBuilder extends SOCTBd {
   }
 
   /**
-   * Finalize the block design by calling finalizeBd on all components and locking the design
+   * Finalize the block design by calling finalizeBd on all components and locking the design.
+   *
+   * @throws VivadoDesignException if called recursively or after the design was already finalized
    */
   def finalizeDesign(): Unit = {
     if (inFinalization || locked)
-      throw XilinxDesignException("Cannot finalize design recursively or after it has already been finalized")
+      throw VivadoDesignException("Cannot finalize design recursively or after it has already been finalized")
 
     inFinalization = true
     try {
@@ -195,6 +233,14 @@ class SOCTBdBuilder extends SOCTBd {
   }
 
 
+  /**
+   * Generate the TCL script that builds the complete block design: validation of required
+   * IPs/modules, component instantiation, properties, connections, address assignment and
+   * wrapper generation.
+   *
+   * @return TCL script as string
+   * @throws VivadoDesignException if the builder was not initialized via [[init]]
+   */
   def generateBoardTcl(): String = {
     checkInit()
     checkFinalized()
@@ -389,6 +435,7 @@ class SOCTBdBuilder extends SOCTBd {
    * Generate a TCL script to launch synthesis for the block design. Assumes the project is already set up and the block design is already generated.
    *
    * @return TCL script as string
+   * @throws VivadoDesignException if the builder was not initialized via [[init]]
    */
   def generateSynthesisTcl(): String = {
     checkInit()
@@ -421,6 +468,7 @@ class SOCTBdBuilder extends SOCTBd {
    *
    * @param basePath The path to the directory where the generated XDC files should be placed.
    * @return A map from XDC file paths to their contents as strings.
+   * @throws VivadoDesignException if the builder was not initialized via [[init]]
    */
   def generateConstraintsTcls(basePath: Path): Map[Path, String] = {
     checkInit()
@@ -451,6 +499,7 @@ class SOCTBdBuilder extends SOCTBd {
    * Generate a TCL script to add timing constraints for the block design. Assumes the project is already set up and the block design is already generated.
    *
    * @return TCL script as string
+   * @throws VivadoDesignException if the builder was not initialized via [[init]]
    */
   def generateTimingConstraintsTcl(): String = {
     checkInit()
@@ -464,9 +513,11 @@ class SOCTBdBuilder extends SOCTBd {
 
 
   /**
-   * Generate Vivado init script
+   * Generate the Vivado init script that creates/opens the project, registers sources and
+   * constraint files, and sources the board TCL.
    *
-   * @return Tcl script as string
+   * @return TCL script as string
+   * @throws VivadoDesignException if the builder was not initialized via [[init]]
    */
   def generateInitScript(): String = {
     checkInit()

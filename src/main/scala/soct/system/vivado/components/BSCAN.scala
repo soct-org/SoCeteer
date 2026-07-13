@@ -5,7 +5,14 @@ import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand}
 import soct.system.vivado.abstracts._
 
 
-case class BSCAN(debugMode: Int = 7)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp // 7 = JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge
+/**
+ * Xilinx Debug Bridge IP in BSCAN mode: exposes the FPGA's JTAG user scan chain as `m<i>_bscan`
+ * master interfaces (e.g. towards a [[BSCAN2JTAG]] bridge for the RISC-V debug module).
+ * Documentation: https://docs.amd.com/r/en-US/pg245-debug-bridge
+ *
+ * @param debugMode the IP's C_DEBUG_MODE (default 7 = JTAG-to-AXI, ChipScope, or JTAG-to-JTAG bridge)
+ */
+case class BSCAN(debugMode: Int = 7)(implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp
   with Xip with ConnectOps with HasIndexedPins with Finalizable {
 
   override def partName: String = "xilinx.com:ip:debug_bridge:3.0"

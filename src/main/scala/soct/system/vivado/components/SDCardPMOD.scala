@@ -2,12 +2,13 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.subsystem.ExtMem
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.misc.{BasePMODPin, DTSInfo, DigilentPMODPin, WantsPMODPins}
 
 import java.nio.file.{Files, Path}
 
+/** Groups the SD-card PMOD pin constraints of all SDIO ports into one `SDCardPMOD.xdc`. */
 trait SDCardConstraints extends WantsPMODPins {
   this: BdVirtualPort =>
 
@@ -91,6 +92,12 @@ case class SDCardPMOD(
 
   private object SDIO_CLK extends BdPinOut("sdio_clk", SDCardPMOD.this)
 
+  /**
+   * Copy the SD-card controller Verilog collaterals from the classpath resources next to the
+   * design sources.
+   *
+   * @throws soct.system.vivado.VivadoDesignException if a bundled Verilog resource is missing
+   */
   override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
     val path = "/sdc/"
@@ -105,7 +112,7 @@ case class SDCardPMOD(
     files.foreach(file => {
       val contentOpt = soct.getResource(path + file)
       if (contentOpt.isEmpty) {
-        throw XilinxDesignException(s"Could not find SDCardController collateral file: $file")
+        throw VivadoDesignException(s"Could not find SDCardController collateral file: $file")
       }
       val outFile = dest.resolve(file).toFile
       Files.write(outFile.toPath, contentOpt.get.getBytes)
@@ -126,10 +133,13 @@ case class SDCardPMOD(
   )
 
 
+  /**
+   * @throws soct.system.vivado.VivadoDesignException if the DTS info does not carry exactly one register region
+   */
   override def assignAddrTcl: TCLCommands = {
     val regs = dtsInfo.regs
     if (regs.size != 1) {
-      throw XilinxDesignException(s"SDCardPMOD DTSInfo must have exactly one reg entry, but found ${regs.size}")
+      throw VivadoDesignException(s"SDCardPMOD DTSInfo must have exactly one reg entry, but found ${regs.size}")
     }
     val (_, _offset, _size) = regs.head
     val offset = "0x%08X".format(_offset)
@@ -148,12 +158,13 @@ case class SDCardPMOD(
 
 
 object SDCardPMOD {
-  implicit val a: AutoConnect[SDCardPMOD, BdVirtualPort] = (comp: SDCardPMOD, port: BdVirtualPort, bd: SOCTBdBuilder) =>
+  /** Connects the controller's SDIO pins to their matching PMOD ports (by port type). */
+  implicit val sdcardToPmodPort: AutoConnect[SDCardPMOD, BdVirtualPort] = (comp: SDCardPMOD, port: BdVirtualPort, bd: SOCTBdBuilder) =>
     port match {
       case p: SDIOCDPort => bd.addEdge(p, comp.SDIO_CD) // input
       case p: SDIOCmdPort => bd.addEdge(comp.SDIO_CMD, p) // inout
       case p: SDIODataPort => bd.addEdge(comp.SDIO_DATA, p) // inout
       case p: SDIOClkPort => bd.addEdge(comp.SDIO_CLK, p) // output
-      case _ => throw XilinxDesignException(s"SDCardPMOD cannot connect to unknown port type: ${port.getClass}")
+      case _ => throw VivadoDesignException(s"SDCardPMOD cannot connect to unknown port type: ${port.getClass}")
     }
 }

@@ -1,7 +1,7 @@
 package soct.system.vivado.abstracts
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 
 /**
  * Trait for Board Design Pin Ports - used to connect component ports.
@@ -18,7 +18,12 @@ abstract class BdPortBase(implicit bd: SOCTBdBuilder, p: Parameters) extends BdC
 
   override lazy val ref: String = portName
 
-  final override def withInstanceName(name: String): BdPortBase.this.type = throw new UnsupportedOperationException("BdVirtualPort instance name cannot be changed after creation")
+  /**
+   * Ports derive their instance name from `portName`; it cannot be replaced.
+   *
+   * @throws soct.system.vivado.VivadoDesignException always
+   */
+  final override def withInstanceName(name: String): BdPortBase.this.type = throw VivadoDesignException("BdVirtualPort instance name cannot be changed after creation")
 }
 
 
@@ -48,14 +53,17 @@ sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) e
   def to: Option[String] = None
 
   /**
-   * Emit the TCL command to create the port for this component
+   * Emit the TCL command to create the port for this component.
+   *
+   * @return the `create_bd_port` command for this port
+   * @throws soct.system.vivado.VivadoDesignException if only one of `from`/`to` is defined
    */
   override def instTcl: TCLCommands = {
     // Either none or both of from/to must be defined
     val range = (from, to) match {
       case (Some(f), Some(t)) => s"-from $f -to $t "
       case (None, None) => ""
-      case _ => throw new IllegalStateException(s"BdPort $instanceName must have either both or neither of from/to defined")
+      case _ => throw VivadoDesignException(s"BdPort $instanceName must have either both or neither of from/to defined")
     }
     Seq(s"set $instanceName [create_bd_port -type $ifType -dir $dir $range$instanceName]".tcl)
   }

@@ -4,6 +4,16 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts.{BdComp, BdPinIn, BdPinOut, ConnectOps, Xip}
 
+import scala.annotation.unused
+
+/**
+ * Xilinx RAM-based Shift Register IP: delays a `width`-bit signal by `depth` cycles.
+ * Documentation: https://docs.amd.com/v/u/en-US/pg122-c-shift-ram
+ *
+ * @param width bit width of the shifted signal
+ * @param depth number of delay cycles
+ */
+@unused // component library
 case class RAMShiftReg (width: Int, depth: Int)
                        (implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with Xip with ConnectOps {
 

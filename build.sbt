@@ -315,3 +315,37 @@ buildInfoKeys := Seq[BuildInfoKey](
   "boomDir" -> boomDir.toString,
   "gemminiDir" -> gemminiDir.toString
 )
+
+// ------------------- Local docs site -------------------
+
+lazy val validateDocLinks = taskKey[Unit]("Validate that every GitHub repository link in docs/ points at an existing file in this checkout")
+lazy val buildDocs = taskKey[Unit]("Build the local docs site: validate the doc links and copy the scaladoc into docs/api (entry point: docs/docs.html)")
+
+validateDocLinks := {
+  val log = streams.value.log
+  val root = baseDirectory.value
+  def htmlFilesIn(dir: File): Seq[File] =
+    Option(IO.listFiles(dir)).getOrElse(Array.empty).filter(_.getName.endsWith(".html")).toSeq
+  val docFiles = htmlFilesIn(root / "docs") ++ htmlFilesIn(root / "docs" / "guides")
+  // Every https://github.com/soct-org/SoCeteer/{blob,tree}/main/<path> link must correspond to
+  // a file/directory in this checkout, so the docs cannot silently reference moved/deleted code.
+  val linkPattern = """soct-org/SoCeteer/(?:blob|tree)/main/([^"#]+)""".r
+  val missing = docFiles.flatMap { f =>
+    linkPattern.findAllMatchIn(IO.read(f)).map(_.group(1)).toSeq.distinct.collect {
+      case p if !(root / p).exists() => s"${f.getName} references a missing repository path: $p"
+    }
+  }
+  if (missing.nonEmpty) {
+    sys.error(("Doc link validation FAILED:" +: missing).mkString("\n  "))
+  }
+  log.info(s"Doc link validation passed (${docFiles.size} files checked).")
+}
+
+buildDocs := {
+  validateDocLinks.value
+  val apiSrc = (Compile / doc).value
+  val apiDst = baseDirectory.value / "docs" / "api"
+  IO.delete(apiDst)
+  IO.copyDirectory(apiSrc, apiDst)
+  streams.value.log.info(s"Docs site updated ($apiDst) - open docs/docs.html in a browser.")
+}

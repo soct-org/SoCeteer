@@ -8,6 +8,7 @@ import soct.system.vivado.fpga.FPGARegistry
 import java.nio.file.{Files, Path, Paths}
 
 
+/** Well-known file, key and binary names shared between the launcher, CMake and the README. */
 object SOCTNames {
   val SOCETEER_ROOT_ENV_VAR: String = "SOCETEER_ROOT"
   val SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem.cmake"
@@ -172,6 +173,12 @@ abstract class SOCTPathsBase {
  * Companion object for SOCTPaths for fixed out dir - behaves like SOCTPaths where args.userOutDir is set. Mainly used for tests.
  */
 object SOCTPathsBase {
+  /**
+   * Create a paths object rooted at a fixed output directory.
+   *
+   * @param outDir the directory to use as system dir
+   * @return the paths object
+   */
   def apply(outDir: Path): SOCTPathsBase = {
     new SOCTPathsBase() {
       override def systemDir: Path = outDir
@@ -193,6 +200,9 @@ object SOCTPathsBase {
  */
 abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPathsBase {
 
+  /**
+   * @throws IllegalArgumentException if the user-provided output directory is not a directory or not writable
+   */
   override def systemDir: Path = {
     if (args.userOutDir.isDefined) {
       args.userOutDir.get.toFile.mkdirs()
@@ -241,6 +251,7 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPathsBa
 
 
 
+/** Output paths of the Yosys target (`<workspace>/<config>/system-yosys`). */
 class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
   protected def systemDirImpl(prefixPath: Path): Path = prefixPath.resolve(config.configName).resolve("system-yosys")
 
@@ -249,6 +260,11 @@ class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args,
 
 
 
+/**
+ * Output paths of the Vivado target (`<workspace>/<config>/<board>`).
+ *
+ * @throws InternalBugException during construction if no board is set in the arguments
+ */
 class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
   private val fpgaBoardName: String = args.board match {
     case Some(board) => FPGARegistry.b2n(board)
@@ -308,6 +324,7 @@ class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args
 
 
 
+/** Output paths of the Verilator simulation target (`<workspace>/<config>/sim`). */
 class SimSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
   protected def systemDirImpl(prefixPath: Path): Path = prefixPath.resolve(config.configName).resolve("sim")
 

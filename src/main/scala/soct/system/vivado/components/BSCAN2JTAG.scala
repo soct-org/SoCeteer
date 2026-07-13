@@ -2,7 +2,7 @@ package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.components.BSCAN2JTAG._
-import soct.system.vivado.{SOCTBdBuilder, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, TCLCommands, VivadoDesignException}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.intf.JTAGIntf
 
@@ -19,6 +19,11 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
    */
   override def reference: String = "bscan2jtag"
 
+  /**
+   * Copy the `bscan2jtag.vhdl` collateral from the classpath resources next to the design sources.
+   *
+   * @throws soct.system.vivado.VivadoDesignException if the bundled VHDL resource is missing
+   */
   override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
     val path = "/bscan/"
@@ -26,7 +31,7 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
     files.foreach(file => {
       val contentOpt = soct.getResource(path + file)
       if (contentOpt.isEmpty) {
-        throw XilinxDesignException(s"Could not find BSCAN2JTAG collateral file: $file")
+        throw VivadoDesignException(s"Could not find BSCAN2JTAG collateral file: $file")
       }
       val outFile = dest.resolve(file).toFile
       Files.write(outFile.toPath, contentOpt.get.getBytes)

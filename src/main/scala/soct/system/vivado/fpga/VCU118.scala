@@ -1,7 +1,8 @@
 package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.SOCTFreq._
+import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
 import soct.SOCTBytes._
 
@@ -39,8 +40,8 @@ object VCU118 extends FPGA {
 
   def initNClockPorts(n: Int)(implicit bd: SOCTBdBuilder, p: Parameters): Seq[FPGAClockDomain] = {
     lazy val reset = FPGAResetPort("reset")
-    lazy val dom1: FPGAClockDomain = FPGAClockDomain(clk1, reset, 250.0)
-    lazy val dom2: FPGAClockDomain = FPGAClockDomain(clk2, reset, 250.0)
+    lazy val dom1: FPGAClockDomain = FPGAClockDomain(clk1, reset, 250.MHz)
+    lazy val dom2: FPGAClockDomain = FPGAClockDomain(clk2, reset, 250.MHz)
 
     lazy val clk1 = FPGADiffClockPort("default_250mhz_clk1", () => dom1)
     lazy val clk2 = FPGADiffClockPort("default_250mhz_clk2", () => dom2)
@@ -50,7 +51,7 @@ object VCU118 extends FPGA {
       case 2 =>
         Seq(dom1, dom2)
       case _ =>
-        throw XilinxDesignException(s"VCU118 only supports 1 or 2 clock ports, but $n were requested.")
+        throw VivadoDesignException(s"VCU118 only supports 1 or 2 clock ports, but $n were requested.")
     }
   }
 
@@ -81,13 +82,13 @@ object VCU118 extends FPGA {
       )
 
       case _ =>
-        throw XilinxDesignException(
+        throw VivadoDesignException(
           s"Invalid PMOD port $pmodPort. VCU118 only has PMOD ports 0 and 1."
         )
     }
 
     if (pin < 0 || pin >= port.length) {
-      throw XilinxDesignException(
+      throw VivadoDesignException(
         s"Invalid PMOD pin $pin. VCU118 PMOD ports expose pins 0 to 7."
       )
     }

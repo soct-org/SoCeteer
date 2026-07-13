@@ -3,17 +3,24 @@ package soct.system
 package object vivado {
 
 
+  /**
+   * Whether the given top module supports multiple memory channels.
+   *
+   * Heuristic: matches the class name against [[SOCTVivadoSystemMultiMem]]. A trait-based
+   * capability marker on the top class would be more robust. // TODO
+   *
+   * @param className the (qualified or simple) class name of the top module
+   * @return true if the top module is the multi-memory system
+   */
   def hasMultiMemSupport(className: String): Boolean = {
-    // TODO: Implement logic to check if the className has multi-memory support
-    // This is a placeholder implementation and should be replaced with actual logic
     className.contains(classOf[SOCTVivadoSystemMultiMem].getSimpleName)
   }
 
 
   /**
-   * TCL commands container
+   * A single TCL command line.
    *
-   * @param command Sequence of TCL commands
+   * @param command The TCL command text
    */
   case class TCLCommand(command: String) {
     override def toString: String = command

@@ -1,19 +1,27 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.SOCTBdBuilder
+import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 
+import scala.annotation.unused
+
 /**
- * Base inline vector logic
+ * Xilinx inline vector-logic gate (and/or/xor/not). Use the concrete [[AND]]/[[OR]]/[[XOR]]/
+ * [[NOT]] case classes, which connect their `ops` arguments to the gate inputs on construction.
+ *
+ * @param op            the logic operation as the IP expects it ("and", "or", "xor", "not")
+ * @param width         bit width of the operands
+ * @param connectOnInit whether to connect `ops` to the inputs during construction
+ * @throws soct.system.vivado.VivadoDesignException if `width` is not positive
  */
 abstract class InlineVectorLogic(op: String, width: Int, connectOnInit: Boolean = true)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with XInlineHDL with ConnectOps with HasIndexedPins {
 
   val ops: Seq[DrivesNet]
 
-  require(width > 0, s"InlineVectorLogic width must be > 0 (got $width)")
+  if (width <= 0) throw VivadoDesignException(s"InlineVectorLogic width must be > 0 (got $width)")
 
   override def partName: String =
     "xilinx.com:inline_hdl:ilvector_logic:1.0"
@@ -55,10 +63,16 @@ object InlineVectorLogic {
 
 
 // ---------------- Concrete Types ----------------
+
+/** 1-bit AND gate of the given drivers. */
 final case class AND(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("and", 1)
 
+/** 1-bit OR gate of the given drivers. */
 final case class OR(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("or", 1)
 
+/** 1-bit XOR gate of the given drivers. */
+@unused // component library
 final case class XOR(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("xor", 1)
 
+/** 1-bit inverter of the given driver. */
 final case class NOT(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("not", 1)

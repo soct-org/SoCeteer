@@ -1,7 +1,7 @@
 package soct.system.vivado.abstracts
 
 import chisel3.Data
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, VivadoDesignException}
 
 
 sealed trait VivadoHandleKind
@@ -51,10 +51,11 @@ trait BdPinPort extends ConnectOps {
    * @param that the other BdPinPort to compare against
    * @param bd   the BdBuilder context
    * @return true if the two BdPinPorts refer to the same pin/port on the same component instance
+   * @throws soct.system.vivado.VivadoDesignException if the builder is not locked yet (instance names would be unstable)
    */
   def sameAs(that: BdPinPort)(implicit bd: SOCTBdBuilder): Boolean = {
     if (!bd.locked) {
-      throw new XilinxDesignException("BdPinPort.sameAs can only be called after the BdBuilder is locked. " +
+      throw new VivadoDesignException("BdPinPort.sameAs can only be called after the BdBuilder is locked. " +
         "Before locking, the instance names may change, so equality cannot be determined.")
     }
     this.ref == that.ref
@@ -128,21 +129,51 @@ object BdPinPort {
     }
   }
 
-  /** Convert a Chisel Data port to its name in Verilog */
-  def portToPortName(x: Data): String = {
+  /**
+   * Convert a Chisel Data port to its name in the emitted Verilog (lowercase, dots to underscores).
+   *
+   * @param x the Chisel port
+   * @return the Verilog port name
+   */
+  private[vivado] def portToPortName(x: Data): String = {
     snake(x.instanceName)
   }
 
-  /** Convert a Chisel Data port to a BdPin */
+  /**
+   * Wrap a Chisel Data port of the top module as a block-design pin, so it can be used with
+   * the connect operators (`-->`, `<--`, `<->`).
+   *
+   * @param x  the Chisel port (evaluated lazily; must belong to the elaborated top module)
+   * @param bd the builder holding the top instance
+   * @return the pin representing the port on the top-level module cell
+   */
   def portToBdPin[T <: Data](x: => T)(implicit bd: SOCTBdBuilder): BdChiselPin = {
     new BdChiselPin(snake(x.instanceName), bd.topInstance(), x)
   }
 
-  def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
+  /**
+   * Emit connect commands from one source to several sinks.
+   *
+   * @param source the driving endpoint
+   * @param sinks  the driven endpoints
+   * @return one TCL connect command per sink
+   * @throws soct.system.vivado.VivadoDesignException if an [[ExternalizedIntfPort]] endpoint is paired with a non-interface pin
+   */
+  private[vivado] def connect(source: BdPinPort, sinks: Iterable[BdPinPort]): TCLCommands = {
     sinks.map(sink => connect(source, sink)).toSeq
   }
 
-  def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
+  /**
+   * Emit the connect command joining two endpoints, choosing `connect_bd_net` or
+   * `connect_bd_intf_net` from the endpoint kind. [[ExternalizedIntfPort]] endpoints are
+   * created here (via `make_bd_intf_pins_external`) instead of being connected.
+   *
+   * @param source the driving endpoint
+   * @param sink   the driven endpoint
+   * @return the TCL command
+   * @throws soct.system.vivado.VivadoDesignException if an [[ExternalizedIntfPort]] endpoint is paired with a non-interface pin
+   */
+  private[vivado] def connect(source: BdPinPort, sink: BdPinPort): TCLCommand = {
     (source, sink) match {
       case (port: ExternalizedIntfPort, pin) => externalizePin(port.asInstanceOf[BdIntfPortBase], pin)
       case (pin, port: ExternalizedIntfPort) => externalizePin(port.asInstanceOf[BdIntfPortBase], pin)
@@ -168,7 +199,7 @@ object BdPinPort {
    */
   private def externalizePin(port: BdIntfPortBase, pin: BdPinPort): TCLCommand = {
     if (pin.vivadoKind != VivadoHandleKind.IntfPin) {
-      throw XilinxDesignException(s"ExternalizedIntfPort ${port.instanceName} must be connected to exactly one interface pin, but got ${pin.ref} (${pin.vivadoKind}).")
+      throw VivadoDesignException(s"ExternalizedIntfPort ${port.instanceName} must be connected to exactly one interface pin, but got ${pin.ref} (${pin.vivadoKind}).")
     }
     s"""make_bd_intf_pins_external -name ${port.instanceName} ${vivadoGetExpr(pin)}
        |set ${port.instanceName} [get_bd_intf_ports ${port.instanceName}]""".stripMargin.tcl

@@ -2,7 +2,7 @@ package soct.system.vivado.misc
 
 import freechips.rocketchip.diplomacy.AddressSet
 import freechips.rocketchip.resources._
-import soct.system.vivado.TCLCommands
+import soct.system.vivado.{TCLCommands, VivadoDesignException}
 import soct.system.vivado.abstracts.BdIntfPin
 
 /**
@@ -62,9 +62,10 @@ object AddressSets {
    * Base address within the parent address space.
    * @param rangeBytes
    * Size in bytes (must be > 0).
+   * @throws soct.system.vivado.VivadoDesignException if `rangeBytes` is not positive
    */
   def fromOffsetRange(offset: BigInt, rangeBytes: BigInt): Seq[AddressSet] = {
-    require(rangeBytes > 0, s"range must be > 0, got $rangeBytes")
+    if (rangeBytes <= 0) throw VivadoDesignException(s"range must be > 0, got $rangeBytes")
 
     val isPow2 = (rangeBytes & (rangeBytes - 1)) == 0
     if (isPow2) Seq(AddressSet(offset, rangeBytes - 1))
@@ -108,10 +109,11 @@ object AxiSlaveBinder {
    * Permissions for the `reg` resources.
    * @return
    * The created [[SimpleDevice]] handle (useful for references/aliases).
+   * @throws soct.system.vivado.VivadoDesignException if `dts` has no compatibles or no register regions
    */
   def bindSimpleDevice(devname: String, dts: DTSInfo, perms: ResourcePermissions = mmioPerms): SimpleDevice = {
-    require(dts.compatibles.nonEmpty, s"$devname: compatibles must be non-empty")
-    require(dts.regs.nonEmpty, s"$devname: regs must be non-empty")
+    if (dts.compatibles.isEmpty) throw VivadoDesignException(s"$devname: compatibles must be non-empty")
+    if (dts.regs.isEmpty) throw VivadoDesignException(s"$devname: regs must be non-empty")
 
     // SimpleDevice's parent is typed as Some[Device] in RocketChip, so match that exactly.
     val dev = new SimpleDevice(devname, dts.compatibles) {

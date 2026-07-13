@@ -1,7 +1,7 @@
 package soct.system.vivado.abstracts
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 
 import scala.reflect.ClassTag
 
@@ -17,7 +17,7 @@ abstract class BdBaseComp(implicit bd: SOCTBdBuilder, p: Parameters) extends Has
   bd.addNode(this)
 
   if (bd.inFinalization && this.isInstanceOf[Finalizable]) {
-    throw XilinxDesignException(s"Finalizable component $this was created during BdBuilder finalization. " +
+    throw VivadoDesignException(s"Finalizable component $this was created during BdBuilder finalization. " +
         s"This is not allowed because finalization order is not guaranteed.\n" +
         s"Fix: create it before finalizeDesign(), or make it non-Finalizable."
     )
@@ -71,7 +71,10 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
   def defaultProperties: Map[String, String] = Map.empty
 
   /**
-   * Emit the TCL command to instantiate this component in the design
+   * Emit the TCL command to instantiate this component in the design.
+   *
+   * @return the `create_bd_cell` command for this component
+   * @throws soct.system.vivado.VivadoDesignException if the component is neither [[IsXilinx]] nor [[IsModule]]
    */
   def instTcl: TCLCommands = {
     this match {
@@ -80,7 +83,7 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
       case module: IsModule =>
         Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]".tcl)
       case _ =>
-        throw new UnsupportedOperationException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
+        throw VivadoDesignException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
     }
   }
 

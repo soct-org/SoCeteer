@@ -11,6 +11,7 @@ import soct.system.vivado.SOCTVivadoSystem
 import soct.system.vivado.fpga.{PartRegistry, FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
+import soct.SOCTFreq._
 import soct.SOCTNames.{LATEST_SOCT_SYSTEM_CMAKE_FILE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.SOCTPaths.projectRoot
 
@@ -79,6 +80,10 @@ object Targets {
 }
 
 
+/**
+ * All launcher arguments with their defaults; parsed from the command line by [[SOCTParser]].
+ * Field groups mirror the CLI help: general, firtool, Vivado, remote development, terminating.
+ */
 case class SOCTArgs(
                      // General options
                      workspaceDir: Path = projectRoot.resolve("workspace"),
@@ -111,8 +116,8 @@ case class SOCTArgs(
                      // Vivado specific options
                      vivado: Option[Path] = None,
                      board: Option[FPGA] = None,
-                     coreFreq: Option[BigInt] = Some(100 * 1000 * 1000), // Default to 100 MHz
-                     peripheryFreq: BigInt = 100 * 1000 * 1000, // Default to 100 MHz
+                     coreFreq: Option[Freq] = Some(100.MHz),
+                     peripheryFreq: Freq = 100.MHz,
                      overrideVivadoProject: Boolean = true,
                      extMemParts: Seq[String] = Seq.empty,
                      fastPnR: Boolean = false,
@@ -220,7 +225,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       else failure(s"Invalid FPGA board $x. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
     )
     .text(s"The FPGA board to target for synthesis. Available boards: ${FPGARegistry.getKnownBoards.mkString(", ")}.")
-  opt[String]("core-freq-mhz").action((x, c) => c.copy(coreFreq = Some(BigInt((x.toDouble * 1000 * 1000).toInt))))
+  opt[String]("core-freq-mhz").action((x, c) => c.copy(coreFreq = Some(x.toDouble.MHz)))
     .text(
       s"""
          |The frequency to use for the core clock in MHz as a floating point number.
@@ -228,12 +233,12 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
          |For more complex designs where the core is driven by multiple clocks, set the frequency of the bus clock(s) by adding the configs ${classOf[WithPeripheryBusFrequency].getClass.getName} etc. to the main config.
          |""".stripMargin
     )
-  opt[String]("periphery-freq-mhz").action((x, c) => c.copy(peripheryFreq = BigInt((x.toDouble * 1000 * 1000).toInt)))
+  opt[String]("periphery-freq-mhz").action((x, c) => c.copy(peripheryFreq = x.toDouble.MHz))
     .text(
       s"""
          |The frequency to use for the periphery bus clock in MHz as a floating point number.
          |This is used for the bus clock(s) that drive the periphery devices like the SDCard controller and UART.
-         |Default is ${defaultSOCTArgs.peripheryFreq / (1000 * 1000)} MHz.
+         |Default is ${defaultSOCTArgs.peripheryFreq}.
          |""".stripMargin
     )
   opt[Unit]("no-override-vivado-project").action((_, c) => c.copy(overrideVivadoProject = false)).text(s"When generating a design for synthesis with vivado, DO NOT overwrite an existing vivado project in the out-dir directory.")
@@ -244,7 +249,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
       case Some(_) => success
       case None => failure(s"Unknown DDR4 memory part '$x'. Its capacity could not be derived from the part name. Add the part to PartRegistry (known parts: ${PartRegistry.knownParts.mkString(", ")}).")
     })
-    .text("The Vivado DDR4 memory part name of the DIMM to use (e.g., MTA8ATF51264HZ-2G1). Can be specified multiple times for multiple external memory ports (first occurrence configures the first external memory port, second occurrence the second one, etc.). The memory capacity is derived from the part name (see PartRegistry - unknown parts must be added there). If omitted, the board's preset part is used. NOTE: Vivado's board flow locks the DDR4 controller to the board-preset DIMM, so a part differing from the preset is rejected as not implemented until custom (non-board-flow) DDR4 interfaces are supported.")
+    .text("The Vivado DDR4 memory part name of the DIMM to use (e.g., MTA16ATF2G64HZ-2G3). Can be specified multiple times for multiple external memory ports (first occurrence configures the first external memory port, second occurrence the second one, etc.). The memory capacity is derived from the part name (see PartRegistry - unknown parts must be added there). If omitted, the board's preset part is used. A part differing from the board preset switches the port to a custom (non board-flow) DDR4 interface, which requires the board definition to provide the pin map and clock timing (the ZCU104 does).")
 
   opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(s"Enable fast place&route mode to simplify generated logic at the cost of removing some of the more advanced features. The exact tradeoff depends on the block design and the FPGA board being targeted")
 

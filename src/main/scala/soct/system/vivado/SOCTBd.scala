@@ -2,6 +2,7 @@ package soct.system.vivado
 
 import soct.system.vivado.abstracts.{BdBaseComp, BdPinPort}
 
+import scala.annotation.unused
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.collection.View
@@ -27,8 +28,11 @@ class SOCTBd {
   // Lifecycle state
   // ----------------------------
 
-  var locked: Boolean = false // Prevent modifications after finalization
-  var inFinalization: Boolean = false // Prevent recursive finalization
+  /** True once the design is finalized; all mutating operations throw from then on. */
+  private[vivado] var locked: Boolean = false
+
+  /** True while finalization is running; guards against components spawning during finalization. */
+  private[vivado] var inFinalization: Boolean = false
 
   // ----------------------------
   // Nodes / components (insertion-ordered)
@@ -54,19 +58,25 @@ class SOCTBd {
   // ----------------------------
 
   @inline protected final def requireUnlocked(msg: String): Unit =
-    if (locked) throw XilinxDesignException(msg)
+    if (locked) throw VivadoDesignException(msg)
 
   // ----------------------------
   // Node API
   // ----------------------------
 
   /** All nodes/components (LIVE view). */
+  @unused // graph library API
   def nodesView: View[BdBaseComp] = nodes.view
 
   /** All nodes/components (snapshot). */
+  @unused // graph library API
   def nodesSnapshot: Seq[BdBaseComp] = nodes.toSeq
 
-  /** Add a node/component (idempotent). */
+  /**
+   * Add a node/component (idempotent).
+   *
+   * @throws VivadoDesignException if the design is already finalized
+   */
   def addNode(n: BdBaseComp): Unit = {
     requireUnlocked("Cannot add components after finalization")
     nodes += n
@@ -85,7 +95,11 @@ class SOCTBd {
   // Edge primitives
   // ----------------------------
 
-  /** Connect directed edge from -> to (multigraph: does not dedupe). */
+  /**
+   * Connect directed edge from -> to (multigraph: does not dedupe).
+   *
+   * @throws VivadoDesignException if the design is already finalized
+   */
   def addEdge(from: BdPinPort, to: BdPinPort): Unit = {
     requireUnlocked("Cannot add connections after finalization")
 
@@ -99,14 +113,17 @@ class SOCTBd {
   }
 
   /** True if at least one edge from -> to exists. */
+  @unused // graph library API
   def hasEdge(from: BdPinPort, to: BdPinPort): Boolean =
     outAdj.get(from).exists(_.contains(to))
 
   /** Number of outgoing edges from a port (out-degree). */
+  @unused // graph library API
   def outDegree(from: BdPinPort): Int =
     outAdj.get(from).fold(0)(_.size)
 
   /** Number of incoming edges to a port (in-degree). */
+  @unused // graph library API
   def inDegree(to: BdPinPort): Int =
     inAdj.get(to).fold(0)(_.size)
 
@@ -118,6 +135,8 @@ class SOCTBd {
    * Remove edges.
    *  - If toOpt is None: remove all outgoing edges from 'from'
    *  - If toOpt is Some(to): remove all edges from 'from' to 'to' (all duplicates)
+   *
+   * @throws VivadoDesignException if the design is already finalized
    */
   def disconnect(from: BdPinPort, toOpt: Option[BdPinPort] = None): Unit = {
     requireUnlocked("Cannot remove connections after finalization")
@@ -188,6 +207,8 @@ class SOCTBd {
   def predecessors(to: BdPinPort): Seq[BdPinPort] =
     inAdj.get(to).map(_.toSeq).getOrElse(Seq.empty)
 
+  /** Alias for [[successors]]. */
+  @unused // graph library API
   final def getSinks(source: BdPinPort): Seq[BdPinPort] = successors(source)
 
   // ----------------------------
@@ -205,6 +226,8 @@ class SOCTBd {
   /**
    * If you expect exactly one connector (optionally matching a predicate).
    * Uses snapshot for safety.
+   *
+   * @throws VivadoDesignException if the number of matching connectors is not exactly one
    */
   def singleConnector(port: BdPinPort, pred: BdPinPort => Boolean = _ => true, errorMsg: Option[String] = None): BdPinPort = {
     val msg = errorMsg.getOrElse(
@@ -213,7 +236,7 @@ class SOCTBd {
     val xs = connectors(port).filter(pred)
     xs match {
       case Seq(one) => one
-      case _ => throw XilinxDesignException(msg)
+      case _ => throw VivadoDesignException(msg)
     }
   }
 
@@ -239,6 +262,7 @@ class SOCTBd {
     outAdj.view.flatMap { case (from, tos) => tos.view.map(to => (from, to)) }
 
   /** Snapshot of all edges. */
+  @unused // graph library API
   def edges: Seq[(BdPinPort, BdPinPort)] = edgesView.toSeq
 
   // ----------------------------
@@ -249,6 +273,7 @@ class SOCTBd {
    * Filter edges by a predicate; returns snapshot Map(from -> sinks) (stable, safe).
    * Predicate sees the LIVE sinks buffer via Iterable but result snapshots it.
    */
+  @unused // graph library API
   def edgesWhere(prop: (BdPinPort, Iterable[BdPinPort]) => Boolean): Map[BdPinPort, Seq[BdPinPort]] =
     outAdj.iterator
       .filter { case (from, tos) => prop(from, tos) }
@@ -258,6 +283,7 @@ class SOCTBd {
   /**
    * Filter edges by a predicate; returns LIVE view (fast, but live).
    */
+  @unused // graph library API
   def edgesWhereView(prop: (BdPinPort, Iterable[BdPinPort]) => Boolean): View[(BdPinPort, View[BdPinPort])] =
     outAdj.view
       .filter { case (from, tos) => prop(from, tos) }
@@ -281,6 +307,7 @@ class SOCTBd {
    * @tparam T Type of port
    * @return A snapshot sequence of ports of type T.
    */
+  @unused // graph library API
   def pinPortsOfTWhere[T <: BdPinPort : ClassTag](pred: T => Boolean): Seq[T] =
     pinPortsSnapshot.collect { case p: T if pred(p) => p }
 
@@ -288,12 +315,14 @@ class SOCTBd {
   /**
    * Convenience: all outgoing edges from a given port as snapshot pairs.
    */
+  @unused // graph library API
   def outEdges(from: BdPinPort): Seq[(BdPinPort, BdPinPort)] =
     successors(from).map(to => (from, to))
 
   /**
    * Convenience: all incoming edges to a given port as snapshot pairs.
    */
+  @unused // graph library API
   def inEdges(to: BdPinPort): Seq[(BdPinPort, BdPinPort)] =
     predecessors(to).map(from => (from, to))
 
@@ -302,16 +331,26 @@ class SOCTBd {
   // ----------------------------
 
   /** Total number of edges (including duplicates). */
+  @unused // graph library API
   def edgeCount: Int = outAdj.valuesIterator.map(_.size).sum
 
-  /** Clear all connections (keeps nodes). */
+  /**
+   * Clear all connections (keeps nodes).
+   *
+   * @throws VivadoDesignException if the design is already finalized
+   */
   def clearEdges(): Unit = {
     requireUnlocked("Cannot clear connections after finalization")
     outAdj.clear()
     inAdj.clear()
   }
 
-  /** Clear everything. */
+  /**
+   * Clear everything.
+   *
+   * @throws VivadoDesignException if the design is already finalized
+   */
+  @unused // graph library API
   def clearAll(): Unit = {
     requireUnlocked("Cannot clear after finalization")
     nodes.clear()

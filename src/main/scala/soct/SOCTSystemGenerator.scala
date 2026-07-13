@@ -25,6 +25,7 @@ case class CMakeVar(
                      quoted: Boolean = false,
                    )
 
+/** Renders [[CMakeVar]]s into the generated SOCTSystem.cmake. */
 object CMakeVar {
   /**
    * Render a sequence of CMakeVars into set() calls, then list(APPEND SOCT_COMPILE_DEFS ...) for
@@ -55,6 +56,7 @@ object CMakeVar {
   }
 }
 
+/** Extracts build-relevant facts (ISA string, CPU count) from the generated device tree source. */
 object DTSExtractor {
   /**
    * Extract the RISC-V architecture string from a Device Tree Source (DTS) content.
@@ -63,7 +65,8 @@ object DTSExtractor {
    * @param key     The key to search for in the DTS (default is "riscv,isa").
    * @param invalid A sequence of invalid substrings to remove from the extracted architecture string.
    *                Default is "b" which represents big-endian and "_xrocket" which is specific to Rocket cores ("CEASE" instruction).
-   * @return
+   * @return the cleaned march string (e.g. "rv64imafdc")
+   * @throws IllegalArgumentException if the key is not found in the DTS or the extracted string is empty
    */
   def extractMarch(dts: String, key: String = "riscv,isa", invalid: Seq[String] = Seq("b", "_xrocket")): String = {
     val pattern = s"""(?s)$key = "(.*?)"""".r
@@ -79,6 +82,12 @@ object DTSExtractor {
     march
   }
 
+  /**
+   * Count the CPU nodes in a Device Tree Source.
+   *
+   * @param dts The content of the DTS file as a string.
+   * @return the number of `cpu@` nodes
+   */
   def countCPUs(dts: String): Int = {
     val pattern = """cpu@""".r
     pattern.findAllMatchIn(dts).length

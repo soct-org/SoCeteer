@@ -4,11 +4,18 @@ import chisel3.Bool
 import freechips.rocketchip.jtag.JTAGIO
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.abstracts.BdPinPort.portToPortName
-import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
+import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts.{BdIntfPin, BdPinPort, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
+/**
+ * The top module's JTAG signals as a Vivado `jtag` interface pin: registers X_INTERFACE_INFO
+ * annotations for TCK/TMS/TDI/TDO/TDT so Vivado infers one coherent interface.
+ *
+ * @param jtagio the debug module's JTAG bundle
+ * @param TDT    the TDO tristate/enable signal (Xilinx TD_T)
+ */
 case class JTAGIntf(jtagio: JTAGIO, TDT: Bool)(implicit val bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPin("JTAG", bd.topInstance()) with MapsToPorts with XIntf {
 

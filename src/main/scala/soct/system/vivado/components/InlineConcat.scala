@@ -6,6 +6,12 @@ import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts.{BdComp, BdPinIn, BdPinOut, BdPinPort, ConnectOps, HasIndexedPins, ToSinkConnect, XInlineHDL}
 
 
+/**
+ * Xilinx inline concat IP: concatenates `nPorts` input signals into one output vector
+ * (`In0` is the least significant part).
+ *
+ * @param nPorts the number of input ports
+ */
 case class InlineConcat(nPorts: Int) (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with XInlineHDL with ConnectOps with HasIndexedPins {
   override def partName: String = "xilinx.com:inline_hdl:ilconcat:1.0"

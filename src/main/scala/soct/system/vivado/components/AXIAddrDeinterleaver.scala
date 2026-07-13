@@ -4,7 +4,7 @@ import freechips.rocketchip.subsystem.ExtMem
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.abstracts._
 import soct.system.vivado.misc.AXI4BusInfo
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 
 import java.nio.file.{Files, Path}
 
@@ -48,12 +48,18 @@ case class AXIAddrDeinterleaver(mAxi: AXI4BusInfo, geometry: AXIAddrDeinterleave
 
   private def bundleParams = mAxi.axiBundle.params
 
+  /**
+   * Copy the `axi_addr_deinterleaver.v` collateral from the classpath resources next to the
+   * design sources.
+   *
+   * @throws soct.system.vivado.VivadoDesignException if the bundled Verilog resource is missing
+   */
   override def dumpCollaterals(outDir: Path, dirName: Option[String] = None): Option[Path] = {
     val dest = super.dumpCollaterals(outDir, dirName = Some(friendlyName)).get
     val file = "axi_addr_deinterleaver.v"
     val contentOpt = soct.getResource(s"/deinterleaver/$file")
     if (contentOpt.isEmpty) {
-      throw XilinxDesignException(s"Could not find AXIAddrDeinterleaver collateral file: $file")
+      throw VivadoDesignException(s"Could not find AXIAddrDeinterleaver collateral file: $file")
     }
     Files.write(dest.resolve(file), contentOpt.get.getBytes)
     Some(dest)
@@ -108,22 +114,24 @@ object AXIAddrDeinterleaver {
    * with a single run of zero bits (the channel-select bits) between the low block-offset bits and
    * the high span bits, e.g. `0x7fffffbf` = 2 GiB span with bit 6 pinned.
    *
+   * @param mAxi the memory-channel AXI4 port exported by the RocketSystem
+   * @param base base address of the interleaved memory region (start of DRAM as seen by the cores)
    * @return `None` if the address sets are contiguous (single channel / no interleaving),
    *         `Some(geometry)` if they follow the round-robin interleave pattern
-   * @throws XilinxDesignException if the address sets have a hole pattern this component cannot compact
+   * @throws VivadoDesignException if the address sets have a hole pattern this component cannot compact
    */
   def geometryOf(mAxi: AXI4BusInfo, base: BigInt): Option[InterleaveGeometry] = {
     val slaves = mAxi.axiParams.fold(
       sp => sp.slaves,
-      _ => throw XilinxDesignException("AXIAddrDeinterleaver requires an AXI4 slave port (a memory channel), but got a master port.")
+      _ => throw VivadoDesignException("AXIAddrDeinterleaver requires an AXI4 slave port (a memory channel), but got a master port.")
     )
     if (slaves.length != 1) {
-      throw XilinxDesignException(s"AXIAddrDeinterleaver expects exactly one AXI4 slave per memory channel, but found ${slaves.length}.")
+      throw VivadoDesignException(s"AXIAddrDeinterleaver expects exactly one AXI4 slave per memory channel, but found ${slaves.length}.")
     }
     val sets = slaves.head.address
     val mask = sets.head.mask
     if (!sets.forall(_.mask == mask)) {
-      throw XilinxDesignException(s"Memory channel address sets have differing masks, cannot derive interleave geometry: ${sets.mkString(", ")}")
+      throw VivadoDesignException(s"Memory channel address sets have differing masks, cannot derive interleave geometry: ${sets.mkString(", ")}")
     }
 
     // The lowest zero bit of the mask marks the end of the block-offset bits...
@@ -140,22 +148,22 @@ object AXIAddrDeinterleaver {
     // round-robin channel interleave and cannot be compacted by a bit-drop.
     val filled = mask | (((BigInt(1) << dropBits) - 1) << dropLsb)
     if ((filled & (filled + 1)) != 0) {
-      throw XilinxDesignException(s"Memory channel mask 0x${mask.toString(16)} has more than one hole; unsupported interleave pattern.")
+      throw VivadoDesignException(s"Memory channel mask 0x${mask.toString(16)} has more than one hole; unsupported interleave pattern.")
     }
     if (dropLsb < 1) {
-      throw XilinxDesignException("Interleave block size below 2 bytes is not supported by axi_addr_deinterleaver.")
+      throw VivadoDesignException("Interleave block size below 2 bytes is not supported by axi_addr_deinterleaver.")
     }
     if (base % (BigInt(1) << (dropLsb + dropBits)) != 0) {
-      throw XilinxDesignException(s"Memory base address 0x${base.toString(16)} must be aligned to the interleave granule (${1 << (dropLsb + dropBits)} bytes).")
+      throw VivadoDesignException(s"Memory base address 0x${base.toString(16)} must be aligned to the interleave granule (${1 << (dropLsb + dropBits)} bytes).")
     }
     if (!sets.forall(_.base >= base)) {
-      throw XilinxDesignException(s"Memory channel address sets ${sets.mkString(", ")} start below the memory base address 0x${base.toString(16)}.")
+      throw VivadoDesignException(s"Memory channel address sets ${sets.mkString(", ")} start below the memory base address 0x${base.toString(16)}.")
     }
 
     val chMask = (BigInt(1) << dropBits) - 1
     val indices = sets.map(s => ((s.base >> dropLsb) & chMask).toInt).distinct
     if (indices.length != 1) {
-      throw XilinxDesignException(s"Memory channel address sets encode inconsistent channel indices ${indices.mkString(", ")}: ${sets.mkString(", ")}")
+      throw VivadoDesignException(s"Memory channel address sets encode inconsistent channel indices ${indices.mkString(", ")}: ${sets.mkString(", ")}")
     }
 
     Some(InterleaveGeometry(dropLsb, dropBits, indices.head, base))
@@ -164,11 +172,14 @@ object AXIAddrDeinterleaver {
   /**
    * Create a deinterleaver for the given memory-channel AXI4 port, if its address sets are interleaved.
    *
+   * @param mAxi the memory-channel AXI4 port exported by the RocketSystem
    * @return `None` when the channel covers a contiguous range (no deinterleaver needed)
+   * @throws soct.system.vivado.VivadoDesignException if ExtMem is not defined in the parameters,
+   *                                                  or the address sets have an unsupported hole pattern (see [[geometryOf]])
    */
   def fromBusInfo(mAxi: AXI4BusInfo)(implicit bd: SOCTBdBuilder, p: Parameters): Option[AXIAddrDeinterleaver] = {
     val base = p(ExtMem).getOrElse(
-      throw XilinxDesignException("AXIAddrDeinterleaver requires ExtMem to be defined in parameters.")
+      throw VivadoDesignException("AXIAddrDeinterleaver requires ExtMem to be defined in parameters.")
     ).master.base
     geometryOf(mAxi, base).map(geo => AXIAddrDeinterleaver(mAxi, geo))
   }

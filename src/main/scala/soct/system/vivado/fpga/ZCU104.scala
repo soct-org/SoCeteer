@@ -1,7 +1,8 @@
 package soct.system.vivado.fpga
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, XilinxDesignException}
+import soct.SOCTFreq._
+import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
 
 
@@ -171,14 +172,14 @@ object ZCU104 extends FPGA {
   override def initNClockPorts(n: Int)(implicit bd: SOCTBdBuilder, p: Parameters): Seq[FPGAClockDomain] = {
     // CPU_RESET pushbutton (part0_pins.xml); placed via XDC by the DDR4 custom interface.
     lazy val reset = FPGAResetPort("reset", pinLoc = Some(BoardPin("M11", "LVCMOS33")))
-    lazy val dom: FPGAClockDomain = FPGAClockDomain(clk, reset, 300.0)
+    lazy val dom: FPGAClockDomain = FPGAClockDomain(clk, reset, 300.MHz)
     // Pin locations from the board files (part0_pins.xml: CLK_300_P/N); used by the DDR4
     // custom interface, which has to place the clock pair itself.
     lazy val clk: FPGADiffClockPort = FPGADiffClockPort("clk_300mhz", () => dom,
       pinLocs = Some(DiffClockPins(clkP = "AH18", clkN = "AH17", ioStandard = "DIFF_SSTL12")))
     n match {
       case 1 => Seq(dom)
-      case _ => throw XilinxDesignException(s"ZCU104 only provides a single differential clock input. Requested $n clock domains.")
+      case _ => throw VivadoDesignException(s"ZCU104 only provides a single differential clock input. Requested $n clock domains.")
     }
   }
 
@@ -194,7 +195,7 @@ object ZCU104 extends FPGA {
         ("L10", "LVCMOS33"), ("M10", "LVCMOS33"), ("M8", "LVCMOS33"), ("M9", "LVCMOS33")
       )
       case _ =>
-        throw XilinxDesignException(s"Invalid PMOD port $pmodPort. ZCU104 only has PMOD ports 0 and 1.")
+        throw VivadoDesignException(s"Invalid PMOD port $pmodPort. ZCU104 only has PMOD ports 0 and 1.")
     }
     val (packagePin, ioStandard) = port(pin)
     FPGAPMODPin(packagePin, ioStandard, pin)

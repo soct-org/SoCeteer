@@ -4,6 +4,12 @@ import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts._
 
+/**
+ * Xilinx AXI SmartConnect IP: bridges AXI masters and slaves across clock domains and data
+ * widths. Slave/master interfaces and clock inputs are indexed pin factories; NUM_SI/NUM_MI/
+ * NUM_CLKS are derived from the pins actually instantiated.
+ * Documentation: https://docs.amd.com/r/en-US/pg247-smartconnect
+ */
 case class AXISmartConnect()(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with HasIndexedPins {
 

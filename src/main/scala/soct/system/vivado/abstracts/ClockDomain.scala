@@ -1,15 +1,17 @@
 package soct.system.vivado.abstracts
 
-import soct.system.vivado.SOCTBdBuilder
+import soct.SOCTFreq._
+import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 
 /**
- * Case class representing a clock domain in the design
+ * A clock domain in the design.
  *
- * @param freqMHz    The frequency of the clock domain in MHz
+ * @param freq The frequency of the clock domain
+ * @throws soct.system.vivado.VivadoDesignException if the frequency is not positive or is implausibly high (>= 10 GHz)
  */
-class ClockDomain(val freqMHz: Double)(implicit bd: SOCTBdBuilder) {
-  require(freqMHz > 0, s"Clock frequency must be positive, got $freqMHz")
-  require(freqMHz < 10000, s"Clock frequency seems too high (greater than 10 GHz), got $freqMHz. Did you mean MHz instead of Hz?")
+class ClockDomain(val freq: Freq)(implicit bd: SOCTBdBuilder) {
+  if (freq <= 0.Hz) throw VivadoDesignException(s"Clock frequency must be positive, got $freq")
+  if (freq >= 10.GHz) throw VivadoDesignException(s"Clock frequency seems too high, got $freq. Did you mean MHz instead of Hz?")
 }
 
 

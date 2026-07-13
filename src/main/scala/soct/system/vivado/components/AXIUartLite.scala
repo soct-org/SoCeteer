@@ -1,7 +1,7 @@
 package soct.system.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 import soct.system.vivado.abstracts._
 import soct.system.vivado.fpga.UARTPortParams
 import soct.system.vivado.misc.DTSInfo
@@ -36,10 +36,13 @@ case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterP
 
   override lazy val S_AXI: BdIntfPin = new BdIntfPin("S_AXI", this)
 
+  /**
+   * @throws soct.system.vivado.VivadoDesignException if the DTS info does not carry exactly one register region
+   */
   override def assignAddrTcl: TCLCommands = {
     val regs = dtsInfo.regs
     if (regs.size != 1) {
-      throw XilinxDesignException(s"AXIUartLite component requires exactly one register region in DTS info, but found ${regs.size}")
+      throw VivadoDesignException(s"AXIUartLite component requires exactly one register region in DTS info, but found ${regs.size}")
     }
     val (_, _offset, _size) = regs.head
     val offset = "0x%08X".format(_offset)

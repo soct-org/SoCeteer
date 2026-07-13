@@ -1,6 +1,5 @@
 package soct
 
-import freechips.rocketchip.subsystem.WithNExtTopInterrupts
 import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
 import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
@@ -38,12 +37,12 @@ object SOCTLauncher {
   object SOCTConfig {
     def apply(args: SOCTArgs): SOCTConfig = {
       val mabi = args.userMabi.getOrElse(if (args.xlen == 32) "ilp32" else "lp64")
-      var params: Parameters = new WithPeripheryClockSpeed(args.peripheryFreq.doubleValue / 1e6) // Convert from Hz to MHz
+      var params: Parameters = new WithPeripheryClockSpeed(args.peripheryFreq)
       val topModule = args.userTop.getOrElse(args.target.defaultTop)
       val topModuleName = topModule.fold(_.getSimpleName, _.getSimpleName)
 
       if (args.coreFreq.isDefined) {
-        params ++= new WithSingleBusClockSpeed(args.coreFreq.get.doubleValue / 1e6) // Convert from Hz to MHz
+        params ++= new WithSingleBusClockSpeed(args.coreFreq.get)
       }
       if (args.fastPnR) {
         params ++= new soct.WithFastPnR
@@ -53,7 +52,6 @@ object SOCTLauncher {
         params = params.alter(new freechips.rocketchip.rocket.WithRV32)
       }
 
-      new WithNExtTopInterrupts(8)
       new SOCTConfig(args, mabi, topModule, topModuleName, params ++ args.baseConfig, configName(args.baseConfig, args.xlen))
     }
   }
@@ -108,6 +106,14 @@ object SOCTLauncher {
     Transpiler.emitVerilog(config, simPaths)
   }
 
+  /**
+   * Entry point: parses the arguments, handles the terminating options (--version, --wtf,
+   * --sfr), resolves paths and firtool, and dispatches to the selected target's generator.
+   *
+   * @param raw the raw command-line arguments
+   * @throws IllegalArgumentException if required arguments for the selected mode are missing
+   *                                  (e.g. --board for vivado, --remote-dir/--ssh-config for --sfr)
+   */
   def main(raw: Array[String]): Unit = SOCTParser.parse(raw, SOCTArgs()) match {
     case Some(parsed) =>
       configureLogging(parsed.logLevel.toUpperCase)

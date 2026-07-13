@@ -6,11 +6,18 @@ import freechips.rocketchip.amba.axi4.AXI4Bundle
 import freechips.rocketchip.prci.ClockBundle
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.abstracts.BdPinPort.portToPortName
-import soct.system.vivado.{SOCTBdBuilder, SOCTVivado}
+import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts.{BdIntfPin, BdPinBase, BdPinPort, MapsToPorts, XIntf}
 
 import scala.collection.mutable
 
+/**
+ * An exported AXI4 bundle of the top module as a Vivado `aximm` interface pin: registers
+ * X_INTERFACE_INFO annotations for every AXI channel signal so Vivado infers one coherent
+ * interface from the raw Verilog ports.
+ *
+ * @param axiPort the top module's AXI4 bundle
+ */
 case class AXIMM(axiPort: AXI4Bundle)(implicit val bd: SOCTBdBuilder, p: Parameters)
   extends BdIntfPin(portToPortName(axiPort).toUpperCase(), bd.topInstance()) with MapsToPorts with XIntf {
 

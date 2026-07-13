@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bare-Metal Programs &amp; soctglue — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Bare-Metal Programs &amp; soctglue</p>
+  <h1>Bare-Metal Programs &amp; soctglue</h1>
+  <p class="lead">The <code>binaries/</code> directory contains RISC-V bare-metal programs and boot
+  ROMs that run on the SoCeteer-generated SoC. All binaries share a common build infrastructure
+  provided by <code>soctglue</code>.</p>
+
+  <h2>Directory layout</h2>
+<pre><code>binaries/
+  CMakeLists.txt           # Top-level build file
+  programs/
+    template.cmake         # Reusable CMake template for programs
+    hello-hart/            # Example: multi-hart hello-world
+    sd-test/               # Example: SD card read/write test
+    mem-test/              # Full-range DRAM validation (capacity probe, line-edge, sweeps)
+    heap-test/             # Heap capacity/allocator behavior test
+    syscall-test/          # Syscall layer smoke test
+    gemmini-basic/         # Gemmini accelerator smoke test
+    gemmini-mnist/         # Gemmini MNIST inference demo
+  bootroms/
+    template.cmake         # Reusable CMake template for boot ROMs
+    testchipip-boot/       # Minimal boot ROM (testchipip-compatible)
+    sd-boot/               # SD card boot ROM with FatFs
+shared/
+  soctglue/                # Runtime library linked into every program
+    CMakeLists.txt
+    soct.ld                # Linker script for programs
+    include/soct/          # Public headers
+    src/                   # crt0, stdio wrappers, syscall layer, FatFs glue</code></pre>
+
+  <h2>soctglue</h2>
+  <p><a href="https://github.com/soct-org/SoCeteer/tree/main/shared/soctglue"><code>soctglue</code></a> is a static C library (<code>libsoctglue.a</code>) that every program
+  links against. It provides the bare-metal runtime that sits between the hardware and your
+  <code>main()</code>.</p>
+
+  <h3>Startup (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/soctglue/src/crt0.S"><code>crt0.S</code></a> &rarr; <code>_soct_start_main</code>)</h3>
+  <p>The assembly entry point <code>_start</code> (placed in <code>.text.init</code>) runs on every
+  hart. It:</p>
+  <ol>
+    <li>Zeros all registers except <code>a0</code> (hart ID) and <code>a1</code> (DTB pointer),
+      which the SoC passes at reset.</li>
+    <li>Initializes the FPU if the ISA extension is present.</li>
+    <li>Sets up the global pointer, thread pointer, and per-hart stack (each hart gets its own
+      stack slice, sized by <code>__stack_shift</code> from the linker script).</li>
+    <li>On the primary hart (hart 0 by default), zeros BSS and calls global constructors.</li>
+    <li>Secondary harts spin on a boot barrier until the primary releases them.</li>
+    <li>Calls <code>_soct_start_main(hartid, dtb_ptr)</code> on the primary hart.</li>
+  </ol>
+
+  <h3><code>_soct_start_main</code></h3>
+  <p>Before calling <code>main()</code>, this function:</p>
+  <ol>
+    <li>Parses the DTB blob using the embedded <code>smoldtb</code> parser to discover peripherals.</li>
+    <li>If a UART is found in the DTB, registers a UART syscall handler so <code>printf</code>
+      works over serial.</li>
+    <li>If an SD controller is found and <code>SOCT_NEEDS_FATFS</code> is set, mounts the SD volume
+      via FatFs.</li>
+    <li>If the HTIF device is present (Verilator simulation), registers an HTIF syscall handler and
+      fetches <code>argc</code>/<code>argv</code> from the host.</li>
+    <li>Releases secondary harts, then calls <code>main()</code>.</li>
+  </ol>
+  <p>Secondary harts jump to <code>__main()</code> if your program defines it, or spin in
+  <code>wfi</code> otherwise.</p>
+
+  <h3>Memory layout, heap and stacks (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/soctglue/soct.ld"><code>soct.ld</code></a> + <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/soctglue/src/posix/sbrk.c"><code>sbrk</code></a>)</h3>
+  <p>Programs are linked at the DRAM base (<code>SOCT_MEM_BASE_ADDR</code>, typically
+  <code>0x8000_0000</code>). The layout enforces a fixed <strong>program budget</strong>:</p>
+  <ul>
+    <li>The program image (text, data, BSS) plus a minimum early heap of 128&nbsp;KiB must fit into
+      <code>SOCT_PROGRAM_MAX_SIZE</code> (default <strong>4&nbsp;MiB</strong>). If it does not,
+      linking fails with a readable assertion &mdash; increase the budget with
+      <code>target_link_options(&lt;prog&gt; PRIVATE "LINKER:--defsym=SOCT_PROGRAM_MAX_SIZE=&lt;bytes&gt;")</code>
+      or shrink the program.</li>
+    <li>The per-hart stacks sit at the <em>fixed</em> boundary <code>base + SOCT_PROGRAM_MAX_SIZE</code>.
+      Per-hart stack size is the next power of two above <code>24&nbsp;KiB + TLS size</code>;
+      contiguous slices are allocated for up to <code>SOCT_MAX_HARTS</code> harts.</li>
+    <li><strong>Everything above the stacks belongs to the heap.</strong> soctglue's
+      <code>sbrk</code> serves three regions in order: the early heap between <code>_end</code> and
+      the stacks, then the extended heap from the end of the stacks to the end of RAM as reported
+      by the device tree (<code>soct_ram_end()</code>). On a 16&nbsp;GiB board the heap capacity is
+      ~16&nbsp;GiB minus the program budget.</li>
+  </ul>
+  <div class="note">
+    Allocator caveat: newlib's malloc (both the nano and the full allocator) rejects single
+    requests of &ge;&nbsp;2&nbsp;GiB, and nano-malloc additionally cannot split a free chunk when
+    the remainder would be &ge;&nbsp;2&nbsp;GiB. For huge allocations use several
+    &lt;&nbsp;2&nbsp;GiB blocks (see <code>binaries/programs/heap-test</code>, which probes exactly
+    these limits).
+  </div>
+
+  <h3>Static stack-usage checking</h3>
+  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/template.cmake"><code>program template</code></a> compiles everything with <code>-fstack-usage</code> and
+  <code>-Wstack-usage=&lt;bytes&gt;</code> (default threshold 2048; override with
+  <code>-DSOCT_STACK_WARN=&lt;bytes&gt;</code>). Any single function with a larger frame produces a
+  compile-time warning, and the <code>&lt;prog&gt;-stack-report</code> target prints the collected
+  per-function frame sizes sorted by size. Runtime recursion is of course not caught.</p>
+
+  <h3>Syscall handler chain</h3>
+  <p>Standard C library calls (<code>fopen</code>, <code>printf</code>, <code>read</code>, &hellip;)
+  are redirected through a handler table. The linker wraps <code>puts</code>, <code>printf</code>,
+  <code>vprintf</code>, <code>sprintf</code>, <code>snprintf</code>, <code>fopen</code>,
+  <code>fopen64</code>, <code>freopen</code>, and <code>freopen64</code> so every I/O call passes
+  through soctglue's dispatch instead of the newlib stubs.</p>
+  <p>The dispatch chain has two priority levels:</p>
+  <ul>
+    <li><strong>User handlers</strong> &mdash; registered by program code with
+      <code>soct_register_handler()</code>. Tried first.</li>
+    <li><strong>Default handlers</strong> &mdash; registered by soctglue internals (UART, HTIF) with
+      <code>soct_register_default_handler()</code>. Tried only if every user handler passes.</li>
+  </ul>
+  <p>Each handler inspects the syscall number and arguments and either handles the call (returning
+  <code>SOCT_HANDLER_HANDLED</code>) or passes it on (<code>SOCT_HANDLER_PASS</code>). If no handler
+  claims the syscall, <code>errno</code> is set to <code>ENOSYS</code>.</p>
+<pre><code>// Registering a custom handler from main():
+static void handle_exit(soct_handler_resp_t *resp, sc_type_t syscall, ...) {
+    if (syscall == SOCT_EXIT)
+        printf("Exiting with code %llu\n", a0);
+    resp-&gt;status = SOCT_HANDLER_PASS; // let default handler actually exit
+}
+
+soct_register_handler((soct_handler_t){ .handle = handle_exit });</code></pre>
+
+  <h3>FatFs integration (<code>soct_ff</code>)</h3>
+  <p>When <code>SOCT_NEEDS_FATFS</code> is defined, soctglue compiles in <code>soct_ff</code> &mdash;
+  a glue layer that bridges FatFs with the standard <code>fopen</code>/<code>fread</code>/<code>fwrite</code>/<code>fclose</code>
+  API. Programs access the SD card using ordinary POSIX file calls:</p>
+<pre><code>FILE *f = fopen(SOCT_SD_PATH "/data.bin", "r");
+fread(buf, 1, sizeof(buf), f);
+fclose(f);</code></pre>
+  <p>Without <code>SOCT_NEEDS_FATFS</code>, a stub is compiled instead that returns
+  <code>ENOSYS</code> for all file operations.</p>
+
+  <h3>Helper API</h3>
+  <table>
+    <tr><th>Function</th><th>Description</th></tr>
+    <tr><td><code>soct_hart_id()</code></td><td>Returns the current hart's MHARTID</td></tr>
+    <tr><td><code>soct_n_harts()</code></td><td>Returns the number of CPU harts from the DTB, or &minus;1 if unavailable</td></tr>
+    <tr><td><code>soct_ram_end()</code></td><td>End of the RAM region containing the program, from the DTB (upper heap bound)</td></tr>
+    <tr><td><code>soct_heap_remaining()</code></td><td>Bytes sbrk can still hand out across all heap regions</td></tr>
+    <tr><td><code>soct_syscall(nr, a0&hellip;a6)</code></td><td>Make a raw syscall through the handler chain</td></tr>
+    <tr><td><code>soct_register_handler(h)</code></td><td>Register a high-priority user handler</td></tr>
+    <tr><td><code>soct_register_default_handler(h)</code></td><td>Register a low-priority default handler</td></tr>
+  </table>
+  <p>You can override the linker script by setting <code>SOCT_LD_SCRIPT</code> before including the
+  program template.</p>
+
+  <h2>The system file (<code>SOCT_SYSTEM</code>)</h2>
+  <p>Every build requires a <strong>system file</strong> &mdash; a CMake file generated by SoCeteer
+  that describes the target SoC. It provides variables such as:</p>
+  <table>
+    <tr><th>Variable</th><th>Meaning</th></tr>
+    <tr><td><code>SOCETEER_ROOT</code></td><td>Absolute path to the SoCeteer checkout</td></tr>
+    <tr><td><code>SOCETEER_VERSION</code></td><td>Version string checked by soctglue</td></tr>
+    <tr><td><code>SOCT_ARCH</code> / <code>SOCT_ABI</code></td><td>RISC-V march/mabi flags (e.g. <code>rv64gc</code> / <code>lp64d</code>)</td></tr>
+    <tr><td><code>SOCT_TARGET</code></td><td>Build target (<code>verilator</code>, <code>fpga</code>, &hellip;)</td></tr>
+    <tr><td><code>SOCT_COMPILE_DEFS</code></td><td>Extra compiler definitions from the SoC config</td></tr>
+    <tr><td><code>SOCT_DTS</code> / <code>SOCT_DTB</code></td><td>Path to the device-tree source/blob</td></tr>
+    <tr><td><code>SOCT_ELFS_DIR</code></td><td>Output directory for ELF files</td></tr>
+    <tr><td><code>SOCT_BOOTROM_IMG</code></td><td>Output path for the boot ROM binary image</td></tr>
+    <tr><td><code>SOCT_NCPUS</code></td><td>Number of CPU cores in the SoC</td></tr>
+    <tr><td><code>SOCT_CLINT_BASE</code></td><td>Base address of the CLINT</td></tr>
+  </table>
+  <p>The top-level <code>CMakeLists.txt</code> finds this file via <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindSOCTSystem.cmake"><code>FindSOCTSystem.cmake</code></a>.
+  It looks first at the <code>SOCT_SYSTEM</code> variable (passed with <code>-DSOCT_SYSTEM=...</code>),
+  then falls back to a <code>SOCTSystem-latest.cmake</code> symlink in the repository root that
+  SoCeteer creates automatically.</p>
+
+  <h2>Adding a program</h2>
+  <ol>
+    <li>Create a subdirectory under <code>binaries/programs/</code>:
+<pre><code>binaries/programs/my-program/
+  CMakeLists.txt
+  main.c</code></pre></li>
+    <li>Write a <code>CMakeLists.txt</code> that lists sources, then includes the template:
+<pre><code>cmake_minimum_required(VERSION 3.20)
+
+list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
+# list(APPEND CMAKE_CXX_SRCS ...) for C++ sources
+
+include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
+
+# Optional: add per-program flags after the include
+target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11 -O2)</code></pre></li>
+    <li>Write <code>main.c</code>. The entry point is the standard
+      <code>main(int argc, char **argv, char **envp)</code>. If the program uses multiple harts,
+      also define <code>__main(...)</code> for secondary harts (same signature).</li>
+  </ol>
+  <p>The top-level <code>CMakeLists.txt</code> automatically discovers every subdirectory under
+  <code>programs/</code> and <code>bootroms/</code>, so no manual registration is needed. The
+  target name can be adjusted with <code>SOCT_PROGRAM_PREFIX</code>/<code>SOCT_PROGRAM_SUFFIX</code>
+  (set before including the template) &mdash; useful for building variants of the same program.</p>
+
+  <h3>C++ programs</h3>
+  <p>List sources in <code>CMAKE_CXX_SRCS</code> instead of (or in addition to)
+  <code>CMAKE_C_SRCS</code>. The template detects the presence of C++ sources and links
+  <code>supc++</code>/<code>stdc++</code> automatically. Exceptions and RTTI are disabled.</p>
+
+  <h3>Conditionally building for a specific target</h3>
+<pre><code>if (SOCT_TARGET STREQUAL "verilator")
+    include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
+    # ...
+endif ()</code></pre>
+
+  <h3>Using the SD card / FatFs</h3>
+  <p>Define <code>SOCT_NEEDS_FATFS</code> before the build (or in your program's CMakeLists.txt via
+  <code>target_compile_definitions</code>) and access the SD volume with standard
+  <code>fopen</code>/<code>fread</code>/<code>fwrite</code>. The volume root is
+  <code>SOCT_SD_PATH</code> (defined to <code>/SD</code> by default with Linux-style volume IDs).</p>
+
+  <h2>Adding a boot ROM</h2>
+  <p>Boot ROMs live under <code>binaries/bootroms/</code> and follow the same auto-discovery
+  pattern. Their <code>CMakeLists.txt</code> includes <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/bootroms/template.cmake"><code>bootroms/template.cmake</code></a> instead:</p>
+<pre><code>cmake_minimum_required(VERSION 3.20)
+
+list(APPEND CMAKE_C_SRCS   ${CMAKE_CURRENT_SOURCE_DIR}/bootrom.c)
+list(APPEND CMAKE_ASM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/head.S)
+
+include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)</code></pre>
+  <p>The bootrom template:</p>
+  <ul>
+    <li>Compiles the ELF with <code>-Os -fno-pic</code>.</li>
+    <li>Strips the ELF to a raw binary image with
+      <code>objcopy -O binary --change-addresses=-0x10000</code>, placing the result at
+      <code>SOCT_BOOTROM_IMG</code>.</li>
+    <li>Passes <code>-DDEVICE_TREE=\"${SOCT_DTB}\"</code> so the source can embed the DTB at
+      compile time.</li>
+  </ul>
+  <p>Boot ROMs do <strong>not</strong> link against soctglue &mdash; they are self-contained.</p>
+
+  <h2>Building</h2>
+<pre><code>cmake -S binaries -B build \
+  -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake \
+  -DCMAKE_TOOLCHAIN_FILE=shared/cmake/toolchain-riscv.cmake
+cmake --build build -j$(nproc)</code></pre>
+  <p>ELF files land in <code>SOCT_ELFS_DIR</code> (set by the system file). Each program also gets
+  an <code>.objdump</code> and <code>.nm</code> file generated alongside its ELF for inspection.</p>
+
+  <h2>Flashing to an FPGA</h2>
+  <p>Every program gets a <code>&lt;name&gt;-flash</code> target that loads the compiled ELF onto an
+  FPGA over JTAG using Xilinx <code>xsdb</code>. The target is only created when at least one of
+  <code>SOCT_FLASH_XSDB</code> or <code>SOCT_FLASH_HOST</code> is set.</p>
+<pre><code>cmake --build build --target hello-hart-flash</code></pre>
+
+  <h3>CMake variables</h3>
+  <table>
+    <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>SOCT_FLASH_XSDB</code></td><td><em>(empty)</em></td><td>Path to the <code>xsdb</code> binary (local, or on the remote host)</td></tr>
+    <tr><td><code>SOCT_FLASH_HOST</code></td><td><em>(empty)</em></td><td>SSH host to flash through &mdash; leave empty to flash locally</td></tr>
+    <tr><td><code>SOCT_FLASH_REMOTE_DIR</code></td><td><code>/tmp</code></td><td>Directory on the remote host to upload the ELF into</td></tr>
+    <tr><td><code>SOCT_FLASH_BOOT_HART</code></td><td><code>0</code></td><td>Boot hart index written into register <code>a0</code> before <code>con</code></td></tr>
+    <tr><td><code>SOCT_FLASH_BOOTROM_DTB_ADDR</code></td><td><code>0x00010080</code></td><td>DTB base address written into register <code>a1</code> before <code>con</code></td></tr>
+  </table>
+  <p>Pass any of these at configure time:</p>
+<pre><code>cmake -S binaries -B build \
+  -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake \
+  -DSOCT_FLASH_XSDB=/opt/Xilinx/Vivado/2024.2/bin/xsdb \
+  -DSOCT_FLASH_BOOT_HART=0 \
+  -DSOCT_FLASH_BOOTROM_DTB_ADDR=0x00010080</code></pre>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+</body>
+</html>

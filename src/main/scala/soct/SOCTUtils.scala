@@ -5,6 +5,7 @@ import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
 import soct.SOCTBytes.{ByteUnitOpsInt, Bytes}
 import soct.SOCTUtils.MAX_MEM_SIZE_32_BIT
+import soct.system.vivado.VivadoDesignException
 import soct.system.vivado.fpga.{PartRegistry, DDR4PortParams}
 
 import java.nio.file.{Path, Paths}
@@ -123,9 +124,18 @@ object SOCTRemote {
 object SOCTMem {
 
 
+  /**
+   * Cap the summed capacity of the given memory ports to `maxSize`: ports are kept
+   * largest-first, the last fitting port is truncated, and the rest are dropped.
+   *
+   * @param mems    the memory ports (capacities must be set)
+   * @param maxSize the maximum total capacity; 0 drops all ports, negative values are invalid
+   * @return the capped ports
+   * @throws soct.system.vivado.VivadoDesignException if `maxSize` is negative or a port has no capacity
+   */
   def limitToMaxCap(mems: Seq[DDR4PortParams], maxSize: Bytes): Seq[DDR4PortParams] = {
     if (maxSize < 0.B) {
-      throw new IllegalArgumentException(s"maxSize must be non-negative, got $maxSize")
+      throw VivadoDesignException(s"maxSize must be non-negative, got $maxSize")
     }
     if (maxSize == 0.B) {
       return Seq.empty
@@ -150,6 +160,20 @@ object SOCTMem {
   }
 
 
+  /**
+   * Build the memory-layout config fragment for the selected board: resolves the memory part of
+   * every external DDR4 port (board preset or `--ext-mem-part`, switching to the custom
+   * interface when they differ), derives capacities, applies the 32-bit address-space cap, and
+   * chooses the single- or multi-channel layout.
+   *
+   * @param args               the launcher arguments (board, requested memory parts, xlen)
+   * @param topSupportMultiMem whether the top module supports multiple memory channels
+   * @return the layout fragment, or None if the board has no memory ports
+   * @throws soct.system.vivado.VivadoDesignException if the requested parts do not match the
+   *                                                  board's ports, a part's capacity cannot be
+   *                                                  derived, or the board lacks the data for a
+   *                                                  required custom interface
+   */
   def genMemConfig(args: SOCTArgs, topSupportMultiMem: Boolean): Option[Config] = {
     val board = args.board.get
     val _memCaps: Seq[DDR4PortParams] = {
@@ -160,14 +184,14 @@ object SOCTMem {
         val nPorts = ports.length
 
         if (args.extMemParts.nonEmpty && args.extMemParts.length != nPorts) {
-          throw new IllegalArgumentException(s"Number of memory parts provided via --ext-mem-part (${args.extMemParts.length}) does not match the number of external DDR4 ports on the board ${board.friendlyName}: ($nPorts). Please provide a part for each external DDR4 port.")
+          throw VivadoDesignException(s"Number of memory parts provided via --ext-mem-part (${args.extMemParts.length}) does not match the number of external DDR4 ports on the board ${board.friendlyName}: ($nPorts). Please provide a part for each external DDR4 port.")
         }
 
         // The DDR4 board flow locks the controller to the board-interface preset DIMM
-        // (C0.DDR4_MemoryPart is a disabled parameter; set_property on it is ignored), so the
-        // preset is the single source of truth for what the hardware can address. The capacity
-        // (ExtMem, DTB, address aperture) is derived from that part. Selecting a different DIMM
-        // requires a custom, non-board-flow DDR4 interface - not implemented yet.
+        // (C0.DDR4_MemoryPart is a disabled parameter; set_property on it is ignored). The
+        // capacity (ExtMem, DTB, address aperture) is derived from the selected part. Selecting
+        // a DIMM that differs from the preset switches the port to the custom (non board-flow)
+        // interface, which requires the board definition to carry the pin map and clock timing.
         ports.zipWithIndex.map { case (port, i) =>
           val requestedOpt = args.extMemParts.lift(i)
           val presetOpt = port.defaultMemoryPart
@@ -179,30 +203,30 @@ object SOCTMem {
                 // different DIMM needs the custom (non board-flow) interface: full IP config
                 // plus pin LOCs from the board definition's ddr4PinMap.
                 if (!port.supportsCustomInterface) {
-                  throw new NotImplementedError(s"Port ${port.portName}: the board interface enforces memory part '$preset' and the board definition of ${board.friendlyName} does not provide custom-interface data (ddr4PinMap/ddr4TimePeriodPs/ddr4InputClockPeriodPs), so '$requested' cannot be used. Add the custom-interface data to the board definition (see DDR4PortParams).")
+                  throw VivadoDesignException(s"Port ${port.portName}: the board interface enforces memory part '$preset' and the board definition of ${board.friendlyName} does not provide custom-interface data (ddr4PinMap/ddr4TimePeriodPs/ddr4InputClockPeriodPs), so '$requested' cannot be used. Add the custom-interface data to the board definition (see DDR4PortParams).")
                 }
                 soct.log.info(s"Port ${port.portName}: memory part '$requested' differs from the board preset '$preset' - using a custom (non board-flow) DDR4 interface with pin constraints from the board definition.")
                 port.withCustomInterface()
               }
               requestedOpt.get
             case (Some(requested), None) =>
-              throw new NotImplementedError(s"Port ${port.portName}: --ext-mem-part '$requested' was provided, but the board definition of ${board.friendlyName} does not declare the part enforced by its DDR4 board interface (defaultMemoryPart), so preset and request cannot be compared. Declare defaultMemoryPart for the port.")
+              throw VivadoDesignException(s"Port ${port.portName}: --ext-mem-part '$requested' was provided, but the board definition of ${board.friendlyName} does not declare the part enforced by its DDR4 board interface (defaultMemoryPart), so preset and request cannot be compared. Declare defaultMemoryPart for the port.")
             case (None, Some(preset)) =>
               soct.log.info(s"Port ${port.portName}: using the board-preset memory part '$preset'.")
               preset
             case (None, None) =>
-              throw new IllegalArgumentException(s"Port ${port.portName}: the board definition of ${board.friendlyName} does not declare the memory part enforced by its DDR4 board interface. Declare defaultMemoryPart for the port (see DDR4PortParams).")
+              throw VivadoDesignException(s"Port ${port.portName}: the board definition of ${board.friendlyName} does not declare the memory part enforced by its DDR4 board interface. Declare defaultMemoryPart for the port (see DDR4PortParams).")
           }
 
           val cap = PartRegistry.capacityOf(part).getOrElse(
-            throw new IllegalArgumentException(s"The capacity of memory part '$part' could not be derived from its name. Add it to PartRegistry (known parts: ${PartRegistry.knownParts.mkString(", ")}).")
+            throw VivadoDesignException(s"The capacity of memory part '$part' could not be derived from its name. Add it to PartRegistry (known parts: ${PartRegistry.knownParts.mkString(", ")}).")
           )
           soct.log.info(s"Port ${port.portName}: capacity $cap derived from memory part '$part'.")
           port.withCap(cap).withMemoryPart(part)
         }
       } else {
         if (args.extMemParts.nonEmpty) {
-          throw new IllegalArgumentException(s"--ext-mem-part was provided, but the board ${board.friendlyName} has no external DDR4 ports. Memory parts can only be selected for user-insertable (external) DIMMs.")
+          throw VivadoDesignException(s"--ext-mem-part was provided, but the board ${board.friendlyName} has no external DDR4 ports. Memory parts can only be selected for user-insertable (external) DIMMs.")
         }
         Seq.empty
       }
@@ -391,6 +415,7 @@ object SOCTUtils {
     }
   }
 
+  /** True when running on Windows (used to pick CMake generators and path handling). */
   def isWindows: Boolean = {
     System.getProperty("os.name").toLowerCase.contains("win")
   }
@@ -445,7 +470,7 @@ object SOCTUtils {
    * Example:
    * log2Exact(4096) == 12
    *
-   * Throws IllegalArgumentException if x is not a positive power of two.
+   * @throws IllegalArgumentException if x is not a positive power of two
    */
   def log2Exact(x: Long): Int = {
     require(isPowerOfTwo(x), s"$x is not a positive power of two")

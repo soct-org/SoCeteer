@@ -13,27 +13,21 @@ import scala.collection.mutable
 final case class TclVar(description: String, default: String, priority: Int = 99)
 
 
+/**
+ * Holds the TCL variables emitted at the top of every generated script, keyed by variable
+ * name (including the dereferencing `$`).
+ */
 class SOCTBdVars {
-  // Map of variable names to their descriptions and default values
+  /** Map of variable names (including the dereferencing `$`) to their descriptions and default values */
   val vars: mutable.Map[String, TclVar] = mutable.Map.empty
 
   /**
-   * Static map of block design specific TCL variables that are instantiated in the BD script.
-   */
-  val bdVars: mutable.Map[String, TclVar] = mutable.Map.empty
-
-  /**
-   * Add a block design TCL variable
+   * Render the script header that declares every variable with its description and default,
+   * guarded by `info exists` so callers can pre-set variables before sourcing the script.
    *
-   * @param name        The name, INCLUDING the dereferencing $
-   * @param description A description of the variable
-   * @param default     The default value of the variable
+   * @param vars the variables to declare
+   * @return the TCL header block
    */
-  def addBdVar(name: String, description: String, default: String): Unit = {
-    bdVars += (name -> TclVar(description, default))
-  }
-
-
   def genTCLHeader(vars: Map[String, TclVar]): String = {
     // Sort variables by priority and then by name (higher = later, allowing it to override lower priority variables)
     val sortedVars = vars.toSeq.sortBy { case (name, tclVar) => (tclVar.priority, name) }

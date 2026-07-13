@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture &amp; Hardware Flow — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Architecture &amp; Hardware Flow</p>
+  <h1>Architecture &amp; Hardware Flow</h1>
+  <p class="lead">What happens between <code>sbt "runMain soct.SOCTLauncher ..."</code> and a pile of
+  Verilog, TCL and a boot ROM image: the launcher pipeline, how configs shape the design, how the
+  transpiler lowers Chisel to Verilog, and how the boot ROM gets built <em>during</em> elaboration.</p>
+
+  <h2>The pipeline at a glance</h2>
+  <ol>
+    <li><strong><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/SOCTLauncher.scala"><code>SOCTLauncher.main</code></a></strong> parses the arguments, resolves the
+      <code>firtool</code> binary, assembles the <code>Config</code> stack (below), picks the
+      per-target output paths, and dispatches to the target generator (Verilator or Vivado).</li>
+    <li><strong><code>Transpiler.evalDesign</code></strong> (implementations linked below) elaborates the design: the top module
+      class is instantiated by reflection with the assembled <code>Parameters</code>, Diplomacy
+      negotiates the interconnect, and the circuit is serialized as FIRRTL
+      (<code>&lt;top&gt;.fir</code>). During this single elaboration the device tree is finalized
+      and the <strong>boot ROM is compiled and embedded</strong> (see below). RocketChip's
+      elaboration artefacts (<code>.dts</code>, <code>.graphml</code>, <code>.memmap.json</code>,
+      register maps) are written alongside.</li>
+    <li><strong><code>Transpiler.emitLowFirrtl</code> / <code>emitVerilog</code></strong> lower the
+      FIRRTL to Verilog into <code>vsrcs/</code> (details below - the two supported Chisel lineages
+      lower differently).</li>
+    <li><strong>Target-specific output:</strong>
+      <ul>
+        <li><em>Verilator:</em> the emitted Verilog plus <code>SOCTSystem.cmake</code> are consumed
+          by the <code>sim/</code> CMake project, which verilates the design into a native
+          simulator binary.</li>
+        <li><em>Vivado:</em> <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTVivado.scala"><code>SOCTVivado.prepareForVivado</code></a> finalizes the block-design
+          graph, patches Vivado interface annotations into the top-level Verilog ports, and emits
+          <code>init.tcl</code>, the block-design TCL, timing constraints and per-component XDC
+          files; optionally Vivado is launched (locally or remotely) to create the project.</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h2>How configs shape the build</h2>
+  <p>Everything the generator does is driven by one CDE <code>Parameters</code> stack, assembled in
+  this order (earlier entries win; later ones are fallbacks):</p>
+  <ol>
+    <li><strong>Launcher-argument fragments</strong> (from <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/SOCTLauncher.scala"><code>SOCTConfig.apply</code></a>):
+      <code>WithPeripheryClockSpeed(--periphery-freq-mhz)</code>, plus
+      <code>WithSingleBusClockSpeed(--core-freq-mhz)</code>,
+      <code>WithFastPnR</code> (<code>--fast-pnr</code>) and RocketChip's
+      <code>WithRV32</code> (<code>--xlen 32</code>) when requested.</li>
+    <li><strong>Your base config</strong> - the class named by <code>--config</code>, instantiated
+      by reflection (default <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/rocketchip/Configs.scala"><code>soct.RocketB1</code></a>; typos get a closest-match suggestion).
+      This is where you pick cores (Rocket/BOOM/Gemmini), cache sizes, and any custom fragments.</li>
+    <li><strong>Launcher-injected context:</strong> <code>WithSOCTConfig</code> and
+      <code>WithSOCTPaths</code> expose the resolved arguments and output paths to elaboration-time
+      code (e.g. the boot ROM builder).</li>
+    <li><strong>Target base configs</strong> (appended as fallbacks, so your config overrides them):
+      <ul>
+        <li><em>Vivado:</em> the memory layout from <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/SOCTUtils.scala"><code>genMemConfig</code></a>
+          (<code>WithSingleMemLayout</code>/<code>WithMultiMemLayout</code>, sized from the board's
+          DDR4 ports and <code>--ext-mem-part</code>), <code>WithXilinxFPGA(--board)</code>, and
+          <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>RocketVivadoBaseConfig</code></a> (block-design builder, JTAG debug, SD card, UART,
+          full reset scheme).</li>
+        <li><em>Verilator:</em> <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>RocketSimBaseConfig</code></a> (HTIF-style simulation setup,
+          synchronous reset scheme, no slave port).</li>
+      </ul>
+    </li>
+  </ol>
+  <p>At elaboration time, <code>Field</code>s from this stack gate what gets built:
+  <code>HasUART</code>/<code>HasSDCardPMOD</code> decide whether the UART and SD-card controllers
+  (and their device-tree nodes and PLIC interrupts) exist; <code>XilinxFPGAKey</code>/<code>BdBuilderKey</code>
+  select the board definition and collect the block design; <code>PeripheryClockDomain</code> (a
+  <code>Freq</code>) sets the periphery clock; <code>RegisteredMems</code>/<code>ExtMem</code>
+  define the memory channels; <code>BootROMLocated</code> binds the SOCT boot ROM described next.</p>
+
+  <h2>How the boot ROM is built (single elaboration, lazy contents)</h2>
+  <p><code>SOCTSystem</code> replaces RocketChip's static boot ROM with
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/soceteer/SOCTSystem.scala"><code>SOCTBootROM.attach</code></a>, whose ROM contents are computed <em>on demand during
+  elaboration</em> - at the moment Diplomacy instantiates the <code>TLROM</code>, the subsystem's
+  device tree is already final. The contents function then:</p>
+  <ol>
+    <li>writes the generated device tree source (<code>&lt;top&gt;.dts</code>),</li>
+    <li>generates <code>SOCTSystem.cmake</code> (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/SOCTSystemGenerator.scala"><code>SOCTSystemGenerator</code></a> extracts the ISA
+      string and CPU count from the DTS and records all paths, ABI and compile definitions),</li>
+    <li>configures and builds the boot ROM CMake target in <code>binaries/</code> with Ninja - the
+      target is <code>--bootrom</code> or the target default (<code>sd-boot</code> for Vivado,
+      <code>testchipip-boot</code> for Verilator). The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/bootroms/template.cmake"><code>bootrom template</code></a> compiles the DTS to a DTB
+      (<code>dtc</code>) and embeds it via <code>-DDEVICE_TREE</code>, then objcopys the ELF to a
+      raw <code>bootrom.img</code>,</li>
+    <li>reads the image bytes back and bakes them into the <code>TLROM</code>.</li>
+  </ol>
+  <p>So the Verilog that comes out of the single elaboration already contains the finished boot ROM
+  - DTB included - and operating systems can read the device tree straight from ROM.</p>
+
+  <h2>How the lowering works (Transpiler.scala)</h2>
+  <p>There are two <code>Transpiler</code> implementations under
+  <code>src/main/scala-unmanaged/</code>; <a href="https://github.com/soct-org/SoCeteer/blob/main/build.sbt"><code>build.sbt</code></a> selects one source directory based
+  on the Chisel lineage (<code>SOCT_CHISEL_VERSION</code>):</p>
+
+  <h3>Modern Chisel (org.chipsalliance, the default) - <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala-unmanaged/chisel/Transpiler.scala"><code>scala-unmanaged/chisel</code></a></h3>
+  <ul>
+    <li><code>evalDesign</code>: <code>ChiselStage.elaborate</code> produces the FIRRTL circuit,
+      serialized to <code>&lt;top&gt;.fir</code>.</li>
+    <li><code>emitLowFirrtl</code>: a no-op - all lowering is delegated to firtool.</li>
+    <li><code>emitVerilog</code>: invokes the standalone <strong>firtool</strong> binary on the
+      <code>.fir</code> file with <code>--split-verilog</code> into <code>vsrcs/</code> (or, with
+      <code>--single-verilog-file</code>, a single <code>.sv</code> with verification layers
+      disabled), <code>--lowering-options=disallowPortDeclSharing</code> (plus
+      <code>locationInfoStyle=none</code> unless <code>--include-location-info</code>),
+      <code>-O=release</code>, and any user <code>--firtool-arg</code>s.</li>
+    <li>The firtool binary itself comes from <code>--firtool-path</code>, or is resolved by
+      version through <code>firtoolresolver</code> (the version shipped with Chisel, floor
+      1.75.0; override with <code>--firtool-version</code>).</li>
+  </ul>
+
+  <h3>Legacy Chisel 3 (edu.berkeley.cs, 3.6.1) - <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala-unmanaged/chisel3/Transpiler.scala"><code>scala-unmanaged/chisel3</code></a></h3>
+  <ul>
+    <li><code>evalDesign</code>: runs the <code>Elaborate</code> and <code>Convert</code> phases
+      manually, writing the FIRRTL circuit plus the annotation file
+      (<code>&lt;top&gt;.anno.json</code>) that later stages need.</li>
+    <li><code>emitLowFirrtl</code>: runs the Scala <code>FirrtlStage</code> with
+      <code>-E=low-opt</code>, producing optimized low FIRRTL
+      (<code>&lt;top&gt;.opt.lo.fir</code>).</li>
+    <li><code>emitVerilog</code>: runs <code>FirrtlStage</code> again with <code>-E=verilog
+      --start-from=low-opt</code> and moves the emitted <code>.v</code> files (including
+      blackbox-inline collateral) into <code>vsrcs/</code>.</li>
+    <li>This annotation-driven path is required if your project depends on
+      Transform/FirrtlAnnotation-based concepts, which modern Chisel + firtool no longer support.</li>
+  </ul>
+
+  <h2>Chisel, firtool, FIRRTL and friends</h2>
+  <p>There are two Chisel lineages this repository is compatible with:</p>
+  <ol>
+    <li><a href="https://github.com/chipsalliance/chisel"><code>org.chipsalliance.chisel</code></a> &mdash;
+      the current default (see <code>fallbackChiselVersion</code> in <a href="https://github.com/soct-org/SoCeteer/blob/main/build.sbt"><code>build.sbt</code></a>).</li>
+    <li><a href="https://repo1.maven.org/maven2/edu/berkeley/cs/chisel3_2.13/"><code>edu.berkeley.cs.chisel3</code></a>
+      (3.6.1) &mdash; the legacy lineage, still supported and selectable via the
+      <code>SOCT_CHISEL_VERSION</code> environment variable.</li>
+  </ol>
+  <p>To stay compatible with Berkeley's chisel, org.chipsalliance also uses the package name
+    <code>chisel3</code>. So <code>import chisel3._</code> alone does not tell you which one is on
+    the classpath. A misconfigured <code>build.sbt</code> can produce very confusing errors; use
+    exactly one of the two packages. The supported versions are listed in
+    <code>supportedChiselVersions</code> in <code>build.sbt</code>.</p>
+  <div class="note">
+    Tip: to overwrite the Chisel version used by a submodule with its own build.sbt, wrap it in a
+    <code>freshProject</code> call in the root <code>build.sbt</code>.
+  </div>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+</body>
+</html>

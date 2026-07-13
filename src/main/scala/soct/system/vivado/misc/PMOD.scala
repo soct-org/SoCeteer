@@ -1,6 +1,6 @@
 package soct.system.vivado.misc
 
-import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, XilinxDesignException}
+import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 import soct.system.vivado.abstracts.{BdPinPort, EmitsConstraint}
 import soct.system.vivado.fpga.FPGA
 
@@ -14,7 +14,7 @@ case class RawPMODPin(pin: Int) extends BasePMODPin {
     if (pin >= 0 && pin <= 7) {
       this // Raw PMOD pins are already in the correct format
     } else {
-      throw XilinxDesignException(s"Invalid Raw PMOD pin: $pin. Valid pins are 0-7.")
+      throw VivadoDesignException(s"Invalid Raw PMOD pin: $pin. Valid pins are 0-7.")
     }
   }
 }
@@ -26,8 +26,22 @@ case class RawPMODPin(pin: Int) extends BasePMODPin {
 trait BasePMODPin {
   val pin: Int
 
-  def toRaw: RawPMODPin = throw XilinxDesignException(s"Cannot convert $this PMOD pin to a raw PMOD pin.")
+  /**
+   * Convert to the raw 0-7 signal-pin numbering.
+   *
+   * @return the raw PMOD pin
+   * @throws soct.system.vivado.VivadoDesignException if this pin has no raw equivalent (power/ground pins, out of range)
+   */
+  def toRaw: RawPMODPin = throw VivadoDesignException(s"Cannot convert $this PMOD pin to a raw PMOD pin.")
 
+  /**
+   * Resolve this PMOD pin to the board's package pin and IOSTANDARD.
+   *
+   * @param pmodPort the board's PMOD port number
+   * @param fpga     the board definition
+   * @return the FPGA pin
+   * @throws soct.system.vivado.VivadoDesignException if the pin has no raw equivalent or the board does not define the PMOD port
+   */
   def toFPGA(pmodPort: Int, fpga: FPGA): FPGAPMODPin = {
     val rawPin = toRaw
     fpga.pmod(pmodPort, rawPin)
@@ -49,15 +63,15 @@ case class DigilentPMODPin(pin: Int) extends BasePMODPin {
    * 11, 12 are the ground pins that do not map to any raw PMOD pin and throw an exception if attempted to be converted
    *
    * @return The corresponding RawPMODPin for this Digilent PMOD pin
-   * @throws XilinxDesignException if this Digilent PMOD pin does not correspond to a valid raw PMOD pin (i.e., if it is a power or ground pin or if it is out of range)
+   * @throws VivadoDesignException if this Digilent PMOD pin does not correspond to a valid raw PMOD pin (i.e., if it is a power or ground pin or if it is out of range)
    */
   override def toRaw: RawPMODPin = {
     pin match {
       case 1 | 2 | 3 | 4 => RawPMODPin(pin - 1) // Map signal pins 1-4 to raw pins 0-3
-      case 5 | 6 => throw XilinxDesignException(s"Digilent PMOD pin $pin is a power pin and does not correspond to a raw PMOD pin.")
+      case 5 | 6 => throw VivadoDesignException(s"Digilent PMOD pin $pin is a power pin and does not correspond to a raw PMOD pin.")
       case 7 | 8 | 9 | 10 => RawPMODPin(pin - 3) // Map signal pins 7-10 to raw pins 4-7
-      case 11 | 12 => throw XilinxDesignException(s"Digilent PMOD pin $pin is a ground pin and does not correspond to a raw PMOD pin.")
-      case _ => throw XilinxDesignException(s"Invalid Digilent PMOD pin: $pin. Valid pins are 1-12.")
+      case 11 | 12 => throw VivadoDesignException(s"Digilent PMOD pin $pin is a ground pin and does not correspond to a raw PMOD pin.")
+      case _ => throw VivadoDesignException(s"Invalid Digilent PMOD pin: $pin. Valid pins are 1-12.")
     }
   }
 }

@@ -6,6 +6,8 @@ import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.system.vivado.abstracts._
 
+import scala.annotation.unused
+
 
 /**
  * Constant IP core for Xilinx FPGAs
@@ -30,13 +32,24 @@ case class InlineConstant(value: BigInt, nBits: Int)
 }
 
 
+/** All-zeros constant, for tying inputs low. */
 object TieOff {
+  /**
+   * @param nBits the number of bits
+   * @return an [[InlineConstant]] of `nBits` zeros
+   */
   def apply(nBits: Int = 1)(implicit bd: SOCTBdBuilder, p: Parameters): InlineConstant = {
     InlineConstant(0, nBits)
   }
 }
 
+/** All-ones constant, for tying inputs high. */
+@unused // component library
 object TieHigh {
+  /**
+   * @param nBits the number of bits
+   * @return an [[InlineConstant]] of `nBits` ones
+   */
   def apply(nBits: Int = 1)(implicit bd: SOCTBdBuilder, p: Parameters): InlineConstant = {
     val maxValue = (BigInt(1) << nBits) - 1
     InlineConstant(maxValue, nBits)
@@ -45,7 +58,13 @@ object TieHigh {
 
 object InlineConstant {
 
-  // Apply with Uint for chisel
+  /**
+   * Create a constant from a Chisel literal.
+   *
+   * @param value the Chisel literal providing the constant value
+   * @param nBits the number of bits
+   * @return the constant component
+   */
   def apply(value: UInt, nBits: Int)(implicit bd: SOCTBdBuilder, p: Parameters): InlineConstant = {
     InlineConstant(value.litValue, nBits)
   }

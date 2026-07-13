@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoCeteer Documentation</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>SoCeteer Documentation</h1>
+  <p class="lead">A framework for designing and running RISC-V-based SoCs on FPGA and in simulation, built on top of Chisel.
+  Everything on this site is local to the repository &mdash; no network access required.</p>
+
+  <h2>Getting started</h2>
+  <div class="cards">
+    <a class="card" href="../README.md">
+      <h3>Quick Start (README)</h3>
+      <p>Generate a design, run it in Verilator, and build a ZCU104 bitstream with a custom DIMM &mdash; the fastest path from clone to running SoC.</p>
+    </a>
+  </div>
+
+  <h2>Guides</h2>
+  <div class="cards">
+    <a class="card" href="guides/architecture.html">
+      <h3>Architecture &amp; Hardware Flow</h3>
+      <p>How a design goes from Chisel configs through Diplomacy, FIRRTL and firtool to Verilog, and on to Verilator or Vivado.</p>
+    </a>
+    <a class="card" href="guides/binaries.html">
+      <h3>Bare-Metal Programs &amp; soctglue</h3>
+      <p>The runtime library, linker layout, heap and stack budgets, syscall handler chain, FatFs, and how to add programs and boot ROMs.</p>
+    </a>
+    <a class="card" href="guides/fpga-memory.html">
+      <h3>FPGA Memory &amp; Custom DDR4</h3>
+      <p>Selecting DIMMs with <code>--ext-mem-part</code>, the part registry, and how the custom (non board-flow) DDR4 interface works.</p>
+    </a>
+  </div>
+
+  <h2>API reference</h2>
+  <div class="cards">
+    <a class="card" href="api/index.html">
+      <h3>Scaladoc</h3>
+      <p>Generated API documentation of the <code>soct</code> packages: the launcher, the Vivado block-design DSL, boards and components.</p>
+    </a>
+  </div>
+  <div class="note">
+    If the API link is missing, generate it first: <code>sbt buildDocs</code>
+    (validates the doc links, runs <code>sbt doc</code> and copies the result into <code>docs/api/</code>).
+  </div>
+
+  <footer>SoCeteer &mdash; local documentation. Rebuild the API reference with <code>sbt buildDocs</code>; the guides are hand-maintained in <code>docs/guides/</code>.</footer>
+</main>
+</body>
+</html>

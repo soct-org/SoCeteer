@@ -10,17 +10,6 @@ import scala.reflect.io.Path.jfile2path
 import scala.util.matching.Regex
 
 
-/**
- * Exception thrown during evaluation of a Xilinx design
- */
-class XilinxDesignException(private val message: String = "",
-                            private val cause: Throwable = None.orNull) extends Exception(message, cause)
-
-object XilinxDesignException {
-  def apply(message: String): XilinxDesignException = new XilinxDesignException(message)
-}
-
-
 object SOCTVivado {
 
   /**
@@ -51,7 +40,7 @@ object SOCTVivado {
     }
 
     if (topModuleFileOpt.isEmpty) {
-      throw XilinxDesignException(s"Could not find top module file for module ${config.topModuleName} in ${boardPaths.verilogSrcDir}")
+      throw VivadoDesignException(s"Could not find top module file for module ${config.topModuleName} in ${boardPaths.verilogSrcDir}")
     }
 
     val topModuleFile = topModuleFileOpt.get
@@ -82,7 +71,7 @@ object SOCTVivado {
 
   private def extractPortLines(topVerilog: String, topModuleName: String): Seq[String] = {
     val m = verilogModuleRegex(topModuleName).findFirstMatchIn(topVerilog).getOrElse {
-      throw XilinxDesignException(
+      throw VivadoDesignException(
         s"Could not find module declaration for top module $topModuleName"
       )
     }
@@ -94,7 +83,7 @@ object SOCTVivado {
     val regex = verilogModuleRegex(topModuleName)
 
     val m = regex.findFirstMatchIn(topVerilog).getOrElse {
-      throw XilinxDesignException(
+      throw VivadoDesignException(
         s"Could not find module declaration for top module $topModuleName"
       )
     }
@@ -106,9 +95,22 @@ object SOCTVivado {
   }
 
 
+  /**
+   * Prepare the elaborated design for Vivado: finalize the block design, patch the top-level
+   * Verilog with Vivado port annotations, and write all generated TCL/XDC collateral to the
+   * board paths.
+   *
+   * @param boardPaths         output paths of the Vivado flow
+   * @param config             SOCT configuration of the elaborated design
+   * @param removeVerification whether to delete the generated `verification` directory (its
+   *                           sources are not synthesizable)
+   * @return true if the TCL scripts were generated, false if no BdBuilder was configured
+   * @throws VivadoDesignException if no elaborated RocketSystem instance exists, the top module
+   *                               file cannot be found, or its module declaration cannot be parsed
+   */
   def prepareForVivado(boardPaths: VivadoSOCTPaths, config: SOCTConfig, removeVerification: Boolean = true): Boolean = {
     val rs = LastRocketSystem.instance.getOrElse {
-      throw XilinxDesignException("No RocketSystem instance found for Vivado generation - did you elaborate the design?")
+      throw VivadoDesignException("No RocketSystem instance found for Vivado generation - did you elaborate the design?")
     }
     implicit val p: Parameters = rs.p
     val bdOpt = p(BdBuilderKey)
@@ -157,6 +159,17 @@ object SOCTVivado {
     true
   }
 
+  /**
+   * Run Vivado in batch mode on the generated init script to create the project. When remote
+   * Vivado is configured (`--remote-dir` + `--ssh-config`), the workspace is pushed first, the
+   * command runs over SSH, and the results are pulled back.
+   *
+   * @param args       launcher arguments (Vivado binary, remote settings)
+   * @param boardPaths output paths of the Vivado flow
+   * @param config     SOCT configuration of the elaborated design
+   * @throws VivadoDesignException if the init script's path cannot be mapped to the remote workspace
+   * @throws RuntimeException if the rsync push/pull of the workspace fails
+   */
   def generateProject(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
     var cmd = Seq(args.vivado.get.toAbsolutePath.toString, "-mode", "batch", "-source")
     var file = boardPaths.tclInitFile.toAbsolutePath
@@ -174,7 +187,7 @@ object SOCTVivado {
         cmd = Seq("ssh", args.openSSHConfig.get) ++ cmd
         // Relativize the tcl file path to the remote directory
         file = SOCTRemote.toRemote(Map(args.workspaceDir -> remoteWorkspace), file).getOrElse {
-          throw new RuntimeException(s"Could not find remote path for ${file.toAbsolutePath} in path map")
+          throw VivadoDesignException(s"Could not find remote path for ${file.toAbsolutePath} in path map")
         }
       }
     }
