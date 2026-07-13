@@ -64,7 +64,7 @@ object SOCTLauncher {
       throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
     }
 
-    val memConfig = SOCTMem.genMemConfig(args, hasMultiMemSupport(config.topModuleName))
+    val memConfig = SOCTMem.genMemConfig(args, hasMultiMemSupport(config.topModule))
     if (memConfig.isDefined) {
       config.params = config.params.orElse(memConfig.get)
     }

@@ -28,6 +28,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
   override def partName: String = "xilinx.com:ip:ddr4:2.2"
 
   object C0_DDR4 extends BdIntfPin("C0_DDR4", DDR4.this)
+
   info.ddr4Intf <-> C0_DDR4
 
   object C0_SYS_CLK extends BdIntfPin("C0_SYS_CLK", DDR4.this) with DrivenByNet

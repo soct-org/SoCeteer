@@ -20,18 +20,19 @@ class SimulationSpec extends AnyFlatSpec {
 
   // ── Matrix loader ─────────────────────────────────────────────────────────
   //
-  // Reads a JSON array of {name, xlen} objects from .github/configs/.
-  // The JSON files are the single source of truth shared with the CI matrix.
+  // Reads a JSON array of {name, xlen} objects from the test resources
+  // (src/test/resources/test-matrices/). The JSON files are the single source
+  // of truth shared with the CI matrix (see .github/workflows/prepare-matrix.yml).
 
-
-  private def loadMatrix(pathKey: String): Seq[(String, Int)] = {
-    val file = SOCTPaths.get(pathKey, create = false)
-    val src = scala.io.Source.fromFile(file.toFile)
-    val content = try src.mkString finally src.close()
+  private def loadMatrix(name: String): Seq[(String, Int)] = {
+    val resource = s"/test-matrices/$name.json"
+    val content = soct.getResource(resource).getOrElse(
+      throw new IllegalStateException(s"Test matrix resource $resource not found on the test classpath")
+    )
     parse(content).extract[List[MatrixEntry]].map(e => (e.name, e.xlen))
   }
 
-  /** Full CI matrix — driven by `.github/configs/full-matrix.json`. */
+  /** Full CI matrix — driven by `test-matrices/full-matrix.json`. */
   val allTests: Seq[(String, Int)] = loadMatrix("full-matrix")
 
   // ── Core test helper ──────────────────────────────────────────────────────

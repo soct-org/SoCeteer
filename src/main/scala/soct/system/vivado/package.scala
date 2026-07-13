@@ -4,16 +4,14 @@ package object vivado {
 
 
   /**
-   * Whether the given top module supports multiple memory channels.
+   * Whether the given top module supports multiple memory channels, i.e. mixes in the
+   * [[SupportsMultiMem]] capability marker (directly or via a superclass).
    *
-   * Heuristic: matches the class name against [[SOCTVivadoSystemMultiMem]]. A trait-based
-   * capability marker on the top class would be more robust. // TODO
-   *
-   * @param className the (qualified or simple) class name of the top module
-   * @return true if the top module is the multi-memory system
+   * @param top the top module class selected by the launcher (Module or LazyModule side)
+   * @return true if the top module supports multiple memory channels
    */
-  def hasMultiMemSupport(className: String): Boolean = {
-    className.contains(classOf[SOCTVivadoSystemMultiMem].getSimpleName)
+  def hasMultiMemSupport(top: soct.ChiselTop): Boolean = {
+    classOf[SupportsMultiMem].isAssignableFrom(top.merge)
   }
 
 

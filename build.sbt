@@ -341,11 +341,17 @@ validateDocLinks := {
   log.info(s"Doc link validation passed (${docFiles.size} files checked).")
 }
 
-buildDocs := {
-  validateDocLinks.value
-  val apiSrc = (Compile / doc).value
-  val apiDst = baseDirectory.value / "docs" / "api"
-  IO.delete(apiDst)
-  IO.copyDirectory(apiSrc, apiDst)
-  streams.value.log.info(s"Docs site updated ($apiDst) - open docs/docs.html in a browser.")
-}
+buildDocs := Def.sequential(
+  // Regenerate README.md and its rendered docs page first (fails on API drift), ...
+  (Compile / runMain).toTask(" soct.SOCTReadmeBuilder"),
+  // ...then validate every repository link in the (fresh) doc pages, ...
+  validateDocLinks,
+  // ...then refresh the scaladoc copy the site links to.
+  Def.task {
+    val apiSrc = (Compile / doc).value
+    val apiDst = baseDirectory.value / "docs" / "api"
+    IO.delete(apiDst)
+    IO.copyDirectory(apiSrc, apiDst)
+    streams.value.log.info(s"Docs site updated ($apiDst) - open docs/docs.html in a browser.")
+  }
+).value

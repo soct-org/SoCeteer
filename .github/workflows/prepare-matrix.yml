@@ -39,8 +39,8 @@ jobs:
         id: configs
         shell: bash
         run: |
-          echo "fast=$(cat .github/configs/fast-matrix.json | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
-          echo "full=$(cat .github/configs/full-matrix.json | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
+          echo "fast=$(cat src/test/resources/test-matrices/fast-matrix.json | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
+          echo "full=$(cat src/test/resources/test-matrices/full-matrix.json | tr -d '\n' | tr -s ' ')" >> "$GITHUB_OUTPUT"
 
       - name: Set image tag from git ref
         id: imagetag
