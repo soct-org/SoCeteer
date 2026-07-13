@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Vivado Block-Design DSL — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / The Vivado Block-Design DSL</p>
+  <h1>The Vivado Block-Design DSL</h1>
+  <p class="lead">SoCeteer describes Vivado block designs in Scala instead of hand-written TCL:
+  components, pins, connections, clock domains, address assignment and constraints are ordinary
+  objects, and a builder turns the resulting graph into the TCL/XDC collateral Vivado consumes.
+  This guide covers the concepts you need to read the existing components and write your own.</p>
+
+  <h2>The builder and the graph</h2>
+  <p>Everything registers itself with an implicit
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTBdBuilder.scala"><code>SOCTBdBuilder</code></a>
+  (injected via <code>BdBuilderKey</code> in the config). The builder is a directed multigraph:
+  nodes are components, edges connect pins. Creating a component adds a node; the connect
+  operators add edges. Nothing is emitted until the design is finalized and the
+  <code>generate*</code> methods run &mdash; so construction order does not matter for the output
+  (all emitted command groups are sorted).</p>
+  <p>Deliberate misuse fails loudly with a single exception type,
+  <code>VivadoDesignException</code> &mdash; at generation time, not hours into synthesis.</p>
+
+  <h2>Components</h2>
+  <p>A component extends <code>BdComp</code> plus a kind marker
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/abstracts/Markers.scala"><code>Markers.scala</code></a>):</p>
+  <ul>
+    <li><code>Xip</code> &mdash; a Xilinx IP from the catalog; <code>partName</code> is the VLNV
+      (e.g. <code>xilinx.com:ip:smartconnect:1.0</code>). The generated TCL verifies required IPs
+      are installed before building.</li>
+    <li><code>IsModule</code> &mdash; a module reference backed by your own HDL; the source files
+      are shipped via <code>dumpCollaterals</code> (see the
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIAddrDeinterleaver.scala">deinterleaver</a>
+      for the pattern: Verilog lives in the classpath resources and is copied next to the design
+      sources at generation time).</li>
+    <li><code>XInlineHDL</code> &mdash; Vivado's inline primitives (constants, slices, logic gates).</li>
+  </ul>
+  <p>Pins are declared as objects inside the component; IP configuration comes from
+  <code>defaultProperties</code>, which is evaluated at TCL-generation time and may inspect the
+  graph (e.g. count connected pins). For the smallest complete example &mdash; a part name, three
+  pin objects and two config properties &mdash; see
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/RAMShiftReg.scala"><code>RAMShiftReg</code></a>;
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXISmartConnect.scala"><code>AXISmartConnect</code></a>
+  adds indexed pins and graph-dependent properties on top.</p>
+  <p>Instance names default to snake-cased class names with an index; use
+  <code>.withInstanceName("...")</code> whenever a stable, readable name matters (timing
+  constraints reference instance names!).</p>
+
+  <h2>Pins, ports and the connect operators</h2>
+  <p>Endpoints carry a direction in their type: <code>BdPinIn</code>/<code>BdPinOut</code>/
+  <code>BdPinInOut</code> for scalar pins, <code>BdIntfPin</code> for interface pins (AXI, DDR4,
+  clocks), and <code>BdChiselPin</code> for Chisel ports of the elaborated top (wrap them with
+  <code>portToBdPin(...)</code>). Top-level interface ports are <code>BdIntfPort</code>s,
+  parameterized by which side of the bus they are (<code>PortMode</code>) and how they come into
+  existence (<code>PortCreation</code>): declared standalone with bus-default signal widths, or
+  externalized from their connected pin when the widths depend on the IP configuration &mdash;
+  the DDR4 custom interface uses the latter.
+  Indexed pins (<code>S00_AXI</code>, <code>aclk1</code>, ...) come from pin factories:
+  <code>ACLK(0)</code> creates the pin once and throws on re-creation; use
+  <code>getOrElseInit</code>/<code>get</code> to share.</p>
+  <p>Three operators (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/abstracts/Connect.scala"><code>Connect.scala</code></a>)
+  add the edges, and the type system rejects impossible pairings at <em>compile</em> time with a
+  detailed error message:</p>
+  <ul>
+    <li><code>source --&gt; sink</code> &mdash; directional: a driver (<code>DrivesNet</code>) to a
+      driven endpoint (<code>DrivenByNet</code>). Also accepts a collection on the right.</li>
+    <li><code>sink &lt;-- source</code> &mdash; the same, reversed.</li>
+    <li><code>a &lt;-&gt; b</code> &mdash; directionless, for interface-to-interface connections
+      (AXI master to slave, clock port to clock pin).</li>
+  </ul>
+  <p>Custom pairings are added as implicit <code>ToSinkConnect</code>/<code>AutoConnect</code>
+  instances in the component's companion &mdash; e.g. <code>InlineConstant</code> declares that its
+  <code>DOUT</code> is the default source when you write <code>TieOff() --&gt; somePin</code>.</p>
+
+  <h2>Capabilities: constraints, addresses, finalization</h2>
+  <ul>
+    <li><code>EmitsConstraint</code> &mdash; contribute XDC commands; constraints sharing an
+      <code>xdcName</code> are grouped into one <code>.xdc</code> file (this is how the custom DDR4
+      interface ships its pin locations).</li>
+    <li><code>HasBdAddr</code> &mdash; contribute <code>assign_bd_address</code> commands for the
+      address map.</li>
+    <li><code>Finalizable</code> &mdash; hook that runs once before TCL generation, for components
+      that must inspect their connections to configure themselves (e.g.
+      <code>ProcSysReset</code> inserts slices when a reset output fans out too wide).</li>
+    <li><code>MapsToPorts</code> &mdash; register <code>X_INTERFACE_INFO</code> annotations that get
+      patched into the top-level Verilog ports, so Vivado infers AXI/clock/reset interfaces from
+      the raw wires.</li>
+    <li><code>bd.addTimingConstraints(...)</code> / <code>bd.addConfigTcl(...)</code> &mdash;
+      register lazily-evaluated TCL for the timing-constraints file and the end of the board
+      script.</li>
+  </ul>
+
+  <h2>What gets generated</h2>
+  <p>After <code>finalizeDesign()</code> locks the graph, the builder emits the board TCL in
+  fixed phases &mdash; validate required IPs/modules, instantiate cells and ports, apply
+  properties, connect nets, assign addresses, run registered config TCL, then
+  <code>validate_bd_design</code> and wrapper generation &mdash; plus the init script, the timing
+  constraints file and the grouped XDC files. If you want to see the output without a board run,
+  the generated files land in <code>workspace/&lt;config&gt;/&lt;board&gt;/vivado-srcs/</code>.</p>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+</body>
+</html>

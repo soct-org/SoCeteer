@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulation &amp; Debugging — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Simulation &amp; Debugging</p>
+  <h1>Simulation &amp; Debugging</h1>
+  <p class="lead">The Verilator target turns the emitted Verilog into a native simulator binary
+  that loads RISC-V ELFs, bridges their syscalls to the host, and exposes a JTAG interface for
+  live debugging with OpenOCD/GDB.</p>
+
+  <h2>How the simulator is built</h2>
+  <p>The <a href="https://github.com/soct-org/SoCeteer/tree/main/sim"><code>sim/</code></a> CMake
+  project verilates the emitted design and compiles it together with a C++ harness (FESVR, the
+  DPI-C bridge, a disassembler for tracing) into one binary. It finds the design through the
+  <code>SOCT_SYSTEM</code> variable &mdash; the <code>SOCTSystem.cmake</code> file every launcher
+  run emits &mdash; or falls back to the <code>SOCTSystem-latest.cmake</code> symlink at the
+  project root. The quick-start commands are in the README.</p>
+  <p>Build-time knobs worth knowing (see
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/sim/CMakeLists.txt"><code>sim/CMakeLists.txt</code></a>
+  for the rest): <code>-DVL_TRACE=1</code> compiles in VCD waveform tracing
+  (<code>VL_TRACE_DEPTH</code> limits the traced hierarchy, default 2 &mdash; tracing slows the
+  simulation considerably, so it's off by default), and <code>VL_THREADS</code> overrides the
+  Verilator thread count (default: core count + 1).</p>
+
+  <h2>Running programs</h2>
+  <p>The simulator takes the ELF as its first positional argument; everything else is optional
+  and listed by <code>--help</code> (log level/file, reset cycles, VCD output path, ...).</p>
+<pre><code>build/sim-build/simulator path/to/program.elf --log-level=debug</code></pre>
+  <p>Syscalls made by the program (<code>printf</code>, file I/O, <code>exit</code>) travel over
+  the HTIF interface to the host via FESVR, so bare-metal programs behave like command-line
+  tools: stdout appears on your terminal and the program's exit code becomes the simulator's.
+  <code>argc</code>/<code>argv</code> are forwarded to the program's <code>main</code>.</p>
+
+  <h2>Debugging with OpenOCD and GDB</h2>
+  <p>The simulated SoC's debug module is reachable over a JTAG <em>remote bitbang</em> socket
+  (port 1337). A matching OpenOCD config ships in
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/sim/remote/rocket.cfg"><code>sim/remote/rocket.cfg</code></a>:</p>
+<pre><code># Terminal 1: run the simulation
+build/sim-build/simulator program.elf
+
+# Terminal 2: attach OpenOCD to the simulated JTAG
+openocd -f sim/remote/rocket.cfg
+
+# Terminal 3: debug like real hardware
+riscv-none-elf-gdb program.elf -ex "target extended-remote :3333"</code></pre>
+  <p>This is the same debug path as on the FPGA (where the debug module sits behind the BSCAN
+  bridge instead), so GDB workflows transfer 1:1 between simulation and hardware.</p>
+
+  <h2>Regression testing</h2>
+  <p>The scalatest suite
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/test/scala/soct/tests/SimulationSpec.scala"><code>SimulationSpec</code></a>)
+  runs the full pipeline &mdash; emit, build, simulate a syscall test &mdash; for every entry of the
+  <a href="https://github.com/soct-org/SoCeteer/tree/main/src/test/resources/test-matrices">test matrices</a>,
+  which are also the single source of truth for the CI matrix. Add a config/xlen pair to the
+  matrix JSON and both CI and the local suite pick it up.</p>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+</body>
+</html>

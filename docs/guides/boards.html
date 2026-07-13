@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adding an FPGA Board — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Adding an FPGA Board</p>
+  <h1>Adding an FPGA Board</h1>
+  <p class="lead">A board is one Scala object: it names the part, provides the clock and reset
+  ports, and declares the memory, UART and PMOD resources the systems can use. Everything else
+  (block design, constraints, capacities) is derived from it.</p>
+
+  <h2>The shape of a board definition</h2>
+  <p>Extend <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/FPGA.scala"><code>FPGA</code></a>
+  and register the object in
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/PartRegistry.scala"><code>FPGARegistry</code></a>
+  so <code>--board</code> can find it. A board declares four kinds of things: its identity (the
+  FPGA part number and the Vivado board part), its clock and reset inputs, its memory sockets and
+  UART interfaces, and its PMOD pin mapping. The
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a>
+  is the reference implementation.</p>
+
+  <h2>Where the data comes from</h2>
+  <p>Everything a board definition declares exists in the Vivado board files &mdash; don't guess:</p>
+  <ul>
+    <li><code>&lt;vivado&gt;/data/xhub/boards/XilinxBoardStore/boards/Xilinx/&lt;board&gt;/&lt;rev&gt;/board.xml</code>
+      &mdash; interface names (the values for <code>portName</code>), component wiring.</li>
+    <li><code>part0_pins.xml</code> (same directory) &mdash; every package pin with its IOSTANDARD:
+      clock pairs, reset buttons, PMOD pins, the full DDR4 pin map.</li>
+    <li><code>preset.xml</code> &mdash; the DDR4 preset (memory part, clock periods).</li>
+  </ul>
+
+  <h2>Clock and reset pin locations</h2>
+  <p>Normally Vivado places a board's clock and reset pins automatically, using the board files.
+  The custom DDR4 interface deliberately steps outside that mechanism (see
+  <a href="fpga-memory.html">FPGA Memory &amp; Custom DDR4</a>), and then SoCeteer has to place
+  those pins itself &mdash; so a board that wants to support it must record the physical package
+  pins of its system clock pair and its reset button in the definition. The ZCU104 declares them
+  right where it creates its clock and reset ports. If a design needs the pins and the board
+  doesn't declare them, generation stops with an error naming the missing field.</p>
+
+  <h2>Memory ports</h2>
+  <p>Each DDR4 socket is described by a <code>DDR4PortParams</code>: at minimum the DIMM the
+  board files preset (which defines the default capacity), and optionally the pin map and clock
+  timing that allow a different DIMM to be selected with <code>--ext-mem-part</code>. The full
+  story &mdash; part registry, board flow vs. custom interface, what fails when data is missing
+  &mdash; is in <a href="fpga-memory.html">FPGA Memory &amp; Custom DDR4</a>.</p>
+
+  <h2>Checklist</h2>
+  <ol>
+    <li>Create the board object in <code>soct.system.vivado.fpga</code> with the data above.</li>
+    <li>Register it in <code>FPGARegistry</code> (uppercase key = the <code>--board</code> value).</li>
+    <li>If the DIMM is user-replaceable, add unknown parts to <code>PartRegistry</code> (or rely
+      on the Micron naming fallback).</li>
+    <li>Generate with <code>--target vivado --board MYBOARD</code> and let
+      <code>validate_bd_design</code> and the DRCs judge the result.</li>
+  </ol>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+</body>
+</html>
