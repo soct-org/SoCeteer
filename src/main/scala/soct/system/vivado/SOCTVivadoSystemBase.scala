@@ -5,6 +5,7 @@ import freechips.rocketchip.amba.axi4.AXI4SlaveParameters
 import freechips.rocketchip.resources.ResourceInt
 import org.chipsalliance.cde.config.Parameters
 import soct._
+import soct.SOCTFreq._
 import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
@@ -171,6 +172,64 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
       perms = AxiSlaveBinder.mmioPerms
     )
     sdDTS
+  }
+
+  /** Device-tree entries of the DisplayPort video pipeline (see [[videoDTSOpt]]). */
+  protected case class VideoStreamDTS(vdma: DTSInfo, vtc: DTSInfo, dpWindow: DTSInfo,
+                                      vidStatus: DTSInfo)
+
+  /**
+   * Device-tree entries of the DisplayPort video pipeline, if the design has one
+   * ([[HasVideoStream]]): the VDMA control registers, the video timing controller, and the
+   * window through which the PS DP registers are reached (see
+   * [[soct.system.vivado.components.AxiAddrOffset]]).
+   */
+  protected val videoDTSOpt: Option[VideoStreamDTS] = p(HasVideoStream).map { vs =>
+    val vdmaDTS = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", 0x60020000L, 0x10000L)),
+      irqs = Seq(Irq(plicDev, irqIdx)),
+      compatibles = Seq("xlnx,axi-vdma-6.3", "xlnx,axi-vdma-1.00.a")
+    )
+    irqIdx += 1
+    AxiSlaveBinder.bindSimpleDevice(devname = "vdma0", dts = vdmaDTS, perms = AxiSlaveBinder.mmioPerms)
+
+    // The video mode is baked into the design (pixel clock); advertise it so the driver
+    // programs matching timing without hardcoding a resolution.
+    val vtcDTS = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", 0x60030000L, 0x10000L)),
+      compatibles = Seq("xlnx,v-tc-6.2"),
+      extraProps = Map(
+        "soct,hactive" -> Seq(ResourceInt(vs.width)),
+        "soct,vactive" -> Seq(ResourceInt(vs.height)),
+        "soct,fps" -> Seq(ResourceInt(vs.fps))
+      )
+    )
+    AxiSlaveBinder.bindSimpleDevice(devname = "vtc0", dts = vtcDTS, perms = AxiSlaveBinder.mmioPerms)
+
+    // The DP/DPDMA/SERDES registers of the PS, visible through the address-offset window.
+    // soct,ps-base carries the fixed PS base the window maps to, so the driver can translate
+    // documented PS addresses without magic numbers.
+    val dpWindowDTS = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", 0x7D000000L, 0x1000000L)),
+      compatibles = Seq("soct,zynqmp-dp-window"),
+      extraProps = Map("soct,ps-base" -> Seq(ResourceInt(0xFD000000L)))
+    )
+    AxiSlaveBinder.bindSimpleDevice(devname = "dpwin0", dts = dpWindowDTS, perms = AxiSlaveBinder.mmioPerms)
+
+    // Read-only status of the video-out core (lock and FIFO error flags), which has no
+    // register interface of its own - channel 1 = {overflow, underflow, locked}, channel 2 =
+    // the core's 32-bit status word.
+    val vidStatusDTS = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", 0x60040000L, 0x10000L)),
+      compatibles = Seq("soct,video-status", "xlnx,xps-gpio-1.00.a")
+    )
+    AxiSlaveBinder.bindSimpleDevice(devname = "vidstat0", dts = vidStatusDTS, perms = AxiSlaveBinder.mmioPerms)
+
+    VideoStreamDTS(vdmaDTS, vtcDTS, dpWindowDTS, vidStatusDTS)
   }
 
   //-------------------------------------------------------------------------
@@ -437,6 +496,138 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
          |set_max_delay -from $$sdio_clock -through [get_pins -hier ${sdPmod.INTERRUPT.ref}] -datapath_only 10.0
          |""".stripMargin.tcl
     ))
+  }
+
+  /**
+   * The pixel clock for a video mode. Only modes with standard (CEA-861) pixel clocks are
+   * supported; anything else needs its own entry here.
+   *
+   * @param vs the video parameters
+   * @return the pixel clock frequency
+   * @throws VivadoDesignException if the mode has no known pixel clock
+   */
+  private def pixelClockFor(vs: VideoStreamParams): Freq = (vs.width, vs.height, vs.fps) match {
+    case (1920, 1080, 60) => 148.5.MHz
+    case (1280, 720, 60) => 74.25.MHz
+    case _ => throw VivadoDesignException(s"No known pixel clock for video mode ${vs.width}x${vs.height}@${vs.fps}. Add it to SOCTVivadoSystemBase.pixelClockFor.")
+  }
+
+  /**
+   * Instantiate and wire the DisplayPort video pipeline ([[HasVideoStream]]):
+   * VDMA (frames from DRAM via the DMA path) -> AXI4-Stream video out (+ timing controller)
+   * -> the PS DP controller's live video input. The PS `S_AXI_LPD` port is reachable from the
+   * MMIO path through an [[soct.system.vivado.components.AxiAddrOffset]] window, so the
+   * RISC-V can program the DP controller. No-op when the design has no video stream.
+   *
+   * @param coreClock      the core domain clock pin
+   * @param peripheryClock the periphery domain clock pin
+   * @param c              the common design
+   * @throws VivadoDesignException if the video mode has no known pixel clock
+   */
+  protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign): Unit = {
+    val vs = p(HasVideoStream).getOrElse(return)
+    val dts = videoDTSOpt.get
+
+    // Components
+    val ps = ZynqUltraPS()
+    val vdma = AXIVideoDMA(dts.vdma, c.axiMMIO, Seq((c.axiDMA, "reg0")))
+    val vtc = VideoTimingController(dts.vtc, c.axiMMIO)
+    val vidOut = AxisVideoOut()
+    val lpdWindow = AxiAddrOffset(
+      getAxiMasterPin = c.axiMMIO, targetOf = () => ps,
+      windowBase = 0x7D000000L, windowSize = 0x1000000L, targetBase = 0xFD000000L
+    ).withInstanceName("dp_lpd_window")
+
+    // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
+    val pixelDomain = new ClockDomain(pixelClockFor(vs))
+    val pixClkWiz = ClkWiz(inputFreq = Some(c.peripheryDomain.freq)).withInstanceName("pixel_clk_wiz")
+    peripheryClock --> pixClkWiz.CLK_IN(1)
+    c.periphPsr.PeripheralReset --> pixClkWiz.RESET
+    val pixelClock = pixClkWiz.CLK_OUT(1, pixelDomain)
+
+    // Clocks: control and memory sides on the periphery domain; the whole video path - the
+    // VDMA's pixel stream, the video out, the timing generator and the PS live input - on
+    // the pixel domain. The stream must carry one pixel per cycle at the full pixel rate;
+    // on the (slower) periphery clock it starves the video out mid-line.
+    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vdma.M_AXI_MM2S_ACLK,
+      vtc.S_AXI_ACLK, ps.SAXI_LPD_ACLK, lpdWindow.ACLK)
+    pixelClock --> Seq(vdma.M_AXIS_MM2S_ACLK, vidOut.ACLK, vtc.CLK, vidOut.VID_IO_OUT_CLK,
+      ps.DP_VIDEO_IN_CLK)
+
+    // Pixel-domain reset: held while the periphery resets or the pixel MMCM is unlocked.
+    // The external reset input MUST be fed active-low here: it arrives through a
+    // polarity-stripping slice and Vivado then infers the (read-only) pin polarity as
+    // ACTIVE_LOW regardless of the source - feeding the active-high PeripheralReset held
+    // this domain in permanent reset (verified on hardware and by C_EXT_RESET_HIGH
+    // readback; see the warning on [[soct.system.vivado.components.ProcSysReset]]).
+    val pixelPsr = ProcSysReset().withInstanceName("pixel_psr")
+    pixelClock --> pixelPsr.SLOWEST_SYNC_CLK
+    pixClkWiz.LOCKED --> pixelPsr.DCM_LOCKED
+    c.periphPsr.PeripheralAResetN --> pixelPsr.EXT_RESET_IN
+
+    // Resets and enables. The video cores are held out of reset permanently after that:
+    // they only produce garbage until the driver programs VDMA/VTC, which is harmless.
+    c.periphPsr.PeripheralAResetN --> Seq(vdma.AXI_RESETN, vtc.S_AXI_ARESETN)
+    pixelPsr.PeripheralAResetN --> vidOut.ARESETN
+    TieHigh().withInstanceName("video_enables_high") --> Seq(vtc.CLKEN, vtc.RESETN, vidOut.ACLKEN, vidOut.VID_IO_OUT_CE)
+    TieOff().withInstanceName("video_ties_low") --> Seq(vidOut.VID_IO_OUT_RESET, vtc.FSYNC_IN)
+
+    // Stream and timing path
+    vdma.M_AXIS_MM2S <-> vidOut.VIDEO_IN
+    vtc.VTIMING_OUT <-> vidOut.VTIMING_IN
+    vidOut.VTG_CE --> vtc.GEN_CLKEN
+
+    // AXI: control registers + PS register window on the MMIO path, frame reads on the DMA path
+    c.mmioSMC.M_AXI(2) <-> vdma.S_AXI
+    c.mmioSMC.M_AXI(3) <-> vtc.S_AXI
+    c.mmioSMC.M_AXI(4) <-> lpdWindow.S_AXI
+    lpdWindow.M_AXI <-> ps.S_AXI_LPD
+    c.dmaSMC.S_AXI(1) <-> vdma.M_AXI
+
+    // Video pipeline status readable by software: channel 1 = {mmcm locked, vtg_ce,
+    // pixel-domain aresetn, overflow, underflow, locked} - lock plus the reset/clock/gating
+    // signals that decide whether video can flow at all; channel 2 = the video-out core's
+    // 32-bit diagnostic status word.
+    val vidStatus = AxiGpio(dts.vidStatus, c.axiMMIO, ch1Width = 6, ch2Width = Some(32))
+      .withInstanceName("video_status_gpio")
+    c.mmioSMC.M_AXI(5) <-> vidStatus.S_AXI
+    peripheryClock --> vidStatus.S_AXI_ACLK
+    c.periphPsr.PeripheralAResetN --> vidStatus.S_AXI_ARESETN
+    val statusBits = InlineConcat(6).withInstanceName("vid_status_concat")
+    vidOut.LOCKED --> statusBits.IN(0)
+    vidOut.UNDERFLOW --> statusBits.IN(1)
+    vidOut.OVERFLOW --> statusBits.IN(2)
+    pixelPsr.PeripheralAResetN --> statusBits.IN(3)
+    vidOut.VTG_CE --> statusBits.IN(4)
+    pixClkWiz.LOCKED --> statusBits.IN(5)
+    statusBits --> vidStatus.GPIO_IO_I
+    vidOut.STATUS --> vidStatus.GPIO2_IO_I
+
+    // Interrupt
+    dts.vdma.irqs.foreach { irq =>
+      vdma.MM2S_INTROUT --> c.interruptConcat.IN(irq.index)
+    }
+
+    // Parallel video into the PS live input. The PS wants 12 bit per component (36-bit
+    // pixel); the stream carries 8 bit per component (24-bit), so each component is padded
+    // with 4 zero LSBs. Component order inside the 24-bit word is a software concern (the
+    // framebuffer format), not normalized here.
+    val padR = InlineSlice(24, 23, 16, 8).withInstanceName("vid_slice_c2")
+    val padG = InlineSlice(24, 15, 8, 8).withInstanceName("vid_slice_c1")
+    val padB = InlineSlice(24, 7, 0, 8).withInstanceName("vid_slice_c0")
+    val zero4 = InlineConstant(0, 4).withInstanceName("vid_pad_zero4")
+    val pixel = InlineConcat(6).withInstanceName("vid_pixel_concat")
+
+    Seq(padR, padG, padB).foreach(s => vidOut.VID_DATA --> s.DIN)
+    padR.DOUT --> pixel.IN(5)
+    zero4.DOUT --> Seq(pixel.IN(4), pixel.IN(2), pixel.IN(0))
+    padG.DOUT --> pixel.IN(3)
+    padB.DOUT --> pixel.IN(1)
+
+    pixel --> ps.DP_LIVE_VIDEO_IN_PIXEL1
+    vidOut.VID_ACTIVE_VIDEO --> ps.DP_LIVE_VIDEO_IN_DE
+    vidOut.VID_HSYNC --> ps.DP_LIVE_VIDEO_IN_HSYNC
+    vidOut.VID_VSYNC --> ps.DP_LIVE_VIDEO_IN_VSYNC
   }
 
   /**

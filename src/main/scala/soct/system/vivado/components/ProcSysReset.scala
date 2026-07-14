@@ -9,6 +9,12 @@ import scala.collection.mutable
 /**
  * Proc Sys Reset IP core from Xilinx.
  * Documentation: https://docs.amd.com/v/u/en-US/pg164-proc-sys-reset
+ *
+ * WARNING: the polarity of [[EXT_RESET_IN]] (C_EXT_RESET_HIGH) is read-only and derived by
+ * Vivado from the connected net. When the reset arrives through polarity-stripping fabric
+ * (slices, gates), the inference lands on ACTIVE_LOW - so such sources must be active-low
+ * (e.g. a peripheral_aresetn), or the domain ends up in permanent reset (verified on
+ * hardware).
  */
 case class ProcSysReset(autoSlice: Boolean = true)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with Finalizable {

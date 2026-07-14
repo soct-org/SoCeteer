@@ -89,6 +89,7 @@ case class SOCTArgs(
                      workspaceDir: Path = projectRoot.resolve("workspace"),
                      userOutDir: Option[Path] = None,
                      baseConfig: config.Parameters = new RocketB1,
+                     extraConfigs: Seq[String] = Seq.empty,
                      xlen: Int = 64,
                      logLevel: String = logLevels(1), // info
                      verboseChisel: Boolean = false,
@@ -168,6 +169,16 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   opt[String]('c', "config")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}.")
+  opt[String]("with-config")
+    .unbounded()
+    .validate(x =>
+      scala.util.Try(SOCTUtils.instantiateConfig(x)) match {
+        case scala.util.Success(_) => success
+        case scala.util.Failure(e) => failure(e.getMessage)
+      }
+    )
+    .action((x, c) => c.copy(extraConfigs = c.extraConfigs :+ x))
+    .text("Fully qualified name of an additional Config class mixed into the parameters (e.g. soct.WithVideoStream). Can be used multiple times; the leftmost occurrence has the highest priority, and all of them override the --config base. The class must have a zero-argument constructor.")
   opt[Int]("xlen").action((x, c) => c.copy(xlen = x)).text(s"The xlen to use. Default is ${defaultSOCTArgs.xlen}. Allowed values are 32 and 64 - 32 adds ${classOf[freechips.rocketchip.rocket.WithRV32].getName} to the config.")
   opt[String]("ll")
     .action((x, c) => c.copy(logLevel = x))

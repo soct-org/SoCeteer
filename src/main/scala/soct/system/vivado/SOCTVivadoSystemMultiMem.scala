@@ -142,6 +142,7 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
 
     wireMmioAndDma(c)
     wireSdCardPmod(peripheryClock, c)
+    wireVideoStream(coreClock, peripheryClock, c)
     wireDebugAndJtag(coreClock, coreClockObj, corePeriodProp, c)
     tieOffHartResets()
   }

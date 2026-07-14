@@ -174,6 +174,16 @@ add_custom_target(${SOCT_PROGRAM}-info ALL
 # Remote mode (SOCT_FLASH_HOST):
 #   SOCT_FLASH_HOST              SSH/SCP host, e.g. "mainframe"
 #   SOCT_FLASH_REMOTE_DIR        Remote directory to upload the ELF into     [default: /tmp]
+#
+# SOCT_FLASH_PRELUDE: Python source a program can set (before including this
+# template) to run extra steps before the ELF is flashed - e.g. board or PS
+# initialization. It is injected into the generated flash wrapper after the
+# header, so it runs with these variables in scope:
+#   elf                          Path to the local ELF being flashed
+#   xsdb                         Path to xsdb (local binary, or on the remote host)
+#   host                         SSH host, or '' when flashing locally
+#   remote_dir                   Remote upload directory ('' when local)
+# The wrapper's own imports (subprocess, sys, os) are available.
 
 if (NOT DEFINED SOCT_FLASH_HOST)
     set(SOCT_FLASH_HOST "" CACHE STRING "SSH/SCP host for flashing — leave empty to flash locally")
@@ -189,6 +199,9 @@ if (NOT DEFINED SOCT_FLASH_BOOT_HART)
 endif ()
 if (NOT DEFINED SOCT_FLASH_BOOTROM_DTB_ADDR)
     set(SOCT_FLASH_BOOTROM_DTB_ADDR "0x00010080" CACHE STRING "Bootrom DTB base address passed as a1 to xsdb")
+endif ()
+if (NOT DEFINED SOCT_FLASH_PRELUDE)
+    set(SOCT_FLASH_PRELUDE "")
 endif ()
 
 if (SOCT_FLASH_HOST OR SOCT_FLASH_XSDB)
@@ -207,6 +220,7 @@ dtb_addr   = '${SOCT_FLASH_BOOTROM_DTB_ADDR}'
 elf        = sys.argv[1]
 remote_elf = remote_dir + '/' + os.path.basename(elf)
 
+${SOCT_FLASH_PRELUDE}
 print(f'[flash] uploading {elf} to {host}:{remote_dir}/')
 subprocess.run(['scp', elf, f'{host}:{remote_dir}/'], check=True)
 
@@ -226,13 +240,16 @@ print('[flash] done.')
     else ()
         # Local: invoke xsdb directly with -eval.
         set(_flash_wrapper_content "\
-import subprocess, sys
+import subprocess, sys, os
 
-xsdb      = '${SOCT_FLASH_XSDB}'
-boot_hart = '${SOCT_FLASH_BOOT_HART}'
-dtb_addr  = '${SOCT_FLASH_BOOTROM_DTB_ADDR}'
-elf       = sys.argv[1]
+host       = ''
+remote_dir = ''
+xsdb       = '${SOCT_FLASH_XSDB}'
+boot_hart  = '${SOCT_FLASH_BOOT_HART}'
+dtb_addr   = '${SOCT_FLASH_BOOTROM_DTB_ADDR}'
+elf        = sys.argv[1]
 
+${SOCT_FLASH_PRELUDE}
 tcl = (
     f'connect; targets -set -filter {{name =~ {{Hart #0*}}}}; stop; '
     f'dow -clear {elf}; rwr a0 {boot_hart}; rwr a1 {dtb_addr}; con'

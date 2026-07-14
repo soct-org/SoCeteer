@@ -2,7 +2,7 @@ package soct
 
 import chisel3.util.log2Up
 import freechips.rocketchip.devices.debug.{DebugModuleKey, DefaultDebugModuleParams}
-import freechips.rocketchip.devices.tilelink.{BootROMLocated, BootROMParams, BuiltInErrorDeviceParams, CLINTKey, CLINTParams, DevNullParams, PLICKey, PLICParams}
+import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy.AddressSet
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tile.MaxHartIdBits
@@ -12,7 +12,7 @@ import soct.SOCTLauncher.SOCTConfig
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.fpga.{DDR4PortParams, FPGA}
 
-import java.util.concurrent.atomic.AtomicBoolean
+import scala.annotation.unused
 
 /*----------------- Base Configs ---------------*/
 
@@ -150,6 +150,42 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((site, here, up) => {
   case NExtTopInterrupts => up(NExtTopInterrupts) + 1
 }
 )
+
+/**
+ * Parameters of the DisplayPort video stream (PL framebuffer -> PS DP live video).
+ *
+ * @param width  active pixels per line
+ * @param height active lines per frame
+ * @param fps    frames per second
+ */
+case class VideoStreamParams(width: Int = 1920, height: Int = 1080, fps: Int = 60)
+
+/**
+ * Field enabling the DisplayPort video pipeline: an AXI VDMA reads frames from DRAM and
+ * streams them into the PS DP controller's live video input. None disables the pipeline.
+ */
+case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
+
+/**
+ * Adds the DisplayPort video pipeline (see [[HasVideoStream]]) with default 1080p60 timing.
+ * Select via `--with-config soct.WithVideoStream`.
+ */
+@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
+class WithVideoStream() extends Config((site, here, up) => {
+  case HasVideoStream => Some(VideoStreamParams())
+  case NExtTopInterrupts => up(NExtTopInterrupts) + 1 // VDMA mm2s frame-transfer interrupt
+})
+
+/**
+ * [[WithVideoStream]] at 1280x720@60 instead of 1080p. Halves the frame-fetch bandwidth,
+ * for memory paths that cannot sustain 1080p60.
+ * Select via `--with-config soct.WithVideoStream720p`.
+ */
+@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
+class WithVideoStream720p() extends Config((site, here, up) => {
+  case HasVideoStream => Some(VideoStreamParams(width = 1280, height = 720, fps = 60))
+  case NExtTopInterrupts => up(NExtTopInterrupts) + 1 // VDMA mm2s frame-transfer interrupt
+})
 
 case object HasUART extends Field[Boolean](false)
 

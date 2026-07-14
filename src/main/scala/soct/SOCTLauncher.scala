@@ -52,7 +52,12 @@ object SOCTLauncher {
         params = params.alter(new freechips.rocketchip.rocket.WithRV32)
       }
 
-      new SOCTConfig(args, mabi, topModule, topModuleName, params ++ args.baseConfig, configName(args.baseConfig, args.xlen))
+      // Additional config fragments from --with-config: below the launcher's own argument
+      // fragments, above the --config base; leftmost occurrence wins among each other.
+      val extras = args.extraConfigs.map(SOCTUtils.instantiateConfig)
+      val withExtras = extras.foldLeft(params)((acc, extra) => acc ++ extra)
+
+      new SOCTConfig(args, mabi, topModule, topModuleName, withExtras ++ args.baseConfig, configName(args.baseConfig, args.xlen))
     }
   }
 
