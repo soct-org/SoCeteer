@@ -111,12 +111,12 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
     wireCoreFabric(coreClock, c)
 
     // Memory SmartConnects: core clock on the slave side, per-channel DDR UI clock on the master side
-    coreClock --> memPaths.map(_.memSMC.ACLK(0))
+    coreClock --> memPaths.map(_.memSMC.ACLK.next())
     // Deinterleavers are combinational; the clock only associates their AXI interfaces with the core domain
     coreClock --> memPaths.flatMap(_.ddr4Inst.info.deinterleaver).map(_.ACLK)
 
     memPaths.foreach { path =>
-      path.ddr4Inst.C0_DDR4_UI_CLK --> path.memSMC.ACLK(1) // 0 is connected to coreClock
+      path.ddr4Inst.C0_DDR4_UI_CLK --> path.memSMC.ACLK.next() // after the coreClock aclk
     }
 
     // Memory reset distribution (all channels in the core reset domain)
@@ -130,13 +130,13 @@ class SOCTVivadoSystemMultiMem(implicit p: Parameters) extends SOCTVivadoSystemB
 
     // Memory path per channel: Rocket mem AXI -> (deinterleaver) -> memSMC (CDC + width conversion) -> DDR4
     memPaths.foreach { path =>
-      path.memSMC.M_AXI(0) <-> path.ddr4Inst.C0_DDR4_S_AXI
+      path.memSMC.M_AXI.next() <-> path.ddr4Inst.C0_DDR4_S_AXI
       path.ddr4Inst.info.deinterleaver match {
         case Some(deint) =>
           deint.S_AXI <-> path.ddr4Inst.info.mAxi.bdPin
-          path.memSMC.S_AXI(0) <-> deint.M_AXI
+          path.memSMC.S_AXI.next() <-> deint.M_AXI
         case None =>
-          path.memSMC.S_AXI(0) <-> path.ddr4Inst.info.mAxi.bdPin
+          path.memSMC.S_AXI.next() <-> path.ddr4Inst.info.mAxi.bdPin
       }
     }
 

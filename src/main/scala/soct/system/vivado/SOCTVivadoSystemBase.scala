@@ -219,9 +219,9 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     )
     AxiSlaveBinder.bindSimpleDevice(devname = "dpwin0", dts = dpWindowDTS, perms = AxiSlaveBinder.mmioPerms)
 
-    // Read-only status of the video-out core (lock and FIFO error flags), which has no
-    // register interface of its own - channel 1 = {overflow, underflow, locked}, channel 2 =
-    // the core's 32-bit status word.
+    // Read-only status of the video-out core, which has no register interface of its own:
+    // {bit2 overflow, bit1 underflow, bit0 locked} at offset 0x0. Drivers poll locked and
+    // underflow to detect a starving or unlocked stream.
     val vidStatusDTS = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60040000L, 0x10000L)),
@@ -395,8 +395,8 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   protected def wirePeripheryFabric(peripheryClock: BdPinOut, c: CommonDesign): Unit = {
     peripheryClock --> Seq(
       c.periphPsr.SLOWEST_SYNC_CLK,
-      c.mmioSMC.ACLK(0),
-      c.dmaSMC.ACLK(0)
+      c.mmioSMC.ACLK.next(),
+      c.dmaSMC.ACLK.next()
     )
     c.uartOpt.foreach(uart => peripheryClock --> uart.S_AXI_ACLK)
 
@@ -414,8 +414,8 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   protected def wireCoreFabric(coreClock: BdPinOut, c: CommonDesign): Unit = {
     coreClock --> Seq(
       c.corePsr.SLOWEST_SYNC_CLK,
-      c.mmioSMC.ACLK(1),
-      c.dmaSMC.ACLK(1),
+      c.mmioSMC.ACLK.next(),
+      c.dmaSMC.ACLK.next(),
     )
     coreClock --> c.clockPins
     c.corePsr.PeripheralReset --> c.resetPins
@@ -448,9 +448,9 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
    * @param c the common design
    */
   protected def wireMmioAndDma(c: CommonDesign): Unit = {
-    c.mmioSMC.S_AXI(0) <-> c.axiMMIO
-    c.uartOpt.foreach(uart => c.mmioSMC.M_AXI(1) <-> uart.S_AXI)
-    c.dmaSMC.M_AXI(0) <-> c.axiDMA
+    c.mmioSMC.S_AXI.next() <-> c.axiMMIO
+    c.uartOpt.foreach(uart => c.mmioSMC.M_AXI.next() <-> uart.S_AXI)
+    c.dmaSMC.M_AXI.next() <-> c.axiDMA
   }
 
   /**
@@ -475,8 +475,8 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
 
     sdPmod <-> ports
 
-    c.dmaSMC.S_AXI(0) <-> sdPmod.M_AXI
-    c.mmioSMC.M_AXI(0) <-> sdPmod.S_AXI
+    c.dmaSMC.S_AXI.next() <-> sdPmod.M_AXI
+    c.mmioSMC.M_AXI.next() <-> sdPmod.S_AXI
 
     sdDTSOpt.foreach { sdDTS =>
       sdDTS.irqs.foreach { irq =>
@@ -522,11 +522,26 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
    * @param coreClock      the core domain clock pin
    * @param peripheryClock the periphery domain clock pin
    * @param c              the common design
-   * @throws VivadoDesignException if the video mode has no known pixel clock
+   * @throws VivadoDesignException if the video mode has no known pixel clock, or if the
+   *                               memory path cannot sustain the mode's frame-fetch bandwidth
    */
   protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign): Unit = {
     val vs = p(HasVideoStream).getOrElse(return)
     val dts = videoDTSOpt.get
+
+    // The frame fetch must sustain width x height x fps x 3 B/s through the coherent DMA
+    // path (SmartConnect -> L2 frontend, 8 B/cycle on the periphery clock). Measured on the
+    // ZCU104 at 100 MHz, that path delivers ~25% of its theoretical rate; demand beyond it
+    // starves the video out mid-line and the stream never locks (1080p60 delivered 30 of
+    // 60 frames/s). Fail at generation time instead of on the monitor.
+    val streamBytesPerSec = BigInt(vs.width) * vs.height * vs.fps * 3
+    val pathBytesPerSec = BigInt((c.peripheryDomain.freq.toHz * 8 * 0.25).toLong)
+    if (streamBytesPerSec > pathBytesPerSec) {
+      throw VivadoDesignException(
+        s"Video mode ${vs.width}x${vs.height}@${vs.fps} needs $streamBytesPerSec B/s of frame-fetch " +
+          s"bandwidth, but the DMA path sustains only ~$pathBytesPerSec B/s at the current periphery " +
+          s"clock (${c.peripheryDomain.freq}). Use a smaller mode or a faster clock.")
+    }
 
     // Components
     val ps = ZynqUltraPS()
@@ -541,7 +556,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
     val pixelDomain = new ClockDomain(pixelClockFor(vs))
     val pixClkWiz = ClkWiz(inputFreq = Some(c.peripheryDomain.freq)).withInstanceName("pixel_clk_wiz")
-    peripheryClock --> pixClkWiz.CLK_IN(1)
+    peripheryClock --> pixClkWiz.CLK_IN.next()
     c.periphPsr.PeripheralReset --> pixClkWiz.RESET
     val pixelClock = pixClkWiz.CLK_OUT(1, pixelDomain)
 
@@ -578,30 +593,25 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     vidOut.VTG_CE --> vtc.GEN_CLKEN
 
     // AXI: control registers + PS register window on the MMIO path, frame reads on the DMA path
-    c.mmioSMC.M_AXI(2) <-> vdma.S_AXI
-    c.mmioSMC.M_AXI(3) <-> vtc.S_AXI
-    c.mmioSMC.M_AXI(4) <-> lpdWindow.S_AXI
+    c.mmioSMC.M_AXI.next() <-> vdma.S_AXI
+    c.mmioSMC.M_AXI.next() <-> vtc.S_AXI
+    c.mmioSMC.M_AXI.next() <-> lpdWindow.S_AXI
     lpdWindow.M_AXI <-> ps.S_AXI_LPD
-    c.dmaSMC.S_AXI(1) <-> vdma.M_AXI
+    c.dmaSMC.S_AXI.next() <-> vdma.M_AXI
 
-    // Video pipeline status readable by software: channel 1 = {mmcm locked, vtg_ce,
-    // pixel-domain aresetn, overflow, underflow, locked} - lock plus the reset/clock/gating
-    // signals that decide whether video can flow at all; channel 2 = the video-out core's
-    // 32-bit diagnostic status word.
-    val vidStatus = AxiGpio(dts.vidStatus, c.axiMMIO, ch1Width = 6, ch2Width = Some(32))
+    // Video pipeline status readable by software: {bit2 overflow, bit1 underflow,
+    // bit0 locked} of the video out - the operational health of the stream (drivers poll
+    // locked/underflow to detect starvation).
+    val vidStatus = AxiGpio(dts.vidStatus, c.axiMMIO, ch1Width = 3)
       .withInstanceName("video_status_gpio")
-    c.mmioSMC.M_AXI(5) <-> vidStatus.S_AXI
+    c.mmioSMC.M_AXI.next() <-> vidStatus.S_AXI
     peripheryClock --> vidStatus.S_AXI_ACLK
     c.periphPsr.PeripheralAResetN --> vidStatus.S_AXI_ARESETN
-    val statusBits = InlineConcat(6).withInstanceName("vid_status_concat")
+    val statusBits = InlineConcat(3).withInstanceName("vid_status_concat")
     vidOut.LOCKED --> statusBits.IN(0)
     vidOut.UNDERFLOW --> statusBits.IN(1)
     vidOut.OVERFLOW --> statusBits.IN(2)
-    pixelPsr.PeripheralAResetN --> statusBits.IN(3)
-    vidOut.VTG_CE --> statusBits.IN(4)
-    pixClkWiz.LOCKED --> statusBits.IN(5)
     statusBits --> vidStatus.GPIO_IO_I
-    vidOut.STATUS --> vidStatus.GPIO2_IO_I
 
     // Interrupt
     dts.vdma.irqs.foreach { irq =>

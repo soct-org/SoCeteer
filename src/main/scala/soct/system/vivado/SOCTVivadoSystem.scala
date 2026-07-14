@@ -77,8 +77,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
     wireCoreFabric(coreClock, c)
 
     // Memory SmartConnect: core clock on the slave side, DDR UI clock on the master side
-    coreClock --> memPath.memSMC.ACLK(0)
-    ddr4.C0_DDR4_UI_CLK --> memPath.memSMC.ACLK(1)
+    coreClock --> memPath.memSMC.ACLK.next()
+    ddr4.C0_DDR4_UI_CLK --> memPath.memSMC.ACLK.next()
 
     // DDR reset domain distribution
     ddrPsr.PeripheralAResetN --> ddr4.C0_DDR4_ARESETN
@@ -93,8 +93,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase {
     wireInterrupts(c)
 
     // Memory path: Rocket mem AXI -> memSMC (CDC + width conversion) -> DDR4
-    memPath.memSMC.S_AXI(0) <-> axiMem.bdPin
-    memPath.memSMC.M_AXI(0) <-> ddr4.C0_DDR4_S_AXI
+    memPath.memSMC.S_AXI.next() <-> axiMem.bdPin
+    memPath.memSMC.M_AXI.next() <-> ddr4.C0_DDR4_S_AXI
 
     wireMmioAndDma(c)
     wireSdCardPmod(peripheryClock, c)

@@ -68,7 +68,4 @@ case class AxisVideoOut()(implicit bd: SOCTBdBuilder, p: Parameters)
 
   /** Stream FIFO overflowed (upstream faster than the pixel rate accepts) */
   object OVERFLOW extends BdPinOut("overflow", AxisVideoOut.this)
-
-  /** 32-bit diagnostic status word (see PG044) */
-  object STATUS extends BdPinOut("status", AxisVideoOut.this)
 }

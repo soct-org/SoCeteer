@@ -56,8 +56,14 @@ object SOCTLauncher {
       // fragments, above the --config base; leftmost occurrence wins among each other.
       val extras = args.extraConfigs.map(SOCTUtils.instantiateConfig)
       val withExtras = extras.foldLeft(params)((acc, extra) => acc ++ extra)
+      val finalParams = withExtras ++ args.baseConfig
 
-      new SOCTConfig(args, mabi, topModule, topModuleName, withExtras ++ args.baseConfig, configName(args.baseConfig, args.xlen))
+      // Feature fragments (SOCTFeatureConfig) suffix the system name, so their designs get
+      // their own workspace directories instead of overwriting the plain config's.
+      val suffixes = finalParams(SOCTNameSuffixes).distinct
+      val name = (configName(args.baseConfig, args.xlen) +: suffixes).mkString("-")
+
+      new SOCTConfig(args, mabi, topModule, topModuleName, finalParams, name)
     }
   }
 

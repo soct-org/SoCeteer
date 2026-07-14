@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DisplayPort Video — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / DisplayPort Video</p>
+  <h1>DisplayPort Video</h1>
+  <p class="lead">How a framebuffer in DRAM becomes pixels on a monitor: the hardware pipeline the
+  video config adds to the design, the contract software has to fulfill to light it up, and the
+  constraints that fall out of both.</p>
+
+  <h2>Enabling the pipeline</h2>
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
+  --with-config soct.WithVideoStream"</code></pre>
+  <p>The config adds the video mode's parameters
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>VideoStreamParams</code></a>,
+  default 1280&times;720@60) and one PLIC interrupt for the VDMA. Designs without the config are
+  byte-identical to before &mdash; the whole pipeline is gated on <code>HasVideoStream</code>.</p>
+  <p>Generation validates that the mode is drivable: the frame fetch must sustain
+  <em>width &times; height &times; fps &times; 3</em> bytes per second through the coherent DMA
+  path, which delivers roughly a quarter of its theoretical 8&nbsp;bytes/cycle in practice
+  (measured on the ZCU104 at 100&nbsp;MHz: ~187&nbsp;MB/s, where 1080p60 would need
+  373&nbsp;MB/s and got 30 of 60 frames per second). An undrivable mode fails the build with the
+  numbers instead of failing on the monitor.</p>
+
+  <h2>The hardware pipeline</h2>
+  <p>The ZCU104 routes its DisplayPort connector to the <em>PS</em> (the MPSoC's DP controller on
+  PS-GTR lanes), not to PL pins. The PL therefore streams pixels into the PS DP controller's
+  <em>live video input</em>, and the RISC-V programs that controller through an address window.
+  Everything below is instantiated by
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTVivadoSystemBase.scala"><code>wireVideoStream</code></a>:</p>
+  <ul>
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIVideoDMA.scala"><code>AXIVideoDMA</code></a>
+      reads frames from DRAM over the same coherent DMA path the SD card uses (through the Rocket
+      L2 frontend, so CPU writes to the framebuffer need no cache maintenance) and emits them as
+      an AXI4-Stream of 24-bit RGB pixels.</li>
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxisVideoOut.scala"><code>AxisVideoOut</code></a>
+      converts the stream to parallel video (data + syncs + data-enable), aligned to the timing of
+      the <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/VideoTimingController.scala"><code>VideoTimingController</code></a>.
+      It runs in <em>master</em> timing mode: it gates the timing generator until its FIFO is
+      primed and releases it at a frame boundary, which is what guarantees output lock.</li>
+    <li>The parallel video feeds the
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ZynqUltraPS.scala"><code>ZynqUltraPS</code></a>
+      live video pins, 8 bits per component padded to the PS's 12-bit lanes.</li>
+    <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxiAddrOffset.scala"><code>AxiAddrOffset</code></a>
+      window makes the PS register space reachable from the MMIO port: a 16&nbsp;MiB window maps
+      onto the PS-fixed addresses of the DP controller, its SERDES and the AV buffer manager.
+      Rocket's MMIO decode cannot cover those addresses directly without colliding with the DRAM
+      decode.</li>
+    <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxiGpio.scala"><code>AxiGpio</code></a>
+      exposes the video out's <code>locked</code>/<code>underflow</code>/<code>overflow</code>
+      pins as a readable register &mdash; the pipeline's health, since those signals otherwise
+      never leave the fabric.</li>
+  </ul>
+
+  <h3>Clocks and resets</h3>
+  <p>Control and memory sides run on the periphery clock. The <em>stream</em> side &mdash; the
+  VDMA's pixel stream, the video out, the timing generator and the PS live input &mdash; runs on
+  a dedicated pixel clock synthesized by an MMCM (74.25&nbsp;MHz for 720p60): the stream carries
+  one pixel per cycle, so its clock must be the pixel rate. The pixel domain has its own reset
+  synchronizer held until the MMCM locks; its external reset is fed <em>active-low</em>
+  deliberately &mdash; see the warning on
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ProcSysReset.scala"><code>ProcSysReset</code></a>
+  about Vivado's polarity inference through slices, which cost this pipeline a bring-up cycle.</p>
+
+  <h2>The software contract</h2>
+  <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/main.c"><code>dp-test</code></a>
+  is the reference implementation of everything below, in the order listed. It doubles as the
+  pipeline's diagnostic tool and ends in a rotating-teapot demo.</p>
+
+  <h3>0. Initialize the PS (once per power-up)</h3>
+  <p>The DP controller's clocks and the PS-GTR SERDES are configured by the
+  <code>psu_init.tcl</code> that Vivado generates with the design. Without it, the very first
+  windowed register access stalls the bus. In xsdb:</p>
+<pre><code>targets -set -filter {name =~ {PSU*}}
+source .../ip/&lt;design&gt;_zynq_ultra_ps_0_0/psu_init.tcl
+psu_init
+psu_post_config
+psu_ps_pl_isolation_removal
+psu_ps_pl_reset_config</code></pre>
+  <p>The <code>dp-test</code> flash target runs this automatically before every flash (see its
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/CMakeLists.txt">CMakeLists</a>).</p>
+
+  <h3>1. Discover the pipeline from the device tree</h3>
+  <p>The design describes itself; nothing is hardcoded in software:</p>
+  <ul>
+    <li><code>vdma0</code> / <code>vtc0</code> / <code>vidstat0</code> &mdash; register bases of
+      the VDMA, the timing controller and the status GPIO.</li>
+    <li><code>vtc0</code> also carries <code>soct,hactive</code>, <code>soct,vactive</code> and
+      <code>soct,fps</code>: the video mode baked into the design's pixel clock. Software must
+      program exactly this timing.</li>
+    <li><code>dpwin0</code> (compatible <code>soct,zynqmp-dp-window</code>) &mdash; the window's
+      base and size, plus <code>soct,ps-base</code>, the PS address its start maps to. Software
+      reaches any documented PS register at
+      <em>window&nbsp;base + (PS&nbsp;address &minus; ps-base)</em>.</li>
+  </ul>
+
+  <h3>2. Program the PL: timing and frames</h3>
+  <p>The timing controller is programmed with the mode's blanking intervals (the register
+  sequence follows the Xilinx vtc driver's generator setup) and the VDMA runs in register-direct
+  <em>park</em> mode: its frame stores point at CPU-drawn framebuffers, and retargeting the park
+  pointer to another store flips the displayed buffer at the next frame boundary &mdash; that is
+  the tear-free page flip. Two caveats both live in <code>dp-test</code>'s comments:</p>
+  <ul>
+    <li>Frame stores are latched when <code>VSIZE</code> is written; rewriting <code>VSIZE</code>
+      on a running channel visibly glitches the frame being scanned out. Point the stores at
+      their buffers once and flip only the park pointer.</li>
+    <li>The VDMA read master is 32-bit: framebuffers must live below 4&nbsp;GiB, i.e. in the
+      first 2&nbsp;GiB of DRAM.</li>
+  </ul>
+
+  <h3>3. Program the PS: routing and the DP link</h3>
+  <p>The PS side is driven by the vendored Xilinx drivers in
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/xilinx">dp-test/xilinx</a>
+  (dppsu for the DP controller, avbuf for the AV buffer manager), kept byte-for-byte unmodified.
+  The shim layer in
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/soct_xil">dp-test/soct_xil</a>
+  provides the BSP headers they include by name &mdash; crucially <code>Xil_In32/Out32</code>,
+  which translate the drivers' hardcoded PS addresses through the window &mdash; so the drivers
+  never know they are running on a RISC-V. The sequence: select the live input and the PL video
+  clock in the AV buffer manager, initialize the DP TX, wait for a monitor (HPD), train the link
+  at the maximum common capabilities, write the main stream attributes for the advertised mode,
+  and enable the main stream.</p>
+
+  <h3>4. Verify, don't hope</h3>
+  <p>The status GPIO tells the truth about the PL side: <code>locked</code> means video is
+  leaving the fabric; <code>underflow</code> means the frame fetch is starving (bandwidth). On
+  the PS side, the DP controller's interrupt status reports vertical-blanking events of the
+  transmitted stream. <code>dp-test</code> checks all of these and prints a verdict for each
+  stage, which is how every failure mode of this pipeline was localized during bring-up.</p>
+
+  <footer>SoCeteer &mdash; local documentation.</footer>
+</main>
+</body>
+</html>

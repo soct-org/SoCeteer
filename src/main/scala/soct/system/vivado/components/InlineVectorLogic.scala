@@ -44,9 +44,7 @@ abstract class InlineVectorLogic(op: String, width: Int, connectOnInit: Boolean 
   object RES extends BdPinOut("Res", this)
 
   if (connectOnInit) {
-    ops.zipWithIndex.foreach { case (op, i) =>
-      op --> OP(i + 1)
-    }
+    ops.foreach(op => op --> OP.next())
   }
 
 }

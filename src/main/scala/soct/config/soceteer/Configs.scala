@@ -152,13 +152,39 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((site, here, up) => {
 )
 
 /**
+ * Field collecting the name suffixes contributed by [[SOCTFeatureConfig]] fragments.
+ * The launcher appends them to the system name, so feature designs get their own
+ * workspace directories.
+ */
+case object SOCTNameSuffixes extends Field[Seq[String]](Nil)
+
+/**
+ * Base class for config fragments that change the design substantially enough that its
+ * outputs must not share a workspace with the plain config: the suffix becomes part of
+ * the generated system name (`<config>-<xlen>-<suffix>[-<suffix>...]`), so e.g. a design
+ * with [[WithVideoStream]] lands in `workspace/RocketB1-64-video/` instead of silently
+ * overwriting `workspace/RocketB1-64/`. Suffixes accumulate in composition order
+ * (base-most fragment first) and are deduplicated.
+ *
+ * @param suffix the fixed name suffix this feature contributes (e.g. "video")
+ * @param impl   the fragment's actual configuration
+ */
+abstract class SOCTFeatureConfig(suffix: String, impl: Config) extends Config(
+  new Config((_, _, up) => {
+    case SOCTNameSuffixes => up(SOCTNameSuffixes) :+ suffix
+  }) ++ impl
+)
+
+/**
  * Parameters of the DisplayPort video stream (PL framebuffer -> PS DP live video).
+ * The default is 720p60: 1080p60 needs more frame-fetch bandwidth than the coherent DMA
+ * path sustains at 100 MHz (the design generation validates this and fails loudly).
  *
  * @param width  active pixels per line
  * @param height active lines per frame
  * @param fps    frames per second
  */
-case class VideoStreamParams(width: Int = 1920, height: Int = 1080, fps: Int = 60)
+case class VideoStreamParams(width: Int = 1280, height: Int = 720, fps: Int = 60)
 
 /**
  * Field enabling the DisplayPort video pipeline: an AXI VDMA reads frames from DRAM and
@@ -167,25 +193,15 @@ case class VideoStreamParams(width: Int = 1920, height: Int = 1080, fps: Int = 6
 case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
 
 /**
- * Adds the DisplayPort video pipeline (see [[HasVideoStream]]) with default 1080p60 timing.
- * Select via `--with-config soct.WithVideoStream`.
+ * Adds the DisplayPort video pipeline (see [[HasVideoStream]]) with the default 720p60 timing.
+ * Select via `--with-config soct.WithVideoStream`; the design's outputs land in a
+ * `-video`-suffixed workspace (see [[SOCTFeatureConfig]]).
  */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
-class WithVideoStream() extends Config((site, here, up) => {
+class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, here, up) => {
   case HasVideoStream => Some(VideoStreamParams())
   case NExtTopInterrupts => up(NExtTopInterrupts) + 1 // VDMA mm2s frame-transfer interrupt
-})
-
-/**
- * [[WithVideoStream]] at 1280x720@60 instead of 1080p. Halves the frame-fetch bandwidth,
- * for memory paths that cannot sustain 1080p60.
- * Select via `--with-config soct.WithVideoStream720p`.
- */
-@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
-class WithVideoStream720p() extends Config((site, here, up) => {
-  case HasVideoStream => Some(VideoStreamParams(width = 1280, height = 720, fps = 60))
-  case NExtTopInterrupts => up(NExtTopInterrupts) + 1 // VDMA mm2s frame-transfer interrupt
-})
+}))
 
 case object HasUART extends Field[Boolean](false)
 

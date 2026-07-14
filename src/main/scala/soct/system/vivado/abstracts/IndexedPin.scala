@@ -132,6 +132,23 @@ trait HasIndexedPins {
       }
     }
 
+    /**
+     * Create and return the pin at the lowest free index. Use this for
+     * allocation-style attachment points (interconnect ports, gate operands),
+     * where callers care about getting *a* port, not a particular one; keep
+     * explicit [[apply]] indices where the position is semantic (bit lanes of
+     * a concat, interrupt numbers).
+     *
+     * @return the newly created pin
+     * @throws soct.system.vivado.VivadoDesignException if every index in the factory's range is taken
+     */
+    def next(): T = {
+      val idx = (indexRange._1 to indexRange._2).find(i => !cache.contains(i)).getOrElse(
+        throw VivadoDesignException(s"No free $kind index left in range ${indexRange._1}..${indexRange._2}")
+      )
+      apply(idx)
+    }
+
     /** Return all instantiated pins keyed by index. */
     def all: Map[Int, T] = cache.toMap
 

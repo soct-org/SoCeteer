@@ -35,10 +35,10 @@
 
 /* The video mode is baked into the design (pixel clock) and advertised by the
  * vtc0 device-tree node (soct,hactive/vactive/fps); resolved at startup in
- * main. 1080p60 is the fallback for device trees predating those properties. */
-static XVidC_VideoMode s_mode = XVIDC_VM_1920x1080_60_P;
-static unsigned s_width = 1920;
-static unsigned s_height = 1080;
+ * main - there is no fallback, a design without the properties is rejected. */
+static XVidC_VideoMode s_mode;
+static unsigned s_width;
+static unsigned s_height;
 
 /* PS-fixed base of the DP controller (AVBuf registers included) - reached
  * through the dpwin0 window, see xil_io.h. */
@@ -588,38 +588,18 @@ static void verify_pipeline(uintptr_t vdma_base, uintptr_t vtc_base) {
     volatile uint32_t *vdma = (volatile uint32_t *) vdma_base;
     volatile uint32_t *vtc = (volatile uint32_t *) vtc_base;
 
-    /* Video pipeline status GPIO (designs with the vidstat0 node): channel 1 at
-     * +0x0 = {bit5 mmcm locked, bit4 vtg_ce, bit3 pixel-domain aresetn,
-     * bit2 overflow, bit1 underflow, bit0 locked}, channel 2 at +0x8 = the
-     * video-out core's diagnostic status word. The locked bit is the
-     * definitive "video is leaving the PL" signal; bits 3..5 are the
-     * reset/gating/clock preconditions for it. */
-    dtb_node *vs = dtb_find_compatible(NULL, "soct,video-status");
-    if (vs) {
-        uintptr_t vs_base;
-        read_reg(vs, &vs_base, NULL);
-        volatile uint32_t *gpio = (volatile uint32_t *) vs_base;
-        const uint32_t flags = gpio[0];
-        printf("Video-out status: locked=%u underflow=%u overflow=%u "
-               "pixel_aresetn=%u vtg_ce=%u mmcm_locked=%u raw=0x%08" PRIx32 "\n",
-               flags & 1u, (flags >> 1) & 1u, (flags >> 2) & 1u,
-               (flags >> 3) & 1u, (flags >> 4) & 1u, (flags >> 5) & 1u, gpio[8 / 4]);
-        if (!((flags >> 5) & 1u)) {
-            printf("  BAD: the pixel MMCM is not locked - no stable pixel clock.\n");
-        }
-        if (!((flags >> 3) & 1u)) {
-            printf("  BAD: the video out is held in reset (pixel_psr aresetn low).\n");
-        }
-        if (!((flags >> 4) & 1u)) {
-            printf("  note: vtg_ce low - the video out is gating the timing generator "
-                "(FIFO not primed).\n");
-        }
-        if (!(flags & 1u)) {
-            printf("  BAD: the video out is NOT locked - no video leaves the PL.\n");
-        }
-    } else {
-        printf("note: no vidstat0 in the device tree - bitstream predates the "
-            "video-status GPIO, video-out lock not observable.\n");
+    /* Video pipeline status GPIO (vidstat0 node): {bit2 overflow, bit1
+     * underflow, bit0 locked} at +0x0. The locked bit is the definitive
+     * "video is leaving the PL" signal; underflow means the stream starves. */
+    dtb_node *vs = find_compatible("soct,video-status");
+    uintptr_t vs_base;
+    read_reg(vs, &vs_base, NULL);
+    volatile uint32_t *gpio = (volatile uint32_t *) vs_base;
+    const uint32_t flags = gpio[0];
+    printf("Video-out status: locked=%u underflow=%u overflow=%u\n",
+           flags & 1u, (flags >> 1) & 1u, (flags >> 2) & 1u);
+    if (!(flags & 1u)) {
+        printf("  BAD: the video out is NOT locked - no video leaves the PL.\n");
     }
 
     /* Clear the sticky status bits, then watch for a few frame times. */
@@ -734,12 +714,11 @@ int main(void) {
     }
     SoctXil_SetCpuFreqHz(read_u32_prop(cbus, "clock-frequency"));
 
-    unsigned fps = 60;
-    if (dtb_find_prop(vtc_node, "soct,hactive")) {
-        s_width = (unsigned) read_u32_prop(vtc_node, "soct,hactive");
-        s_height = (unsigned) read_u32_prop(vtc_node, "soct,vactive");
-        fps = (unsigned) read_u32_prop(vtc_node, "soct,fps");
-    }
+    /* The design advertises its video mode on the vtc node (read_u32_prop
+     * fails loudly when a property is missing). */
+    s_width = (unsigned) read_u32_prop(vtc_node, "soct,hactive");
+    s_height = (unsigned) read_u32_prop(vtc_node, "soct,vactive");
+    const unsigned fps = (unsigned) read_u32_prop(vtc_node, "soct,fps");
     int mode_found = 0;
     for (int m = 0; m < XVIDC_VM_NUM_SUPPORTED; m++) {
         const XVidC_VideoTimingMode *e = &XVidC_VideoTimingModes[m];
@@ -813,13 +792,9 @@ int main(void) {
     usleep(5000000);
 
     /* The pipeline health monitor of the animation loop needs the status GPIO. */
-    volatile uint32_t *vidstat = NULL;
-    dtb_node *vsnode = dtb_find_compatible(NULL, "soct,video-status");
-    if (vsnode) {
-        uintptr_t vs_base;
-        read_reg(vsnode, &vs_base, NULL);
-        vidstat = (volatile uint32_t *) vs_base;
-    }
+    uintptr_t vidstat_base;
+    read_reg(find_compatible("soct,video-status"), &vidstat_base, NULL);
+    volatile uint32_t *vidstat = (volatile uint32_t *) vidstat_base;
 
     unsigned long frames = 0, lockdrops = 0, underflows = 0;
     unsigned long tprev;
@@ -911,11 +886,9 @@ int main(void) {
 
         /* Pipeline health while animating (lock drops / underflows = memory
          * contention; clean = any remaining artifact is past the PL). */
-        if (vidstat) {
-            const uint32_t flags = vidstat[0];
-            if (!(flags & 1u)) lockdrops++;
-            if (flags & 2u) underflows++;
-        }
+        const uint32_t vflags = vidstat[0];
+        if (!(vflags & 1u)) lockdrops++;
+        if (vflags & 2u) underflows++;
         if (++frames % 256 == 0) {
             unsigned long tnow;
             __asm__ volatile("csrr %0, mcycle" : "=r"(tnow));
