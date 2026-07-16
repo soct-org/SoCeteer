@@ -116,9 +116,11 @@ object AXIAddrDeinterleaver {
    *
    * @param mAxi the memory-channel AXI4 port exported by the RocketSystem
    * @param base base address of the interleaved memory region (start of DRAM as seen by the cores)
-   * @return `None` if the address sets are contiguous (single channel / no interleaving),
+   * @return `None` if the address sets cover a contiguous range (no interleaving), including
+   *         a range decomposed into several adjacent aligned blocks of different sizes;
    *         `Some(geometry)` if they follow the round-robin interleave pattern
-   * @throws VivadoDesignException if the address sets have a hole pattern this component cannot compact
+   * @throws VivadoDesignException if the address sets are neither contiguous nor a hole
+   *                               pattern this component can compact
    */
   def geometryOf(mAxi: AXI4BusInfo, base: BigInt): Option[InterleaveGeometry] = {
     val slaves = mAxi.axiParams.fold(
@@ -129,9 +131,23 @@ object AXIAddrDeinterleaver {
       throw VivadoDesignException(s"AXIAddrDeinterleaver expects exactly one AXI4 slave per memory channel, but found ${slaves.length}.")
     }
     val sets = slaves.head.address
+
+    // A contiguous union is a plain address range - nothing to deinterleave. This covers the
+    // decomposition of a non-power-of-two aperture into adjacent aligned blocks of DIFFERENT
+    // sizes (e.g. a 16 GiB DIMM at 0x8000_0000 becomes 2+4+8+2 GiB sets), which would
+    // otherwise trip the same-mask check below. Interleaved channels can never take this
+    // early exit: their sets carry holey masks and are not contiguous.
+    val sorted = sets.sortBy(_.base)
+    val contiguousUnion = sorted.forall(s => (s.mask & (s.mask + 1)) == 0) &&
+      sorted.sliding(2).forall {
+        case Seq(a, b) => a.base + a.mask + 1 == b.base
+        case _ => true
+      }
+    if (contiguousUnion) return None
+
     val mask = sets.head.mask
     if (!sets.forall(_.mask == mask)) {
-      throw VivadoDesignException(s"Memory channel address sets have differing masks, cannot derive interleave geometry: ${sets.mkString(", ")}")
+      throw VivadoDesignException(s"Memory channel address sets are neither contiguous nor share an interleave mask, cannot derive interleave geometry: ${sets.mkString(", ")}")
     }
 
     // The lowest zero bit of the mask marks the end of the block-offset bits...

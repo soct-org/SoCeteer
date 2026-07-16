@@ -643,6 +643,13 @@ object SOCTBytes {
     def toDouble(x: Bytes): Double = x.value.toDouble
 
     def compare(x: Bytes, y: Bytes): Int = java.lang.Long.compare(x.value, y.value)
+
+    // JDK 25+ gives java.util.Comparator (which Ordering extends) max/min default methods
+    // that collide with Ordering's own; explicit overrides resolve the conflict there and
+    // are ordinary Ordering overrides on older JDKs.
+    override def max[U <: Bytes](x: U, y: U): U = if (gteq(x, y)) x else y
+
+    override def min[U <: Bytes](x: U, y: U): U = if (lteq(x, y)) x else y
   }
 
   object Bytes {

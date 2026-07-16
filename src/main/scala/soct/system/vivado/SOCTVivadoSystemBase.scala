@@ -70,16 +70,18 @@ case class MemPath(ddr4Inst: DDR4, memSMC: AXISmartConnect)
  * Capability marker for top-level systems that support multiple memory channels
  * (a [[soct.RegisteredMems]] layout with more than one entry). The launcher checks it via
  * reflection on the selected top class (see [[hasMultiMemSupport]]) to pick between the
- * single- and multi-channel memory layout fragments.
+ * single- and multi-channel memory layout fragments; tops without the marker always get the
+ * single-channel layout.
  */
 trait SupportsMultiMem
 
 
 /**
- * Shared base of the Vivado top-level systems: binds the common MMIO devices (UART, SD card)
- * into the device tree, builds the components and wiring both systems share
+ * Shared base of Vivado top-level systems: binds the common MMIO devices (UART, SD card)
+ * into the device tree, builds the topology-independent components and wiring
  * ([[initCommonDesign]] and the `wire*` helpers), and provides TCL helpers for the timing
- * constraints. The concrete systems only add their memory topology.
+ * constraints. A concrete system ([[SOCTVivadoSystem]] being the standard one) only adds its
+ * memory topology and clock synthesis.
  *
  * @throws VivadoDesignException during construction if no BdBuilder is set in the parameters
  *                               or the system has no PLIC for interrupt wiring
@@ -261,7 +263,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
                                    )
 
   /**
-   * Build the parts both Vivado systems share: look up the board, create and register the top
+   * Build the topology-independent parts of a Vivado system: look up the board, create and register the top
    * instance, discover the exported AXI4 buses, derive the periphery and core clock domains,
    * and create the shared components (reset synchronizers, MMIO/DMA SmartConnects, interrupt
    * concat, optional UART). Must be called first inside the concrete system's `InModuleBody`.

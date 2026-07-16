@@ -181,7 +181,9 @@
   <p>Three clock domains meet in this pipeline:</p>
   <ul>
     <li><strong>Periphery clock</strong> (configurable with <code>--periphery-freq-mhz</code>,
-      default 100&nbsp;MHz, used by the VDMA's AXI4-Lite and memory-read interfaces, the timing controller's and status GPIO's AXI ports,
+      default 100&nbsp;MHz; synthesized by the system clock wizard, so the requested frequency is
+      not limited to what the memory controller's clocking offers): used by the VDMA's AXI4-Lite
+      and memory-read interfaces, the timing controller's and status GPIO's AXI ports,
       the address-offset window and <code>saxi_lpd_aclk</code>. It also feeds the pixel MMCM's
       input.</li>
     <li><strong>Pixel clock</strong> (MMCM output; 74.25&nbsp;MHz for 720p60): the whole video
