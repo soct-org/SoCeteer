@@ -15,6 +15,42 @@
   objects, and a builder turns the resulting graph into the TCL/XDC collateral Vivado consumes.
   This guide covers the concepts you need to read the existing components and write your own.</p>
 
+  <h2>Background</h2>
+  <p>What a Vivado block design is and why it is scripted. Readers who use the IP integrator
+  daily can skip ahead.</p>
+
+  <h3>Block designs: wiring IP, not writing HDL</h3>
+  <p>Alongside plain HDL sources, Vivado offers the <em>IP integrator</em>: a schematic-like
+  <em>block design</em> in which pre-packaged, configurable hardware blocks (IP cores &mdash;
+  DMA engines, interconnects, clock generators) are instantiated as cells and wired together.
+  Cells expose two kinds of connection points: plain pins (single wires like a clock or reset)
+  and <em>interface pins</em> &mdash; whole named bundles such as an AXI port, connected as one
+  unit with protocol checking. Each IP is identified by its catalog VLNV
+  (vendor:library:name:version) and configured through properties; Vivado <em>derives</em> some
+  properties from context (e.g. clock frequencies propagate along connections), and derived
+  properties are read-only &mdash; setting them is silently ignored or rejected, a recurring
+  trap this DSL guards against.</p>
+
+  <h3>The address map</h3>
+  <p>A block design also carries the bus masters' view of memory: every slave's register window
+  or memory range is assigned a base address and size in each master's address space
+  (<code>assign_bd_address</code>). This map must agree with what the software expects &mdash;
+  in SoCeteer's case, with RocketChip's diplomatic address map and the generated device tree.</p>
+
+  <h3>Everything is TCL underneath</h3>
+  <p>Every click in the Vivado GUI executes a TCL command, and the whole tool is drivable from
+  TCL scripts alone. A design that exists only as GUI state is neither reviewable nor
+  reproducible; a design generated as a deterministic TCL script can be diffed, versioned and
+  recreated from scratch on any machine. That is the contract of this DSL: Scala builds a typed
+  graph, and the graph is emitted as deterministic TCL &mdash; misconnections are caught by the
+  Scala compiler or a generation-time check instead of by Vivado, hours later.</p>
+
+  <h3>Constraints (XDC)</h3>
+  <p>Synthesis needs facts that HDL cannot express: which package pin a port maps to, its
+  electrical standard, and the timing relationships between clocks. These live in Xilinx Design
+  Constraints (XDC) files, which address cells <em>by instance name</em> &mdash; the reason this
+  DSL insists on stable, explicit instance names for anything a constraint might reference.</p>
+
   <h2>The builder and the graph</h2>
   <p>Everything registers itself with an implicit
   <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTBdBuilder.scala"><code>SOCTBdBuilder</code></a>
@@ -62,7 +98,10 @@
   the DDR4 custom interface uses the latter.
   Indexed pins (<code>S00_AXI</code>, <code>aclk1</code>, ...) come from pin factories:
   <code>ACLK(0)</code> creates the pin once and throws on re-creation; use
-  <code>getOrElseInit</code>/<code>get</code> to share.</p>
+  <code>getOrElseInit</code>/<code>get</code> to share, and <code>ACLK.next()</code> to allocate
+  the lowest free index when the position carries no meaning (the common case for interconnect
+  ports) &mdash; reserve explicit indices for pins whose number <em>is</em> semantic, like concat
+  inputs or interrupt slots.</p>
   <p>Three operators (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/abstracts/Connect.scala"><code>Connect.scala</code></a>)
   add the edges, and the type system rejects impossible pairings at <em>compile</em> time with a
   detailed error message:</p>
@@ -105,5 +144,7 @@
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

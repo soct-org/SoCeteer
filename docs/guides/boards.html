@@ -14,6 +14,35 @@
   ports, and declares the memory, UART and PMOD resources the systems can use. Everything else
   (block design, constraints, capacities) is derived from it.</p>
 
+  <h2>Background</h2>
+  <p>What a &ldquo;board&rdquo; means to the tools. Readers who have brought up an FPGA board
+  before can skip ahead.</p>
+
+  <h3>Part vs. board</h3>
+  <p>The FPGA <em>part</em> is the silicon device; the <em>board</em> is the PCB it is soldered
+  to &mdash; with oscillators, buttons, memory sockets and connectors wired to specific package
+  pins. Synthesis only needs the part; everything that touches the outside world needs the
+  board: which pins carry the clock, what voltage a bank runs at, what is attached where. That
+  knowledge exists nowhere in the HDL &mdash; it has to be supplied, either from Vivado's board
+  files or as explicit constraints.</p>
+
+  <h3>Vivado board files and the board flow</h3>
+  <p>For supported boards, Vivado ships <em>board files</em>: XML describing every interface the
+  PCB offers (clocks, DDR4, LEDs), the package pin and electrical standard of every signal, and
+  <em>presets</em> that configure complex IP (like the DDR4 controller) for what is physically
+  on the board. The <em>board flow</em> is Vivado consuming these files &mdash; connect an IP to
+  a board interface and pin locations, standards and presets are applied automatically. It is
+  convenient and correct, but only for exactly the hardware the files describe; deviating from
+  it (a different DIMM, an unlisted interface) means placing pins and configuring IP explicitly.</p>
+
+  <h3>Pins are electrical, not just logical</h3>
+  <p>A package pin assignment always carries an electrical standard
+  (<code>IOSTANDARD</code>, e.g. <code>LVCMOS33</code> for a 3.3&nbsp;V single-ended pin, or
+  <code>DIFF_SSTL12</code> for a 1.2&nbsp;V differential pair like a DDR4 system clock). The
+  standard is a property of the PCB &mdash; wrong values can fail the design-rule checks at
+  best and stress hardware at worst, which is why board definitions record pin location and
+  standard together, taken verbatim from the board files.</p>
+
   <h2>The shape of a board definition</h2>
   <p>Extend <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/FPGA.scala"><code>FPGA</code></a>
   and register the object in
@@ -62,5 +91,7 @@
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

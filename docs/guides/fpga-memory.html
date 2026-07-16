@@ -14,6 +14,45 @@
   DIMM that is actually inserted in the board with <code>--ext-mem-part</code>, and what happens
   under the hood when that DIMM differs from the board preset.</p>
 
+  <h2>Background</h2>
+  <p>Why external DRAM needs this much machinery. Readers who have configured a memory
+  controller before can skip ahead.</p>
+
+  <h3>DRAM is not memory until a controller makes it so</h3>
+  <p>Unlike the on-chip block RAM of an FPGA, DRAM is a high-maintenance device: it forgets its
+  contents unless refreshed every few milliseconds, it is organized into banks/rows/columns that
+  must be opened and closed in the right order with part-specific delays, and its interface runs
+  at signal rates that need calibration against the physical trace lengths of the PCB. A
+  <em>memory controller</em> plus a <em>PHY</em> (the physical-layer logic driving the pins)
+  handle all of this and present an ordinary read/write bus to the rest of the design. On Xilinx
+  FPGAs both come packaged as the DDR4 IP that this guide configures.</p>
+
+  <h3>DIMMs, ranks and part numbers</h3>
+  <p>The DRAM itself is a pluggable module &mdash; a DIMM (or its small-outline variant, SODIMM).
+  A module is described by its organization: number of addressable locations &times; data width
+  (e.g. 2G locations &times; 64 bit = 16&nbsp;GiB), possibly in multiple <em>ranks</em> &mdash;
+  independently selected chip groups sharing the data pins, which is why dual-rank modules need
+  extra control signals. ECC modules carry 72 data bits instead of 64; the extra check bits are
+  not addressable and add no capacity. All of this is encoded in the manufacturer's part number,
+  which is why a part name is enough to derive a module's capacity and timing.</p>
+
+  <h3>The decode window, aliasing and why capacity must match</h3>
+  <p>The controller answers a fixed range of bus addresses &mdash; its <em>decode window</em>
+  &mdash; sized at design time from the configured part. If the window is larger than the module,
+  the upper addresses wrap onto the lower ones (<em>aliasing</em>): writes to &ldquo;high&rdquo;
+  memory silently corrupt low memory. If it is smaller, capacity is simply lost. Neither failure
+  is visible until something reads back the wrong data, which is why the configured part, the
+  physical module, and everything derived from them (device tree, address map) must agree
+  &mdash; the point of the single-source-of-truth design below.</p>
+
+  <h3>Channel interleaving</h3>
+  <p>Designs with several memory controllers gain bandwidth by <em>interleaving</em>: consecutive
+  cache lines alternate between channels, so sequential traffic loads all controllers evenly.
+  The cost is that each individual controller now sees a sparse address pattern &mdash; every
+  N-th cache line &mdash; rather than a dense range, which a DDR controller cannot use
+  efficiently. Undoing that sparseness per channel is the job of the address deinterleaver
+  described below.</p>
+
   <h2>The memory part is the single source of truth</h2>
   <p>The Vivado DDR4 IP sizes its address decode window from the selected <em>memory part</em>
   (the DIMM's Vivado catalog name, e.g. <code>MTA8ATF51264HZ-2G1</code>). SoCeteer derives
@@ -110,5 +149,7 @@
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

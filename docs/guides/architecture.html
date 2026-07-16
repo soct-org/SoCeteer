@@ -14,6 +14,53 @@
   Verilog, TCL and a boot ROM image: the launcher pipeline, how configs shape the design, how the
   transpiler lowers Chisel to Verilog, and how the boot ROM gets built <em>during</em> elaboration.</p>
 
+  <h2>Background</h2>
+  <p>The concepts this pipeline is built from. Readers who know the Chisel ecosystem can skip
+  ahead.</p>
+
+  <h3>Hardware generators, not hardware descriptions</h3>
+  <p>Chisel is not a language that is compiled to a chip; it is a Scala library for
+  <em>constructing circuits</em>. Running a Chisel program (called <em>elaboration</em>) executes
+  ordinary Scala code whose side effect is building a graph of hardware nodes &mdash; registers,
+  wires, module instances. Because the constructing code is a real program, it can loop, branch
+  and take parameters, which makes a Chisel design a <em>generator</em>: one codebase that emits
+  a different circuit for every parameter set (number of cores, cache sizes, which peripherals
+  exist). Everything in this guide happens at elaboration time, on the development machine
+  &mdash; no hardware is involved yet.</p>
+
+  <h3>FIRRTL and firtool</h3>
+  <p>Elaboration serializes the circuit graph as FIRRTL, an intermediate representation for
+  register-transfer-level hardware &mdash; the same role an IR plays in a software compiler.
+  A separate compiler then lowers FIRRTL to synthesizable Verilog; in the modern toolchain that
+  compiler is <em>firtool</em> (from the LLVM-adjacent CIRCT project), a standalone native
+  binary. The Verilog is the hand-off format: FPGA synthesis tools (Vivado) and simulators
+  (Verilator) consume it, not Chisel or FIRRTL.</p>
+
+  <h3>Diplomacy</h3>
+  <p>An SoC's interconnect has parameters no single component can decide alone: bus widths,
+  address maps, which masters can reach which slaves, interrupt routing. RocketChip solves this
+  with <em>Diplomacy</em>, a negotiation phase that runs before hardware construction: every bus
+  endpoint declares what it needs and supports, the framework propagates and reconciles these
+  along the bus graph, and only then is the actual hardware elaborated with the agreed
+  parameters. Practical consequence: adding a peripheral to the right bus node is enough &mdash;
+  widths, address decoding and the device tree entry follow from the negotiation.</p>
+
+  <h3>Configs and the CDE parameter system</h3>
+  <p>All parameters live in one keyed store (<em>CDE</em>, Context-Dependent Environments):
+  a <code>Field[T]</code> is a typed key, a <code>Config</code> is a layer of key&rarr;value
+  bindings, and layers stack &mdash; a lookup walks the stack top-down and the first binding
+  wins. &ldquo;Configuring a design&rdquo; means composing such layers; a fragment like
+  <code>WithUART</code> overrides exactly the fields it cares about and leaves the rest to the
+  layers below. This is why the assembly <em>order</em> of the stack (next section) is worth
+  understanding: it defines what overrides what.</p>
+
+  <h3>The device tree</h3>
+  <p>A device tree is a data structure describing the hardware to software: which peripherals
+  exist, at which addresses, with which interrupts and properties. It is compiled from source
+  (DTS) to a binary blob (DTB) that the boot ROM hands to the loaded program. Because the
+  generator emits the device tree from the same elaboration that builds the hardware, software
+  never hardcodes an address &mdash; one binary runs on any generated variant of the SoC.</p>
+
   <h2>The pipeline at a glance</h2>
   <ol>
     <li><strong><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/SOCTLauncher.scala"><code>SOCTLauncher.main</code></a></strong> parses the arguments, resolves the
@@ -51,6 +98,11 @@
       <code>WithSingleBusClockSpeed(--core-freq-mhz)</code>,
       <code>WithFastPnR</code> (<code>--fast-pnr</code>) and RocketChip's
       <code>WithRV32</code> (<code>--xlen 32</code>) when requested.</li>
+    <li><strong>Extra config fragments</strong> from <code>--with-config</code> (repeatable) -
+      instantiated by reflection like the base config and inserted here, so they override the
+      base config but not the launcher arguments; among each other, the leftmost occurrence
+      wins. This is how optional features are switched on without editing a config class, e.g.
+      <code>--with-config soct.WithVideoStream</code>.</li>
     <li><strong>Your base config</strong> - the class named by <code>--config</code>, instantiated
       by reflection (default <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/rocketchip/Configs.scala"><code>soct.RocketB1</code></a>; typos get a closest-match suggestion).
       This is where you pick cores (Rocket/BOOM/Gemmini), cache sizes, and any custom fragments.</li>
@@ -75,6 +127,13 @@
   select the board definition and collect the block design; <code>PeripheryClockDomain</code> (a
   <code>Freq</code>) sets the periphery clock; <code>RegisteredMems</code>/<code>ExtMem</code>
   define the memory channels; <code>BootROMLocated</code> binds the SOCT boot ROM described next.</p>
+  <p>Feature fragments that change the design substantially extend
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>SOCTFeatureConfig</code></a>,
+  which contributes a name suffix: the system name becomes
+  <code>&lt;config&gt;-&lt;xlen&gt;[-&lt;suffix&gt;&hellip;]</code> (e.g.
+  <code>RocketB1-64-video</code> for <code>WithVideoStream</code>), and since output paths derive
+  from that name, a feature's artifacts land in their own
+  <code>workspace/</code> directory instead of overwriting the plain config's.</p>
 
   <h2>How the boot ROM is built (single elaboration, lazy contents)</h2>
   <p><code>SOCTSystem</code> replaces RocketChip's static boot ROM with
@@ -130,21 +189,6 @@
     <li>This annotation-driven path is required if your project depends on
       Transform/FirrtlAnnotation-based concepts, which modern Chisel + firtool do not support.</li>
   </ul>
-
-  <h2>Chisel, firtool, FIRRTL and friends</h2>
-  <p>There are two Chisel lineages this repository is compatible with:</p>
-  <ol>
-    <li><a href="https://github.com/chipsalliance/chisel"><code>org.chipsalliance.chisel</code></a> &mdash;
-      the current default (see <code>fallbackChiselVersion</code> in <a href="https://github.com/soct-org/SoCeteer/blob/main/build.sbt"><code>build.sbt</code></a>).</li>
-    <li><a href="https://repo1.maven.org/maven2/edu/berkeley/cs/chisel3_2.13/"><code>edu.berkeley.cs.chisel3</code></a>
-      (3.6.1) &mdash; the legacy lineage, still supported and selectable via the
-      <code>SOCT_CHISEL_VERSION</code> environment variable.</li>
-  </ol>
-  <p>To stay compatible with Berkeley's chisel, org.chipsalliance also uses the package name
-    <code>chisel3</code>. So <code>import chisel3._</code> alone does not tell you which one is on
-    the classpath. A misconfigured <code>build.sbt</code> can produce very confusing errors; use
-    exactly one of the two packages. The supported versions are listed in
-    <code>supportedChiselVersions</code> in <code>build.sbt</code>.</p>
   <div class="note">
     Tip: to overwrite the Chisel version used by a submodule with its own build.sbt, wrap it in a
     <code>freshProject</code> call in the root <code>build.sbt</code>.
@@ -152,5 +196,7 @@
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

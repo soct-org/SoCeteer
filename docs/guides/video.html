@@ -14,25 +14,89 @@
   video config adds to the design, the contract software has to fulfill to light it up, and the
   constraints that fall out of both.</p>
 
+  <h2>Background</h2>
+  <p>The concepts this guide builds on. Readers familiar with raster video can skip ahead.</p>
+
+  <h3>Framebuffers and scanout</h3>
+  <p>A <em>framebuffer</em> is a region of ordinary RAM holding one value per screen pixel &mdash;
+  here three bytes (red, green, blue), so a 1280&times;720 frame occupies about 2.7&nbsp;MB.
+  A monitor is not sent a frame once when it changes: the display is redrawn continuously, top
+  to bottom, at the refresh rate. Display hardware therefore <em>scans out</em> the framebuffer
+  forever &mdash; reading pixels row by row, left to right, 60 times per second for a 60&nbsp;Hz
+  mode &mdash; whether or not anything changed. Scanout is a hard real-time consumer: a pixel
+  that arrives late is not displayed late, it is displayed <em>wrong</em> (or the monitor drops
+  the signal entirely). That is why this pipeline is designed around sustained bandwidth rather
+  than average throughput.</p>
+
+  <h3>Video timing: the active area is not the whole frame</h3>
+  <p>A video mode transmits more than its visible pixels. Each line consists of the
+  <em>active</em> pixels plus a <em>horizontal blanking</em> interval, and each frame consists of
+  the active lines plus <em>vertical blanking</em>. Blanking is a CRT inheritance (time for the
+  electron beam to fly back), but every digital standard keeps it &mdash; sinks use it to
+  synchronize, and software uses vertical blanking as the safe moment to switch buffers.
+  Blanking is subdivided into the <em>front porch</em> (after the last active pixel), the
+  <em>sync pulse</em> and the <em>back porch</em> (before the next active pixel). Three signals
+  accompany the pixel data: <em>hsync</em> and <em>vsync</em> pulse once per line/frame, and
+  <em>data enable</em> (DE) is high exactly during active pixels.</p>
+  <p>The sum of active and blanking pixels gives the <em>total</em> frame size. For 1280&times;720
+  at 60&nbsp;Hz (a CTA-861 mode) each line is 1280 active + 370 blanking = 1650 pixels, and each
+  frame is 720 active + 30 blanking = 750 lines. These totals define the <em>pixel clock</em>:
+  1650&nbsp;&times;&nbsp;750&nbsp;&times;&nbsp;60&nbsp;&asymp;&nbsp;74.25&nbsp;MHz &mdash; one pixel
+  must be produced on every single cycle of that clock. A mode is therefore not just a resolution;
+  it fixes an exact clock frequency and an exact blanking structure that transmitter and sink must
+  agree on.</p>
+
+  <h3>Double buffering</h3>
+  <p>Drawing into the framebuffer that is currently being scanned out produces <em>tearing</em>:
+  the top of the screen shows the old frame, the bottom the new one, with a visible seam that
+  moves. The standard fix is <em>double buffering</em> &mdash; draw into a second buffer while
+  the first is displayed, then switch the scanout pointer during vertical blanking. The switch
+  must take effect only at a frame boundary; hardware that latches a new address mid-frame tears
+  just the same.</p>
+
+  <h3>Why a DMA engine</h3>
+  <p>At 1280&times;720&times;60 the display consumes ~166&nbsp;MB/s &mdash; every second, forever.
+  No CPU should spend its cycles copying that, and a CPU also cannot guarantee the hard
+  per-cycle delivery scanout demands. A dedicated DMA engine (here the Xilinx VDMA) re-reads the
+  framebuffer from memory every frame and emits it as a pixel stream, with an internal FIFO to
+  ride out memory-latency spikes. The CPU only draws pixels into memory and flips buffers.</p>
+
+  <h3>DisplayPort is a packet link, not a pixel bus</h3>
+  <p>Older display interfaces (VGA, DVI, parallel RGB) transmit the pixel clock and sync signals
+  more or less directly. DisplayPort does not: it is a packetized, fixed-rate serial link
+  (similar in spirit to PCIe) whose link rate is unrelated to the pixel rate. Before any video
+  flows, the transmitter must <em>train</em> the link (negotiate lane count, speed and
+  equalization with the monitor) and describe the video inside it via the Main Stream Attributes
+  (MSA) &mdash; resolution, blanking, and an M/N clock ratio from which the sink regenerates the
+  pixel clock. This is why a DisplayPort output needs a driver where a VGA output needs a wire,
+  and why the software contract below has a PS-side half at all.</p>
+
   <h2>Enabling the pipeline</h2>
 <pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
   --with-config soct.WithVideoStream"</code></pre>
   <p>The config adds the video mode's parameters
   (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>VideoStreamParams</code></a>,
-  default 1280&times;720@60) and one PLIC interrupt for the VDMA. Designs without the config are
-  byte-identical to before &mdash; the whole pipeline is gated on <code>HasVideoStream</code>.</p>
+  default 1280&times;720@60) and one PLIC interrupt for the VDMA. The ZCU104 is the reference
+  board throughout this guide; <code>--board</code> takes any registered MPSoC board (see
+  <a href="boards.html">Adding an FPGA Board</a>).</p>
   <p>Generation validates that the mode is drivable: the frame fetch must sustain
   <em>width &times; height &times; fps &times; 3</em> bytes per second through the coherent DMA
-  path, which delivers roughly a quarter of its theoretical 8&nbsp;bytes/cycle in practice
-  (measured on the ZCU104 at 100&nbsp;MHz: ~187&nbsp;MB/s, where 1080p60 would need
-  373&nbsp;MB/s and got 30 of 60 frames per second). An undrivable mode fails the build with the
-  numbers instead of failing on the monitor.</p>
+  path. That path moves 8&nbsp;bytes per periphery-clock cycle in theory and roughly a quarter
+  of that in practice (measured on the reference ZCU104 at the default 100&nbsp;MHz:
+  ~187&nbsp;MB/s, where 1080p60 needs 373&nbsp;MB/s and delivered 30 of 60 frames per second).
+  The check scales with the configured periphery clock
+  (<code>--periphery-freq-mhz</code>) &mdash; a faster clock admits larger modes. An undrivable
+  mode fails the build with the numbers instead of failing on the monitor. Independently, each
+  mode needs a known pixel clock: the supported modes are enumerated in
+  <code>SOCTVivadoSystemBase.pixelClockFor</code> (1280&times;720@60 and 1920&times;1080@60);
+  a new mode is added by giving it its CTA-861 pixel clock there.</p>
 
   <h2>The hardware pipeline</h2>
-  <p>The ZCU104 routes its DisplayPort connector to the <em>PS</em> (the MPSoC's DP controller on
-  PS-GTR lanes), not to PL pins. The PL therefore streams pixels into the PS DP controller's
-  <em>live video input</em>, and the RISC-V programs that controller through an address window.
-  Everything below is instantiated by
+  <p>The pipeline targets Zynq UltraScale+ MPSoC boards. On those, the DisplayPort connector is
+  driven by the <em>PS</em>, not by <em>PL</em> pins: the DP controller is hardened in the
+  PS and reaches the connector over the PS-GTR serial lanes. The PL therefore streams pixels
+  into that controller's <em>live video input</em>, and the RISC-V programs it through an
+  address window. Everything is instantiated by
   <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTVivadoSystemBase.scala"><code>wireVideoStream</code></a>:</p>
   <ul>
     <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIVideoDMA.scala"><code>AXIVideoDMA</code></a>
@@ -46,7 +110,7 @@
       primed and releases it at a frame boundary, which is what guarantees output lock.</li>
     <li>The parallel video feeds the
       <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ZynqUltraPS.scala"><code>ZynqUltraPS</code></a>
-      live video pins, 8 bits per component padded to the PS's 12-bit lanes.</li>
+      live video pins &mdash; detailed port by port below.</li>
     <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxiAddrOffset.scala"><code>AxiAddrOffset</code></a>
       window makes the PS register space reachable from the MMIO port: a 16&nbsp;MiB window maps
       onto the PS-fixed addresses of the DP controller, its SERDES and the AV buffer manager.
@@ -58,15 +122,106 @@
       never leave the fabric.</li>
   </ul>
 
-  <h3>Clocks and resets</h3>
-  <p>Control and memory sides run on the periphery clock. The <em>stream</em> side &mdash; the
-  VDMA's pixel stream, the video out, the timing generator and the PS live input &mdash; runs on
-  a dedicated pixel clock synthesized by an MMCM (74.25&nbsp;MHz for 720p60): the stream carries
-  one pixel per cycle, so its clock must be the pixel rate. The pixel domain has its own reset
-  synchronizer held until the MMCM locks; its external reset is fed <em>active-low</em>
-  deliberately &mdash; see the warning on
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ProcSysReset.scala"><code>ProcSysReset</code></a>
-  about Vivado's polarity inference through slices, which cost this pipeline a bring-up cycle.</p>
+  <h2>The MPSoC as a peripheral</h2>
+  <p>The design uses the <code>zynq_ultra_ps_e</code> IP purely as a peripheral of the PL: its
+  APU cores never run. At generation time the board preset is applied (clocking, MIO, the DP
+  lane and refclk setup on the PS-GTR), then the design enables exactly the two faces it needs
+  &mdash; <code>PSU__USE__VIDEO</code> and <code>PSU__USE__S_AXI_GP6</code> (32-bit data width)
+  &mdash; and disables the preset's unused PL interfaces (<code>M_AXI_HPM0/1_FPD</code>,
+  <code>S_AXI_HP0_FPD</code>) so nothing is left unclocked. This PSU configuration is fixed in
+  the bitstream; what software can and cannot change is listed per port:</p>
+
+  <h3><code>S_AXI_LPD</code> + <code>saxi_lpd_aclk</code> &mdash; the register window</h3>
+  <p>The PS's low-power-domain AXI slave (hardware name <code>SAXIGP6</code>). This is how the
+  RISC-V reaches every PS register: Rocket MMIO port &rarr; MMIO SmartConnect &rarr;
+  <code>AxiAddrOffset</code> (adds <code>0x8000_0000</code>) &rarr; <code>S_AXI_LPD</code>. A
+  load from <code>0x7D4A_0000</code> therefore arrives at the DP controller at
+  <code>0xFD4A_0000</code>; the LPD's internal routing carries it onward into the FPD, where the
+  DP registers physically live. The window base, size and offset are fixed hardware; everything
+  <em>behind</em> the window is software: the DP controller (link training, main stream
+  attributes), its SERDES lane registers and the AV buffer manager are all programmed by the
+  driver through this one port. The port is clocked by the periphery clock on the PL side;
+  its PS-side width registers (AFIFM) are written by <code>psu_init</code> &mdash; before that
+  runs, the very first access stalls the bus.</p>
+
+  <h3><code>dp_video_in_clk</code> &mdash; the pixel clock into the PS</h3>
+  <p>Carries the PL-generated pixel clock (the MMCM output, 74.25&nbsp;MHz for 720p60) into the
+  DP subsystem. The frequency is fixed at generation time by the video mode; software cannot
+  change it, but software must <em>select</em> it: the AV buffer manager has a video-clock mux
+  (PS internal clock vs. PL clock), and the driver switches it to the PL side for live video.
+  Until that selection, the PS video pipeline runs on the wrong clock and ignores the live
+  input.</p>
+
+  <h3><code>dp_live_video_in_pixel1[35:0]</code> &mdash; pixel data</h3>
+  <p>The live pixel bus, 12 bits per component. The video out emits 24-bit RGB (8 bits per
+  component, UG934 ordering); three slices and a concat pad each component with four zero LSBs,
+  so the data sits MSB-aligned in the PS's 12-bit lanes. This mapping is fixed wiring &mdash;
+  but its <em>interpretation</em> is software: the AV buffer manager's live-input format
+  register must be set to RGB, 8 bits per component, or the PS scales and swizzles the values
+  incorrectly.</p>
+
+  <h3><code>dp_live_video_in_hsync</code> / <code>vsync</code> / <code>de</code> &mdash; timing</h3>
+  <p>The video out's sync outputs and its <code>vid_active_video</code> (as data enable) drive
+  these directly. The PS samples all of them on <code>dp_video_in_clk</code>. Polarities follow
+  the video mode (both positive for the CEA modes used here) and are produced by the timing
+  controller, which software programs &mdash; so the timing itself is software-defined, but it
+  must match the mode advertised in the device tree, because the pixel clock is sized for
+  exactly that mode. The main stream attributes the driver writes into the DP controller must
+  describe the same timing; the DP transmitter frames whatever the live interface delivers.</p>
+
+  <h3>What remains PS-internal</h3>
+  <p>Between the live input and the DP connector sit the AV buffer manager (input select,
+  blender, background color) and the DP transmitter (link training, MSA, the PS-GTR serdes) -
+  all software-programmed through the window, none of it wired to the PL. The DP link clock
+  derives from the PS-GTR reference clock, which the board preset routes and
+  <code>psu_init</code> configures; it is unrelated to the pixel clock, which is why the DP
+  protocol carries M/N clock-ratio values for the sink.</p>
+
+  <h2>Clocking</h2>
+  <p>Three clock domains meet in this pipeline:</p>
+  <ul>
+    <li><strong>Periphery clock</strong> (configurable with <code>--periphery-freq-mhz</code>,
+      default 100&nbsp;MHz, used by the VDMA's AXI4-Lite and memory-read interfaces, the timing controller's and status GPIO's AXI ports,
+      the address-offset window and <code>saxi_lpd_aclk</code>. It also feeds the pixel MMCM's
+      input.</li>
+    <li><strong>Pixel clock</strong> (MMCM output; 74.25&nbsp;MHz for 720p60): the whole video
+      path &mdash; the VDMA's <em>stream</em> side, the video out (both its stream and video-IO
+      sides), the timing controller's timing side and <code>dp_video_in_clk</code>. The stream
+      carries one pixel per cycle, so this clock <em>is</em> the pixel rate; running the stream
+      side on the slower periphery clock starves the video out mid-line (measured, not
+      theoretical). The VDMA bridges the two domains internally (its independent-clocks mode is
+      derived by Vivado from these connections).</li>
+    <li><strong>PS-internal clocks</strong>: the DP video pipeline runs on the live pixel clock
+      once software selects the PL source; the DP link and its SERDES run from the PS-GTR
+      reference configured by <code>psu_init</code>.</li>
+  </ul>
+
+  <h2>Reset behavior</h2>
+  <p>Two reset synchronizers govern the PL side; the conditions under which each part of the
+  subsystem is held in reset:</p>
+  <ul>
+    <li><strong>Periphery domain</strong> (board reset, or the debug module's
+      <code>ndreset</code>): holds the VDMA (<code>axi_resetn</code>), the timing controller's
+      and status GPIO's AXI interfaces, and &mdash; via its active-high output &mdash; the pixel
+      MMCM itself. A periphery reset therefore also collapses the pixel clock.</li>
+    <li><strong>Pixel domain</strong> (its own synchronizer): held while the periphery is in
+      reset <em>or</em> the MMCM is unlocked (<code>dcm_locked</code>). It resets only the video
+      out; release is synchronized to the pixel clock. Its external reset input is fed the
+      <em>active-low</em> periphery reset deliberately: the signal passes through
+      polarity-stripping fabric, and Vivado then infers the (read-only) pin polarity as
+      active-low &mdash; feeding the active-high reset holds the domain in permanent reset. See
+      the warning on
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ProcSysReset.scala"><code>ProcSysReset</code></a>.</li>
+    <li><strong>Never reset</strong>: the timing controller's pixel side and the video out's
+      video-IO side have their resets tied inactive and their enables tied high. They free-run
+      from the moment the pixel clock exists and merely produce garbage until the driver
+      programs the VDMA and the timing &mdash; which is harmless, because the video out refuses
+      to assert <code>locked</code> (and the DP shows the blender background) until the stream
+      and timing agree.</li>
+    <li><strong>PS side</strong>: PL resets never touch it. The PS comes out of reset through
+      <code>psu_init</code> once per power-up, and the DP controller additionally has a
+      register-level soft reset that the driver pulses when it reprograms the stream.</li>
+  </ul>
 
   <h2>The software contract</h2>
   <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/main.c"><code>dp-test</code></a>
@@ -127,14 +282,17 @@ psu_ps_pl_reset_config</code></pre>
   at the maximum common capabilities, write the main stream attributes for the advertised mode,
   and enable the main stream.</p>
 
-  <h3>4. Verify, don't hope</h3>
+  <h3>4. Verification </h3>
   <p>The status GPIO tells the truth about the PL side: <code>locked</code> means video is
   leaving the fabric; <code>underflow</code> means the frame fetch is starving (bandwidth). On
   the PS side, the DP controller's interrupt status reports vertical-blanking events of the
   transmitted stream. <code>dp-test</code> checks all of these and prints a verdict for each
-  stage, which is how every failure mode of this pipeline was localized during bring-up.</p>
+  stage, so a failure is localized to one link of the pipeline instead of presenting as a black
+  screen.</p>
 
   <footer>SoCeteer &mdash; local documentation.</footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

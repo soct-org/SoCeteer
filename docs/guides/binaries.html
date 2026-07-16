@@ -14,6 +14,49 @@
   ROMs that run on the SoCeteer-generated SoC. All binaries share a common build infrastructure
   provided by <code>soctglue</code>.</p>
 
+  <h2>Background</h2>
+  <p>What &ldquo;bare metal&rdquo; actually implies. Readers who have written for
+  microcontrollers can skip ahead.</p>
+
+  <h3>No operating system means no environment</h3>
+  <p>A bare-metal program is the only software on the machine. Nothing exists before its first
+  instruction: no stack, no zeroed variables, no console, no files, no <code>argv</code> &mdash;
+  the CPU simply starts executing at an address. Everything a hosted C program takes for granted
+  must be established by the program itself, which is the job of the startup code
+  (conventionally named <em>crt0</em>, &ldquo;C runtime zero&rdquo;): set up a stack, zero the
+  BSS segment (the region holding zero-initialized globals, which only exists as a size in the
+  binary), initialize globals, and only then call <code>main()</code>.</p>
+
+  <h3>The linker script decides where things live</h3>
+  <p>With no loader and no virtual memory, the binary's layout <em>is</em> the memory layout:
+  a linker script assigns each section (code, data, BSS) a physical address and defines symbols
+  (like the end of the image) that the runtime uses to know where free memory begins. Stack and
+  heap are not provided by anyone &mdash; they are just address ranges the linker script and
+  runtime agree on, which is why this guide talks about budgets and boundaries.</p>
+
+  <h3>newlib and the syscall boundary</h3>
+  <p>The C standard library used here is <em>newlib</em> (its &ldquo;nano&rdquo; variant), a libc
+  built for exactly this situation. Its portable core (<code>printf</code> formatting,
+  <code>malloc</code> bookkeeping) is self-contained, but everything that would normally ask an
+  OS for help funnels into a small set of stub functions &mdash; <code>_write</code>,
+  <code>_read</code>, <code>_sbrk</code>, <code>_open</code>, &hellip; &mdash; that the platform
+  must implement. Providing those stubs (and routing them somewhere useful, like a UART or an SD
+  card) is most of what a bare-metal runtime <em>is</em>; soctglue's syscall handler chain below
+  is its version of that boundary.</p>
+
+  <h3>Harts start all at once</h3>
+  <p>RISC-V calls a hardware thread a <em>hart</em>. On a multi-core SoC every hart comes out of
+  reset simultaneously and races into the same entry point &mdash; there is no primary CPU that
+  boots the others, unless software creates that convention. Startup code therefore elects a
+  primary hart, parks the rest on a barrier, and releases them once the runtime is initialized.</p>
+
+  <h3>Hardware discovery via the device tree</h3>
+  <p>The SoC generator emits a different memory map per configuration, so binaries cannot
+  hardcode addresses. Instead the boot flow passes a pointer to the device tree blob (DTB), the
+  hardware self-description generated alongside the design, and the runtime parses it to find
+  the UART, SD controller, memory size and CPU count at run time. One compiled program therefore
+  runs unchanged on any generated variant of the SoC.</p>
+
   <h2>Directory layout</h2>
   <p>Programs and boot ROMs are auto-discovered subdirectories that include a shared CMake
   template; the runtime library lives next to them under <code>shared/</code>:</p>
@@ -256,5 +299,7 @@ cmake --build build -j$(nproc)</code></pre>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

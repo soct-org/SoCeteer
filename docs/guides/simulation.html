@@ -14,6 +14,42 @@
   that loads RISC-V ELFs, bridges their syscalls to the host, and exposes a JTAG interface for
   live debugging with OpenOCD/GDB.</p>
 
+  <h2>Background</h2>
+  <p>How simulating an SoC works at all. Readers who have used Verilator and FESVR can skip
+  ahead.</p>
+
+  <h3>RTL simulation with Verilator</h3>
+  <p>Verilator does not interpret Verilog; it <em>compiles</em> the design into C++ that
+  evaluates the whole circuit once per clock cycle, then links it with a user-provided C++
+  harness into a native executable. The result is a cycle-accurate model of the SoC &mdash;
+  every register behaves exactly as in hardware, only some orders of magnitude slower (and with
+  simplifications: two-state logic, no analog effects). The point is observability and turnaround:
+  any signal can be inspected on any cycle, and a design change is a recompile away instead of an
+  hours-long place-and-route.</p>
+
+  <h3>The host bridge: DPI-C, HTIF and FESVR</h3>
+  <p>A simulated SoC has no monitor, SD card or serial port &mdash; but it runs inside a host
+  process that can stand in for all of them. SystemVerilog's DPI-C interface lets simulated
+  hardware call C functions, and over this bridge runs HTIF (Host-Target Interface), the
+  Berkeley protocol through which the target reaches its host. FESVR (the frontend server) is
+  the host side of it: it loads the ELF, services the target's proxied syscalls and forwards its
+  exit code. The net effect &mdash; a bare-metal RISC-V program behaving like an ordinary
+  command-line tool &mdash; is what makes the workflow below possible.</p>
+
+  <h3>Waveforms</h3>
+  <p>A simulator can record every signal transition into a waveform file (VCD being the classic
+  format) for post-mortem inspection in a viewer like GTKWave &mdash; the hardware equivalent of
+  an execution trace. Recording everything is expensive, which is why tracing is a compile-time
+  opt-in with a depth limit rather than a default.</p>
+
+  <h3>Debugging: the same stack as hardware</h3>
+  <p>RISC-V defines a standard <em>debug module</em>: a piece of hardware in the SoC that can
+  halt harts, read registers and access memory, controlled over JTAG. GDB does not speak JTAG;
+  OpenOCD translates between GDB's remote protocol and the debug transport. In simulation the
+  JTAG signals are exposed over a TCP socket (OpenOCD's <em>remote bitbang</em> protocol)
+  instead of a cable &mdash; everything above that socket is identical to debugging the FPGA,
+  which is exactly why the workflows transfer.</p>
+
   <h2>How the simulator is built</h2>
   <p>The <a href="https://github.com/soct-org/SoCeteer/tree/main/sim"><code>sim/</code></a> CMake
   project verilates the emitted design and compiles it together with a C++ harness (FESVR, the
@@ -26,7 +62,8 @@
   for the rest): <code>-DVL_TRACE=1</code> compiles in VCD waveform tracing
   (<code>VL_TRACE_DEPTH</code> limits the traced hierarchy, default 2 &mdash; tracing slows the
   simulation considerably, so it's off by default), and <code>VL_THREADS</code> overrides the
-  Verilator thread count (default: core count + 1).</p>
+  Verilator thread count (default: the simulated SoC's CPU count + 1, <em>not</em> the host's
+  core count).</p>
 
   <h2>Running programs</h2>
   <p>The simulator takes the ELF as its first positional argument; everything else is optional
@@ -62,5 +99,7 @@ riscv-none-elf-gdb program.elf -ex "target extended-remote :3333"</code></pre>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
 </body>
 </html>

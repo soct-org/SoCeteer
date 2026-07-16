@@ -59,7 +59,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
 ######################################################################
 # Apply Project specific flags - Modify this section to add more flags
 ######################################################################
-target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11 -O3)
+target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11 -O3 -ffast-math)
 
 target_include_directories(${SOCT_PROGRAM} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/soct_xil

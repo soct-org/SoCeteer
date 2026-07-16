@@ -46,3 +46,41 @@ th { background: var(--card); }
   padding: .7rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0;
 }
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+
+/* Glossary terms (annotated by glossary.js): dotted underline, tooltip on hover */
+a.term {
+  color: inherit; text-decoration: none;
+  border-bottom: 1px dotted var(--accent); cursor: help;
+  position: relative;
+}
+a.term:hover { text-decoration: none; border-bottom-style: solid; }
+.term-tip {
+  display: none; position: absolute; left: 50%; bottom: calc(100% + .45rem);
+  transform: translateX(-50%); z-index: 10;
+  width: max-content; max-width: 24rem; white-space: normal;
+  background: var(--card); color: var(--fg); border: 1px solid var(--accent);
+  border-radius: 6px; padding: .55rem .75rem;
+  font-size: .85rem; line-height: 1.45; text-align: left;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .25);
+}
+a.term:hover .term-tip { display: block; }
+
+/* Collapsible sections (wrapped by sections.js): the h2 is the toggle */
+details.sec > summary {
+  list-style: none; cursor: pointer;
+}
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary > h2::before {
+  content: "\25B8"; /* ▸ */
+  display: inline-block; width: 1.1em;
+  color: var(--muted); font-size: .8em;
+  transition: transform .15s ease;
+}
+details.sec[open] > summary > h2::before { transform: rotate(90deg); }
+details.sec > summary:hover > h2 { color: var(--accent); }
+details.sec > summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+}
+.sec-controls { color: var(--muted); font-size: .85rem; margin: .3rem 0 0; }
+.sec-controls a { color: var(--muted); }
+.sec-controls a:hover { color: var(--accent); }
