@@ -53,8 +53,6 @@ set(SOCT_BOOT_LLVM_DIR "" CACHE PATH
         "LLVM bin directory (clang, ld.lld, llvm-*) for the kernel and OpenSBI builds; empty = auto-detect via FindLLVMRiscv")
 set(SOCT_BOOT_MAKE "" CACHE STRING
         "GNU make for the kernel and OpenSBI builds (kernel needs >= 4.0); empty = auto-detect via FindGNUMake")
-set(SOCT_LINUX_CMDLINE "console=ttyUL0,115200 earlycon=uartlite,mmio,0x60010000" CACHE STRING
-        "Kernel command line baked into the Image (the SoC DTB has no /chosen node)")
 set(SOCT_LINUX_IMAGE "" CACHE FILEPATH
         "Prebuilt kernel Image to embed instead of building linux-image here")
 

@@ -2,7 +2,7 @@ package soct.system.vivado
 
 import chisel3._
 import freechips.rocketchip.amba.axi4.AXI4SlaveParameters
-import freechips.rocketchip.resources.ResourceInt
+import freechips.rocketchip.resources.{Description, Device, Resource, ResourceBinding, ResourceBindings, ResourceInt, ResourceString}
 import org.chipsalliance.cde.config.Parameters
 import soct._
 import soct.SOCTFreq._
@@ -129,21 +129,27 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   /** Next free PLIC interrupt index; bumped for every bound MMIO device. */
   protected var irqIdx = 0
 
+  /** UART register base and fixed baud; the DTS `reg`, `current-speed` and the
+   * `/chosen` boot arguments below must all agree with the IP configuration
+   * ([[soct.system.vivado.components.AXIUartLite]] sets C_BAUDRATE to the same value). */
+  private val uartBase = 0x60010000L
+  private val uartBaud = 115200
+
   /** Device-tree entry of the UART, if the design has one ([[HasUART]]). */
   protected val uartDTSOpt: Option[DTSInfo] = if (p(HasUART)) {
     val dts = DTSInfo(
       parent = mmioBusDevice.get,
-      regs = Seq(("reg", 0x60010000L, 0x10000L)),
+      regs = Seq(("reg", uartBase, 0x10000L)),
       irqs = Seq(Irq(plicDev, irqIdx)),
       // The soct compatible first (soctglue matches it); the Xilinx one second, so
       // Linux's uartlite driver (SERIAL_UARTLITE) binds the console to this UART.
       compatibles = Seq("riscv,axi-uart-1.0", "xlnx,xps-uartlite-1.00.a"),
       // current-speed is REQUIRED by the Linux uartlite driver (the baud is fixed at
       // synthesis, so the driver refuses to guess): without it the probe fails with
-      // -EINVAL and the console never comes up. It must match the IP configuration.
+      // -EINVAL and the console never comes up.
       extraProps = Map(
         "port-number" -> Seq(ResourceInt(0)),
-        "current-speed" -> Seq(ResourceInt(115200))
+        "current-speed" -> Seq(ResourceInt(uartBaud))
       )
     )
     irqIdx += 1
@@ -156,6 +162,21 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
       dts = dts,
       perms = AxiSlaveBinder.mmioPerms
     )
+  }
+
+  // The /chosen node: boot arguments for an operating system. The console selection and
+  // the early console describe THIS design's UART, so they belong in the device tree the
+  // design emits - not baked into a kernel binary, which would tie the kernel image to
+  // one hardware generation. Only emitted when the design has a UART to talk through.
+  uartDTSOpt.foreach { _ =>
+    val chosenDev = new Device {
+      def describe(resources: ResourceBindings): Description =
+        Description("chosen", Map("bootargs" -> resources("bootargs").map(_.value)))
+    }
+    ResourceBinding {
+      Resource(chosenDev, "bootargs").bind(ResourceString(
+        s"console=ttyUL0,$uartBaud earlycon=uartlite,mmio,0x${uartBase.toHexString}"))
+    }
   }
 
   /** Device-tree entry of the SD-card controller, if the design has one ([[HasSDCardPMOD]]). */
