@@ -123,9 +123,11 @@ COPY --chown=soct:soct --chmod=777 --from=scala-builder ${HOME}/.cache/coursier 
 ENV PATH=${HOME}/.local/share/coursier/bin:${PATH}
 
 # Add Packages only needed at runtime here:
+# bc: kernel-build host dependency (binaries/boot targets; clang/lld from the base
+# stage already provide the RISC-V-capable LLVM those targets need)
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    device-tree-compiler \
+    device-tree-compiler bc \
     && rm -rf /var/lib/apt/lists/*
 USER soct
 

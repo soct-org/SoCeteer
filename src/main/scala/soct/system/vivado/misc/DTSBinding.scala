@@ -12,7 +12,10 @@ import soct.system.vivado.abstracts.BdIntfPin
  * The interrupt-controller [[freechips.rocketchip.resources.Device]] that is the IRQ parent
  * (e.g. the PLIC device).
  * @param index
- * The interrupt index/ID as seen by the parent controller.
+ * The line's 0-based position in the external-interrupt vector (the interrupt concat input
+ * the device drives). NOTE: this is NOT the PLIC source number - RocketChip maps vector
+ * position `i` to PLIC source `i + 1`, since PLIC source 0 is reserved ("no interrupt").
+ * The DTS emission performs that translation; the concat wiring uses the index as-is.
  */
 final case class Irq(parent: Device, index: Int)
 
@@ -130,7 +133,12 @@ object AxiSlaveBinder {
         Resource(dev, s"reg/$name").bind(ResourceAddress(sets, perms))
       }
       dts.irqs.foreach { case Irq(intc, idx) =>
-        Resource(dev, "int").bind(intc, ResourceInt(idx))
+        // PLIC sources are 1-based (source 0 is reserved); external-interrupt vector
+        // position i is PLIC source i+1 - RocketChip emits the same mapping in its
+        // `external-interrupts` DTS node. Emitting the raw index made every device IRQ
+        // off by one, which no bare-metal code noticed (all of it polls) but which left
+        // Linux waiting on interrupts that can never fire.
+        Resource(dev, "int").bind(intc, ResourceInt(idx + 1))
       }
     }
     dev

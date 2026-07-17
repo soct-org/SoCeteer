@@ -66,6 +66,7 @@ const SOCT_GLOSSARY = [
       { t: ["HTIF"], d: "Host-Target Interface - the Berkeley protocol through which a simulated or tethered RISC-V target talks to a host (console, syscalls, exit codes)." },
       { t: ["FESVR"], d: "Frontend Server - the host-side counterpart of HTIF; in simulation it services the target's proxied syscalls." },
       { t: ["bootrom"], d: "The on-chip first-stage ROM. The SD variant mounts the card, loads BOOT.ELF into DRAM and jumps to it with the hart id in a0 and the DTB address in a1." },
+      { t: ["PMP"], d: "Physical Memory Protection - RISC-V's machine-mode mechanism restricting what lower privilege levels may access; OpenSBI uses it to shield its own memory from the OS, advertised to Linux as reserved-memory nodes in the device tree." },
       { t: ["DTB", "DTS", "DT"], d: "Device Tree (Source/Blob) - the hardware self-description the generator emits and the bootrom passes to software; programs discover every peripheral, address and property from it instead of hardcoding." },
     ],
   },
@@ -106,6 +107,9 @@ const SOCT_GLOSSARY = [
       { t: ["smoldtb"], d: "The small device-tree parser library bundled with soctglue; programs use it to discover peripherals from the DTB at runtime." },
       { t: ["FatFs"], d: "ChaN's embedded FAT filesystem library - how programs and the bootrom read the SD card." },
       { t: ["newlib"], d: "The embedded C standard library (SoCeteer links its 'nano' variant); small, but with quirks like a byte-wise memcpy and a 2 GiB allocation limit." },
+      { t: ["OpenSBI", "SBI"], d: "The Supervisor Binary Interface is RISC-V's contract between an OS kernel (S-mode) and machine-mode firmware - timers, inter-processor interrupts, early console. OpenSBI is its reference implementation; the Linux boot image wraps it around the kernel as fw_payload." },
+      { t: ["initramfs"], d: "A file archive embedded in the kernel image and unpacked into a RAM-backed root filesystem at boot. It is the only root filesystem option when no storage driver exists - the boot image bakes a minimal /init into it." },
+      { t: ["vDSO"], d: "Virtual dynamic shared object - a small shared library the kernel maps into every userspace process for fast syscalls and signal return. RISC-V MMU kernels cannot be built without it, which is why the kernel build demands a linker with shared-object support." },
     ],
   },
 ];

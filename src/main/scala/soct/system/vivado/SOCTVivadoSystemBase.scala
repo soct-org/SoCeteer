@@ -135,8 +135,16 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60010000L, 0x10000L)),
       irqs = Seq(Irq(plicDev, irqIdx)),
-      compatibles = Seq("riscv,axi-uart-1.0"),
-      extraProps = Map("port-number" -> Seq(ResourceInt(0)))
+      // The soct compatible first (soctglue matches it); the Xilinx one second, so
+      // Linux's uartlite driver (SERIAL_UARTLITE) binds the console to this UART.
+      compatibles = Seq("riscv,axi-uart-1.0", "xlnx,xps-uartlite-1.00.a"),
+      // current-speed is REQUIRED by the Linux uartlite driver (the baud is fixed at
+      // synthesis, so the driver refuses to guess): without it the probe fails with
+      // -EINVAL and the console never comes up. It must match the IP configuration.
+      extraProps = Map(
+        "port-number" -> Seq(ResourceInt(0)),
+        "current-speed" -> Seq(ResourceInt(115200))
+      )
     )
     irqIdx += 1
     Some(dts)

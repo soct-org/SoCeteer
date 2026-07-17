@@ -57,6 +57,46 @@
   the UART, SD controller, memory size and CPU count at run time. One compiled program therefore
   runs unchanged on any generated variant of the SoC.</p>
 
+  <h3>The device tree's journey: boot ROM, OpenSBI, Linux</h3>
+  <p>For the Linux boot image (see <em>Booting Linux</em> below), the device tree is not
+  consulted once &mdash; it flows down the whole boot chain, and each stage uses and reshapes
+  the <em>same</em> tree. Nothing is ever literally merged from two trees; one blob is passed
+  along and amended:</p>
+  <ol>
+    <li><strong>Boot ROM.</strong> The generator's DTB is baked into the boot ROM, and
+      <code>sd-boot</code> hands its address to whatever it loads in register <code>a1</code>
+      (hart id in <code>a0</code>) &mdash; the RISC-V boot convention every later stage speaks
+      as well. Bare-metal programs consume this ROM copy directly.</li>
+    <li><strong>BOOT.ELF ignores the ROM copy.</strong> The boot image embeds its own DTB,
+      compiled from the design's DTS at build time (OpenSBI's <code>FW_FDT_PATH</code>) with
+      slack space added (<code>dtc -p</code>). Two reasons: the ROM copy is not writable, and
+      the next stage <em>must write</em> to the tree; and the boot image becomes self-contained
+      &mdash; it does not care which ROM DTB the flashed bitstream carries, only that the
+      embedded one matches the flashed <em>hardware</em>.</li>
+    <li><strong>OpenSBI reads it&hellip;</strong> The firmware's own drivers are device-tree
+      probed exactly like Linux's: the CLINT it uses for timers and IPIs and the UART behind
+      its banner output come from the same nodes Linux will bind later &mdash; one description
+      serving two consumers.</li>
+    <li><strong>&hellip;then relocates and fixes it up.</strong> OpenSBI copies the tree to a
+      configured DRAM address (<code>FW_PAYLOAD_FDT_ADDR</code>) and edits it in place: it
+      inserts <code>reserved-memory</code> nodes covering its own footprint &mdash; the memory
+      it shields with PMP so the OS can never touch machine-mode firmware. These appear in a
+      boot log as <code>mmode_resv*</code> regions. This is the closest thing to a
+      &ldquo;merge&rdquo; in the chain: the hardware description gains firmware-owned
+      annotations before the OS ever sees it.</li>
+    <li><strong>Linux receives the fixed-up tree</strong> &mdash; <code>a1</code> again, at the
+      S-mode kernel entry. The kernel parses the memory node into its zones (honoring the
+      reservations from step 4), binds drivers by <code>compatible</code>, and reads device
+      properties (the UART's <code>current-speed</code>, without which the console driver
+      refuses to probe). A <code>/chosen</code> node would supply the command line; this
+      design's tree carries none, so the kernel's built-in <code>CONFIG_CMDLINE</code> is used
+      &mdash; and with <code>CMDLINE_FORCE</code> it would win even if <code>/chosen</code>
+      appeared.</li>
+  </ol>
+  <p>The corollary: the embedded DTB is a snapshot of one hardware generation. Rebuild the boot
+  image whenever the design changes &mdash; a tree describing more memory than the flashed
+  decode backs, or devices at moved addresses, fails at run time, not loudly at build time.</p>
+
   <h2>Directory layout</h2>
   <p>Programs and boot ROMs are auto-discovered subdirectories that include a shared CMake
   template; the runtime library lives next to them under <code>shared/</code>:</p>
@@ -296,6 +336,124 @@ cmake --build build -j$(nproc)</code></pre>
   -DSOCT_FLASH_XSDB=/opt/Xilinx/Vivado/2024.2/bin/xsdb \
   -DSOCT_FLASH_BOOT_HART=0 \
   -DSOCT_FLASH_BOOTROM_DTB_ADDR=0x00010080</code></pre>
+
+  <h2>Booting Linux (<code>boot-elf</code>)</h2>
+  <p>When kernel and OpenSBI source trees are dropped in as <code>binaries/linux-stable/</code>
+  and <code>binaries/opensbi/</code>, the build offers targets that produce
+  <code>BOOT.ELF</code> &mdash; an OpenSBI <em>fw_payload</em> wrapping a Linux kernel (with a
+  minimal embedded initramfs) and the design's device tree &mdash; which the
+  <code>sd-boot</code> boot ROM loads from the SD card like any other program:</p>
+  <ul>
+    <li><code>boot-init</code> &mdash; the initramfs <code>/init</code>, built freestanding with
+      the repo toolchain (newlib cannot target Linux userspace, so it uses raw syscalls).</li>
+    <li><code>boot-dtb</code> &mdash; the design DTS compiled with fixup padding; it is embedded
+      into the firmware, so <code>BOOT.ELF</code> does not depend on the ROM copy of the DTB
+      (but must match the flashed hardware).</li>
+    <li><code>linux-image</code> &mdash; the kernel (riscv defconfig plus
+      <code>boot/linux.fragment.in</code>: UART Lite console, baked-in command line, initramfs).
+      Requires GNU make &ge; 4.0 on the host (auto-detected, Homebrew's <code>gmake</code>
+      included; override with <code>-DSOCT_BOOT_MAKE</code>); a prebuilt kernel can be supplied
+      instead with <code>-DSOCT_LINUX_IMAGE=&lt;path&gt;</code>.</li>
+    <li><code>boot-elf</code> &mdash; the final <code>BOOT.ELF</code> in <code>SOCT_ELFS_DIR</code>.</li>
+  </ul>
+  <p>There is no storage driver for the SD controller in mainline Linux, which is why the root
+  filesystem is an initramfs embedded in the kernel image. The kernel configuration is the
+  riscv defconfig plus <code>boot/linux.fragment.in</code>: the UART Lite console, the baked-in
+  command line (<code>SOCT_LINUX_CMDLINE</code> &mdash; the design's device tree has no
+  <code>/chosen</code> node), a pinned <code>HZ</code>, the initramfs, and AppArmor disabled
+  (useless on this SoC, and its header generation is the one build step requiring GNU
+  sed's <code>\L</code> on every host).</p>
+
+  <h3>Toolchains</h3>
+  <p>Two toolchains split the work, deliberately:</p>
+  <ul>
+    <li><strong>LLVM/Clang builds the kernel and OpenSBI</strong>, through their upstream
+      <code>LLVM=&lt;bindir&gt;/</code> build mode. The vendored bare-metal binutils cannot
+      link either one: their <code>ld</code> has no dynamic-linking support, OpenSBI links
+      with <code>-pie</code> unconditionally, and a riscv MMU kernel must link its vDSO as a
+      shared object (the failure shows up indirectly, as missing
+      <code>__vdso_*_offset</code> symbols).</li>
+    <li><strong>The repo's vendored toolchain builds everything else</strong> &mdash;
+      programs, boot ROMs, and the initramfs <code>/init</code> (freestanding: newlib cannot
+      target Linux userspace, so <code>init.c</code> makes raw syscalls).</li>
+  </ul>
+  <p>The LLVM toolchain is auto-detected by
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindLLVMRiscv.cmake"><code>FindLLVMRiscv</code></a>:
+  candidates come from PATH, Homebrew (including its split <code>llvm</code>/<code>lld</code>
+  keg-only formulas, for which a unified directory of symlinks is assembled), Debian's
+  <code>/usr/lib/llvm-*</code> and MacPorts &mdash; and each candidate is <em>proved</em> by
+  linking a RISC-V PIE through its <code>ld.lld</code> rather than trusted by name or
+  version. That probe is why Apple's Xcode clang never qualifies: it ships without the
+  RISC-V backend and without <code>ld.lld</code>. GNU make is found the same way
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindGNUMake.cmake"><code>FindGNUMake</code></a>:
+  every <code>gmake</code>/<code>gnumake</code>/<code>make</code> candidate is
+  version-checked, so an ancient system <code>make</code> cannot shadow a usable one).
+  Every unmet requirement is reported at configure time and enforced when the affected
+  target is built &mdash; with the exact remedy in the message; the rest of
+  <code>binaries/</code> is never blocked.</p>
+
+  <h3>Host requirements</h3>
+  <p><strong>Every host:</strong></p>
+  <ul>
+    <li>LLVM with the RISC-V backend plus <code>ld.lld</code> and the <code>llvm-*</code>
+      binutils (one directory or Homebrew's split installation).</li>
+    <li>GNU make &ge; 4.0 (the kernel refuses older), plus host <code>flex</code>,
+      <code>bison</code> and <code>bc</code>; <code>dtc</code> for the device tree.</li>
+    <li>A build directory path <em>without</em> commas or spaces: OpenSBI passes linker
+      scripts as <code>-Wl,-T&lt;path&gt;</code> and the compiler driver splits
+      <code>-Wl</code> arguments at every comma, while GNU make cannot handle spaces in
+      paths at all. Such paths are refused at configure time (IDE-generated build
+      directories named after profiles are the usual offender).</li>
+  </ul>
+  <p><strong>Linux hosts:</strong> the distribution packages are sufficient &mdash; on
+  Debian/Ubuntu: <code>clang lld make flex bison bc device-tree-compiler</code>. The repo's
+  Docker image ships all of them; no accommodations of any kind are applied on Linux.</p>
+  <p><strong>macOS (Darwin) hosts:</strong> four Homebrew packages &mdash;
+  <code>make</code>, <code>llvm</code>, <code>lld</code> (a separate formula;
+  <code>llvm</code> alone ships no linker) and <code>gnu-sed</code>. Beyond that, the build
+  applies a set of accommodations automatically, all scoped to the kernel's <em>host</em>
+  tools on Darwin only &mdash; target code and Linux hosts never see any of them:</p>
+  <table>
+    <tr><th>Accommodation</th><th>Why</th></tr>
+    <tr><td><code>boot/host-compat/elf.h</code> (verbatim musl, MIT) on the host include path</td>
+      <td>macOS ships no <code>&lt;elf.h&gt;</code>; the kernel's host tools
+        (<code>scripts/elf-parse.h</code> users, <code>modpost</code>) require one.</td></tr>
+    <tr><td><code>boot/host-compat/byteswap.h</code></td>
+      <td>glibc-only header (<code>bswap_*</code>) used by <code>modpost</code>; shimmed with
+        compiler builtins.</td></tr>
+    <tr><td><code>boot/host-compat/darwin-compat.h</code>, force-included</td>
+      <td><code>usr/gen_init_cpio.c</code> uses <code>O_LARGEFILE</code> and
+        <code>copy_file_range</code>, which Darwin lacks; defined to 0 and a read/write
+        fallback respectively.</td></tr>
+    <tr><td><code>-D_UUID_T -D__GETHOSTUUID_H</code></td>
+      <td>The macOS SDK typedefs <code>uuid_t</code> as a bare byte array (pulled in via
+        <code>unistd.h</code>), colliding with the kernel's struct definition in
+        <code>scripts/mod/file2alias.c</code>; the defines suppress the SDK's.</td></tr>
+    <tr><td>PATH shim mapping <code>sed</code> &rarr; <code>gsed</code> for kernel invocations</td>
+      <td>BSD sed renders a replacement <code>\t</code> as a literal <code>t</code>, mangling
+        every macro in the generated vDSO offsets header
+        (<code>__vdso_&hellip;_offsett0x&hellip;</code>) into nonsense.</td></tr>
+    <tr><td>OpenSBI build directory pre-created</td>
+      <td>BSD <code>readlink -f</code> fails on nonexistent paths, which derails OpenSBI's
+        <code>O=</code> handling before the build starts.</td></tr>
+  </table>
+
+  <h3>Boot-image CMake variables</h3>
+  <table>
+    <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>SOCT_BOOT_LINUX_DIR</code></td><td><code>binaries/linux-stable</code></td>
+      <td>Kernel source tree</td></tr>
+    <tr><td><code>SOCT_BOOT_OPENSBI_DIR</code></td><td><code>binaries/opensbi</code></td>
+      <td>OpenSBI source tree</td></tr>
+    <tr><td><code>SOCT_BOOT_LLVM_DIR</code></td><td><em>(auto-detect)</em></td>
+      <td>LLVM bin directory; must contain <code>clang</code> and <code>ld.lld</code></td></tr>
+    <tr><td><code>SOCT_BOOT_MAKE</code></td><td><em>(auto-detect)</em></td>
+      <td>GNU make &ge; 4.0 used for the kernel and OpenSBI</td></tr>
+    <tr><td><code>SOCT_LINUX_CMDLINE</code></td><td><code>console=ttyUL0,115200 earlycon=&hellip;</code></td>
+      <td>Command line baked into the kernel</td></tr>
+    <tr><td><code>SOCT_LINUX_IMAGE</code></td><td><em>(empty)</em></td>
+      <td>Prebuilt kernel Image to embed instead of building <code>linux-image</code></td></tr>
+  </table>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>

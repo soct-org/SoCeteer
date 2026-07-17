@@ -67,6 +67,7 @@ foreach (ENTRY ${ALL_ENTRIES})
     endif ()
 endforeach ()
 
+add_subdirectory(boot)
 
 ###########################################################################################
 # General targets and utilities
