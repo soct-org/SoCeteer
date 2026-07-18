@@ -289,6 +289,26 @@ endif ()</code></pre>
   <code>fopen</code>/<code>fread</code>/<code>fwrite</code>. The volume root is
   <code>SOCT_SD_PATH</code> (defined to <code>/SD</code> by default with Linux-style volume IDs).</p>
 
+  <h3>Linux userspace programs</h3>
+  <p>Programs that run under the Linux kernel (see <em>Booting Linux</em> below) instead of on
+  bare metal follow the same directory pattern but include
+  <code>linux-userspace.cmake</code> in place of <code>template.cmake</code>:</p>
+<pre><code>cmake_minimum_required(VERSION 3.20)
+
+list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
+
+include(${CMAKE_CURRENT_LIST_DIR}/../linux-userspace.cmake)</code></pre>
+  <p>The target (named after the directory) is a <em>static</em> riscv64-linux-musl ELF in
+  <code>SOCT_ELFS_DIR</code>, compiled with the LLVM toolchain against the sysroot that the
+  <code>linux-sysroot</code> target builds: the kernel tree's sanitized UAPI headers plus a
+  static musl. Static, because the target system is initramfs-only &mdash; there is no
+  shared-library ecosystem to link against. soctglue, the bare-metal linker script and the
+  syscall handler chain play no role here; these are ordinary Linux programs with a full C
+  library. The initramfs <code>/init</code> (<code>programs/linux-init</code>) is the
+  reference example. When the kernel tree or a required host tool is missing, the targets
+  are skipped with a status message; extra compile options go into
+  <code>SOCT_LINUX_USERSPACE_FLAGS</code> before the include.</p>
+
   <h2>Adding a boot ROM</h2>
   <p>Boot ROMs live under <code>binaries/bootroms/</code> and follow the same auto-discovery
   pattern. Their <code>CMakeLists.txt</code> includes <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/bootroms/template.cmake"><code>bootroms/template.cmake</code></a> instead:</p>
@@ -300,9 +320,15 @@ list(APPEND CMAKE_ASM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/head.S)
 include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)</code></pre>
   <p>The bootrom template:</p>
   <ul>
+    <li>Links against the shared boot-ROM linker script (<code>bootroms/bootrom.lds</code>),
+      which pins the layout every boot ROM shares: <code>_start</code> at the ROM base, the
+      reset stub at the hart reset vector, and the embedded DTB at <code>SOCT_DTB_ADDR</code>
+      &mdash; all three addresses come from the system file (derived from the same parameters
+      that size the hardware ROM), and the link fails loudly if a stub outgrows its slot. Set
+      <code>SOCT_LD_SCRIPT</code> before including the template to override.</li>
     <li>Compiles the ELF with <code>-Os -fno-pic</code>.</li>
-    <li>Strips the ELF to a raw binary image with
-      <code>objcopy -O binary --change-addresses=-0x10000</code>, placing the result at
+    <li>Strips the ELF to a raw binary image with <code>objcopy -O binary</code>, rebased by
+      the ROM base address (<code>SOCT_BOOTROM_BASE_ADDR</code>), placing the result at
       <code>SOCT_BOOTROM_IMG</code>.</li>
     <li>Passes <code>-DDEVICE_TREE=\"${SOCT_DTB}\"</code> so the source can embed the DTB at
       compile time.</li>
@@ -330,14 +356,16 @@ cmake --build build -j$(nproc)</code></pre>
     <tr><td><code>SOCT_FLASH_HOST</code></td><td><em>(empty)</em></td><td>SSH host to flash through &mdash; leave empty to flash locally</td></tr>
     <tr><td><code>SOCT_FLASH_REMOTE_DIR</code></td><td><code>/tmp</code></td><td>Directory on the remote host to upload the ELF into</td></tr>
     <tr><td><code>SOCT_FLASH_BOOT_HART</code></td><td><code>0</code></td><td>Boot hart index written into register <code>a0</code> before <code>con</code></td></tr>
-    <tr><td><code>SOCT_FLASH_BOOTROM_DTB_ADDR</code></td><td><code>0x00010080</code></td><td>DTB base address written into register <code>a1</code> before <code>con</code></td></tr>
   </table>
+  <p>The DTB address written into register <code>a1</code> is not a knob: it is the system
+  file's <code>SOCT_DTB_ADDR</code> &mdash; the address the shared boot-ROM linker script pins
+  the ROM's embedded device tree to, so the JTAG handoff matches what the boot ROM itself
+  would pass.</p>
   <p>Pass any of these at configure time:</p>
 <pre><code>cmake -S binaries -B build \
   -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake \
   -DSOCT_FLASH_XSDB=/opt/Xilinx/Vivado/2024.2/bin/xsdb \
-  -DSOCT_FLASH_BOOT_HART=0 \
-  -DSOCT_FLASH_BOOTROM_DTB_ADDR=0x00010080</code></pre>
+  -DSOCT_FLASH_BOOT_HART=0</code></pre>
 
   <h2>Booting Linux (<code>boot-elf</code>)</h2>
   <p>When kernel and OpenSBI source trees are dropped in as <code>binaries/linux-stable/</code>
@@ -346,8 +374,9 @@ cmake --build build -j$(nproc)</code></pre>
   minimal embedded initramfs) and the design's device tree &mdash; which the
   <code>sd-boot</code> boot ROM loads from the SD card like any other program:</p>
   <ul>
-    <li><code>boot-init</code> &mdash; the initramfs <code>/init</code>, built freestanding with
-      the repo toolchain (newlib cannot target Linux userspace, so it uses raw syscalls).</li>
+    <li><code>linux-sysroot</code> &mdash; the riscv64-linux-musl sysroot every Linux userspace
+      program (including the initramfs <code>/init</code>) is compiled against; see
+      <em>Linux userspace programs</em> below.</li>
     <li><code>boot-dtb</code> &mdash; the design DTS compiled with fixup padding; it is embedded
       into the firmware, so <code>BOOT.ELF</code> does not depend on the ROM copy of the DTB
       (but must match the flashed hardware).</li>
@@ -376,9 +405,11 @@ cmake --build build -j$(nproc)</code></pre>
       with <code>-pie</code> unconditionally, and a riscv MMU kernel must link its vDSO as a
       shared object (the failure shows up indirectly, as missing
       <code>__vdso_*_offset</code> symbols).</li>
-    <li><strong>The repo's vendored toolchain builds everything else</strong> &mdash;
-      programs, boot ROMs, and the initramfs <code>/init</code> (freestanding: newlib cannot
-      target Linux userspace, so <code>init.c</code> makes raw syscalls).</li>
+    <li><strong>The repo's vendored toolchain builds everything bare-metal</strong> &mdash;
+      programs and boot ROMs &mdash; and contributes one artifact to the Linux world: its
+      rv64/lp64d <code>libgcc.a</code>, whose OS-agnostic builtins (soft fp128 arithmetic and
+      friends) stand in for the compiler-rt that prebuilt LLVM does not ship for cross
+      targets.</li>
   </ul>
   <p>The LLVM toolchain is auto-detected by
   <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindLLVMRiscv.cmake"><code>FindLLVMRiscv</code></a>:

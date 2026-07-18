@@ -15,14 +15,11 @@ import java.nio.file.{Files, Path}
  * without overlapping the DRAM decode. Wraps the `axi_addr_offset` Verilog collateral.
  *
  * @param getAxiMasterPin the master whose address space gets the window (the Rocket MMIO port)
- * @param targetOf        yields the (instance name, address-space-owning) component whose
- *                        slave segments the M_AXI side maps (the PS), evaluated at TCL time
  * @param windowBase      window base address in the master's address space (e.g. 0x7D00_0000)
  * @param windowSize      window size in bytes (power of two)
  * @param targetBase      base address of the target region behind the slave (e.g. 0xFD00_0000)
  */
-case class AxiAddrOffset(getAxiMasterPin: BdIntfPin, targetOf: () => ZynqUltraPS,
-                         windowBase: BigInt, windowSize: BigInt, targetBase: BigInt)
+case class AxiAddrOffset(getAxiMasterPin: BdIntfPin, windowBase: BigInt, windowSize: BigInt, targetBase: BigInt)
                         (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with IsModule with ConnectOps with HasBdAddr {
 
@@ -73,7 +70,5 @@ case class AxiAddrOffset(getAxiMasterPin: BdIntfPin, targetOf: () => ZynqUltraPS
    */
   override def assignAddrTcl: TCLCommands = Seq(
     s"assign_bd_address -offset 0x${windowBase.toString(16).toUpperCase} -range 0x${windowSize.toString(16).toUpperCase} -target_address_space [get_bd_addr_spaces ${getAxiMasterPin.ref}] [get_bd_addr_segs ${S_AXI.ref}/reg0]".tcl,
-    // The PS slave segments carry fixed PS addresses; assign them as-is into our master space.
-    s"assign_bd_address -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${targetOf().instanceName}/SAXIGP6/*]".tcl
   )
 }

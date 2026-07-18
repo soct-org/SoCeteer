@@ -4,7 +4,11 @@
 _start:
   li a1, SOCT_CLINT_BASE // base address of clint
   csrr a0, mhartid
-  bnez a0, boot_core
+  // boot_core lives beyond the embedded DTB, out of conditional-branch range
+  // (+-4 KiB) - reach it through an unconditional jump (+-1 MiB)
+  beqz a0, 1f
+  j boot_core
+1:
   addi a2, a1, 4
   li a3, 1
 interrupt_loop: // trigger MSIP interrupts for other harts so that they also boot
@@ -35,11 +39,9 @@ wfi_loop: // wait for MSIP interrupt to start program execution
   wfi
   j wfi_loop
 
-// jump to reset vector
-.section .text.hang80, "ax", @progbits
-.globl _hang80
-_hang80:
-  j _hang
+// The rest of the code lives after the pinned DTB slot (see bootroms/bootrom.lds);
+// everything is reached by symbol, so its exact address does not matter.
+.section .text, "ax", @progbits
 
 // other harts must wait until MSIP of hart 0 is cleared to continue
 boot_core:
@@ -57,6 +59,10 @@ boot_core_hart0:      // begin executing code at DRAM_BASE
   csrc mstatus, a2
   mret
 
+// The embedded device tree, pinned at SOCT_DTB_ADDR by the shared linker script -
+// the same slot sd-boot uses, so the JTAG-flash a1 default holds for every bootrom.
+.section .rodata.dtb, "a", @progbits
+.globl _dtb
 .align 3
 _dtb:
   .incbin DEVICE_TREE

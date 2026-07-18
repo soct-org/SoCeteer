@@ -6,7 +6,7 @@ import soct.system.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
 
 
-object ZCU104 extends FPGA {
+object ZCU104 extends FPGA with HasZynqUltraPS {
   override val friendlyName: String = "ZCU104"
 
   override val xilinxPart: String = "xczu7ev-ffvc1156-2-e"

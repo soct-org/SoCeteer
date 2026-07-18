@@ -24,14 +24,14 @@ endif ()
 
 list(APPEND CFLAGS
         -mcmodel=${_mcmodel}
-        -DBOOTROM_DTB_ADDR=0x00010080
         -DBOOTROM_MEM_END=${BOOTROM_MEM_END}
         -DBOOTROM_MEM_ALT=${BOOTROM_MEM_ALT}
 )
 
 set(LFLAGS
         -mcmodel=${_mcmodel}
-        -T ${CMAKE_CURRENT_LIST_DIR}/bootrom.lds
+        # The shared linker script sizes the DRAM scratch region from this
+        "LINKER:--defsym=BOOTROM_SCRATCH_SIZE=${BOOTROM_SCRATCH_SIZE}"
 )
 
 include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)

@@ -54,7 +54,7 @@ print('[flash] psu_init done.')
 # -----------------------------------------------------------------------------
 ")
 
-include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../soctglue-static.cmake)
 
 ######################################################################
 # Apply Project specific flags - Modify this section to add more flags

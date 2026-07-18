@@ -68,7 +68,7 @@ endfunction()
 set(LLVMRISCV_BIN_DIR "")
 set(LLVMRISCV_LLD "")
 set(LLVMRISCV_VERSION "")
-set(_llvmriscv_tools clang clang++ llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-readelf llvm-strip)
+set(_llvmriscv_tools clang clang++ llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-ranlib llvm-readelf llvm-strip)
 
 foreach (_dir IN LISTS _llvmriscv_dirs)
     if (NOT EXISTS "${_dir}/clang" OR NOT EXISTS "${_dir}/llvm-objcopy")
@@ -82,7 +82,7 @@ foreach (_dir IN LISTS _llvmriscv_dirs)
     # so the driver's own linker search plays no part in the verdict).
     execute_process(
             COMMAND "${_dir}/clang" --target=riscv64-unknown-elf -fPIE -nostdlib
-            "-fuse-ld=${_llvmriscv_lld}" -Wl,-pie -x c /dev/null
+            "--ld-path=${_llvmriscv_lld}" -Wl,-pie -x c /dev/null
             -o "${CMAKE_BINARY_DIR}/llvmriscv-probe"
             RESULT_VARIABLE _llvmriscv_res OUTPUT_QUIET ERROR_QUIET)
     file(REMOVE "${CMAKE_BINARY_DIR}/llvmriscv-probe")

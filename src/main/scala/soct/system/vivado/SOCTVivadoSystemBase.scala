@@ -10,7 +10,7 @@ import soct.system.soceteer.SOCTSystem
 import soct.system.vivado.abstracts.BdPinPort.portToBdPin
 import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
-import soct.system.vivado.fpga.{DDR4PortParams, FPGA, FPGAResetPortSource, UARTPortParams}
+import soct.system.vivado.fpga.{DDR4PortParams, FPGA, FPGAResetPortSource, HasZynqUltraPS, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
 import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, ClkDesc, DTSInfo, Irq}
 
@@ -544,7 +544,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   }
 
   /**
-   * Instantiate and wire the DisplayPort video pipeline ([[HasVideoStream]]):
+   * Instantiate and wire the DisplayPort video pipeline for Zynq UltraScale+ MPSoC if [[HasVideoStream]] is defined:
    * VDMA (frames from DRAM via the DMA path) -> AXI4-Stream video out (+ timing controller)
    * -> the PS DP controller's live video input. The PS `S_AXI_LPD` port is reachable from the
    * MMIO path through an [[soct.system.vivado.components.AxiAddrOffset]] window, so the
@@ -558,6 +558,10 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
    */
   protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign): Unit = {
     val vs = p(HasVideoStream).getOrElse(return)
+    val ps = bd.fpgaInstance() match {
+      case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
+      case _ => return
+    }
     val dts = videoDTSOpt.get
 
     // The frame fetch must sustain width x height x fps x 3 B/s through the coherent DMA
@@ -575,14 +579,19 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     }
 
     // Components
-    val ps = ZynqUltraPS()
     val vdma = AXIVideoDMA(dts.vdma, c.axiMMIO, Seq((c.axiDMA, "reg0")))
     val vtc = VideoTimingController(dts.vtc, c.axiMMIO)
     val vidOut = AxisVideoOut()
-    val lpdWindow = AxiAddrOffset(
-      getAxiMasterPin = c.axiMMIO, targetOf = () => ps,
-      windowBase = 0x7D000000L, windowSize = 0x1000000L, targetBase = 0xFD000000L
-    ).withInstanceName("dp_lpd_window")
+    val lpdWindow = new AxiAddrOffset(
+      getAxiMasterPin = c.axiMMIO, windowBase = 0x7D000000L, windowSize = 0x1000000L, targetBase = 0xFD000000L
+    ) {
+      override def assignAddrTcl: TCLCommands = {
+        // The PS slave segments carry fixed PS addresses; assign them as-is into our master space.
+        super.assignAddrTcl ++ Seq(
+          s"assign_bd_address -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${ps.instanceName}/SAXIGP6/*]".tcl
+        )
+      }
+    }.withInstanceName("dp_lpd_window")
 
     // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
     val pixelDomain = new ClockDomain(pixelClockFor(vs))

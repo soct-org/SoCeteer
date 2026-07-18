@@ -3,7 +3,31 @@ package soct.system.vivado.fpga
 import org.chipsalliance.cde.config.Parameters
 import soct.system.vivado.SOCTBdBuilder
 import soct.system.vivado.abstracts.{HasFriendlyName, IsXilinx}
+import soct.system.vivado.components.ZynqUltraPS
 import soct.system.vivado.misc.{FPGAPMODPin, RawPMODPin}
+
+/**
+ * Trait that provides a singleton instance of the Zynq UltraScale+ MPSoC processing system (PS) for FPGA designs.
+ */
+trait HasZynqUltraPS {
+
+  private var PSOpt = Option.empty[ZynqUltraPS]
+
+  /**
+   * Get the singleton instance of the Zynq UltraScale+ MPSoC processing system (PS) for this design.
+   * If the PS has not been instantiated yet, it will be created and stored for future retrieval. This ensures that only one instance of the PS exists in the design.
+   * @return The singleton instance of the ZynqUltraPS
+   */
+  def getZynqUltraPS()(implicit bd: SOCTBdBuilder, p: Parameters): ZynqUltraPS = {
+    PSOpt.getOrElse {
+      val ps = ZynqUltraPS()
+      PSOpt = Some(ps)
+      ps
+    }
+  }
+}
+
+
 
 /**
  * Abstract base class for FPGA boards. Subclasses must provide information about the specific FPGA board,

@@ -12,8 +12,16 @@ message(STATUS "Adding bootrom: ${SOCT_BOOTROM}")
 set(BOOTROM_ELF ${SOCT_BOOTROM}_elf)
 set(BOOTROM_IMG ${SOCT_BOOTROM}_img)
 
+# All bootroms share one linker script, which pins _start, the reset vector and the
+# embedded DTB at the addresses the system file provides (SOCT_BOOTROM_BASE_ADDR /
+# SOCT_BOOTROM_HANG_ADDR / SOCT_DTB_ADDR). Override by setting SOCT_LD_SCRIPT before
+# including this template.
+if (NOT DEFINED SOCT_LD_SCRIPT)
+    set(SOCT_LD_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/bootrom.lds)
+endif ()
+
 set(ALL_CFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -nostartfiles -Os -fno-pic -fno-common -g -Wall -Wextra)
-set(ALL_LFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -static -nostartfiles -Wall -Wextra)
+set(ALL_LFLAGS -march=${SOCT_ARCH} -mabi=${SOCT_ABI} -static -nostartfiles -Wall -Wextra -T ${SOCT_LD_SCRIPT})
 
 list(APPEND ALL_CFLAGS ${CFLAGS})
 list(APPEND ALL_LFLAGS ${LFLAGS})
@@ -36,8 +44,8 @@ set_target_properties(${BOOTROM_ELF} PROPERTIES OUTPUT_NAME ${SOCT_BOOTROM}.elf
 # Build the bootrom image
 add_custom_target(${BOOTROM_IMG} ALL
         COMMAND ${CMAKE_COMMAND} -E remove -f ${SOCT_BOOTROM_IMG}
-        # Subtract offset of .text section (0x10000)
-        COMMAND ${CMAKE_OBJCOPY} -O binary --change-addresses=-0x10000 $<TARGET_FILE:${BOOTROM_ELF}> ${SOCT_BOOTROM_IMG}
+        # Rebase the image to offset 0 by subtracting the ROM base address
+        COMMAND ${CMAKE_OBJCOPY} -O binary --change-addresses=-${SOCT_BOOTROM_BASE_ADDR} $<TARGET_FILE:${BOOTROM_ELF}> ${SOCT_BOOTROM_IMG}
         DEPENDS ${BOOTROM_ELF}
         COMMENT "Always generating bootrom image at ${SOCT_BOOTROM_IMG}"
         VERBATIM

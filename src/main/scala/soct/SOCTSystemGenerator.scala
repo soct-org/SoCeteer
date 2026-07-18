@@ -16,6 +16,10 @@ import java.nio.file.{Files, Path}
  *                   consumers can do target_compile_definitions(foo PRIVATE ${SOCT_COMPILE_DEFS})
  * @param quoted     If true, the compile definition value is wrapped in escaped quotes
  *                   (use for string values; leave false for integers/booleans)
+ * @param ldDef      If true, this variable is ALSO included in the SOCT_LD_ADDR_DEFS list -
+ *                   the address-valued subset of SOCT_COMPILE_DEFS that linker scripts
+ *                   consume; binaries/CMakeLists.txt turns exactly this list into
+ *                   `--defsym`s. Implies compileDef (the subset invariant is enforced).
  */
 case class CMakeVar(
                      name: String,
@@ -23,7 +27,11 @@ case class CMakeVar(
                      comment: String,
                      compileDef: Boolean = false,
                      quoted: Boolean = false,
-                   )
+                     ldDef: Boolean = false,
+                   ) {
+  require(!ldDef || compileDef, s"$name: ldDef requires compileDef (SOCT_LD_ADDR_DEFS is a subset of SOCT_COMPILE_DEFS)")
+  require(!ldDef || !quoted, s"$name: ldDef values must be numeric, not quoted strings")
+}
 
 /** Renders [[CMakeVar]]s into the generated SOCTSystem.cmake. */
 object CMakeVar {
@@ -52,7 +60,18 @@ object CMakeVar {
            |${defEntries.mkString("\n")}
            |)""".stripMargin
 
-    s"$setCalls$append"
+    // The address-valued subset consumed by linker scripts (promoted to --defsym by
+    // binaries/CMakeLists.txt - explicit membership instead of value-pattern guessing).
+    val ldEntries = vars.filter(_.ldDef).map(v => s"""    ${v.name}=$${${v.name}}""")
+    val ldAppend =
+      if (ldEntries.isEmpty) ""
+      else
+        s"""
+           |list(APPEND SOCT_LD_ADDR_DEFS
+           |${ldEntries.mkString("\n")}
+           |)""".stripMargin
+
+    s"$setCalls$append$ldAppend"
   }
 }
 
@@ -121,6 +140,16 @@ object SOCTSystemGenerator {
       s"$${$thisDir}/$suffix".stripSuffix("/")
     }
 
+    // The boot ROM layout contract, from the same parameters that size the hardware ROM:
+    // `address` is the ROM base, `hang` the hart reset vector. The embedded DTB sits in
+    // the slot after the hang stub, which gets hang-minus-base (0x40) bytes just like the
+    // start stub before it. The shared bootrom linker script pins its sections to exactly
+    // these addresses, and JTAG flashing passes SOCT_DTB_ADDR in a1.
+    val bootromParams = config.params(freechips.rocketchip.devices.tilelink.BootROMLocated(freechips.rocketchip.subsystem.InSubsystem)).headOption.getOrElse(
+      throw new IllegalStateException("SOCTSystemGenerator requires a boot ROM (BootROMLocated) to derive the ROM layout addresses.")
+    )
+    val dtbAddr = bootromParams.hang + (bootromParams.hang - bootromParams.address)
+
     // ---------------------------------------------------------------
     // Define all CMake variables here.
     // Set compileDef = true -> variable is added to SOCT_COMPILE_DEFS.
@@ -134,6 +163,9 @@ object SOCTSystemGenerator {
       CMakeVar("SOCT_ABI", config.mabi, "The RISC-V ABI to use for compiling binaries for this system", compileDef = true, quoted = true),
       CMakeVar("SOCT_XLEN", config.args.xlen.toString, "The XLEN of the system", compileDef = true),
       CMakeVar("SOCT_NCPUS", DTSExtractor.countCPUs(dtsContent).toString, "The number of CPU cores in the system, extracted from the DTS", compileDef = true),
+      CMakeVar("SOCT_BOOTROM_BASE_ADDR", s"0x${bootromParams.address.toLong.toHexString}", "Base address of the boot ROM; the shared bootrom linker script and the image objcopy derive from it", compileDef = true, ldDef = true),
+      CMakeVar("SOCT_BOOTROM_HANG_ADDR", s"0x${bootromParams.hang.toLong.toHexString}", "The hart reset vector inside the boot ROM (.text.hang sits exactly here)", compileDef = true, ldDef = true),
+      CMakeVar("SOCT_DTB_ADDR", s"0x${dtbAddr.toLong.toHexString}", "The address of the DTB embedded in the boot ROM (pinned by the shared bootrom linker script; JTAG flashing passes it in a1)", compileDef = true, ldDef = true),
       CMakeVar("SOCT_VSRCS", rel(paths.verilogSrcDir), "The Verilog source files for this system"),
       CMakeVar("SOCT_DTS", rel(paths.dtsFile), "The device tree file for this system"),
       CMakeVar("SOCT_DTB", rel(paths.dtbFile), "The compiled device tree blob for this system"),
@@ -161,9 +193,9 @@ object SOCTSystemGenerator {
     if (config.params(ExtMem).isDefined) {
       optionalVars :+= CMakeVar(
         "SOCT_MEM_BASE_ADDR",
-        config.params(ExtMem).get.master.base.toString,
+        s"0x${config.params(ExtMem).get.master.base.toLong.toHexString}",
         "Base address of the external memory",
-        compileDef = true
+        compileDef = true, ldDef = true
       )
     }
 
@@ -178,18 +210,18 @@ object SOCTSystemGenerator {
     if (config.params(CLINTKey).isDefined) {
       optionalVars :+= CMakeVar(
         "SOCT_CLINT_BASE",
-        config.params(CLINTKey).get.baseAddress.toString,
+        s"0x${config.params(CLINTKey).get.baseAddress.toLong.toHexString}",
         "Base address of the CLINT (Core Local Interruptor)",
-        compileDef = true
+        compileDef = true, ldDef = true
       )
     }
 
     if (config.params(ExtMem).isDefined) {
       optionalVars :+= CMakeVar(
         "SOCT_EXT_MEM_SIZE",
-        config.params(ExtMem).get.master.size.toString,
+        s"0x${config.params(ExtMem).get.master.size.toLong.toHexString}",
         "Size of the external memory",
-        compileDef = true
+        compileDef = true, ldDef = true
       )
     }
 

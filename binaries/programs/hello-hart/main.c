@@ -16,7 +16,7 @@
 #error "SOCT_CLINT_BASE is not defined. Please define it to the base address of the CLINT in your system."
 #endif
 
-const char *hello_str = "Hello from hart %u\n";
+static const char *hello_str = "Hello from hart %u\n";
 
 /**
  * Reusable sense-reversing barrier.

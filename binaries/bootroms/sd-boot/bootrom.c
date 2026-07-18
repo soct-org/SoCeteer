@@ -520,7 +520,7 @@ static int download(void) {
     if (errno) return -1;
 
     asm volatile ("li  a0, 0"); // Hart No
-    asm volatile ("li  a1, %0" :: "n" (BOOTROM_DTB_ADDR)); // Device Tree
+    asm volatile ("la a1, _dtb" ::: "a1"); // Device Tree
     if (alt_mem) {
 #if __riscv_xlen <= 32 || (BOOTROM_MEM_END < 0x80000000 && BOOTROM_MEM_ALT < 0x80000000)
         asm volatile ("li  t0, %0" :: "n" (SOCT_MEM_BASE_ADDR));
