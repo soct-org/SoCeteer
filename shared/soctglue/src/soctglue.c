@@ -131,14 +131,12 @@ void _soct_start_main(int hartid, void *dtb_blob) {
     };
     s_dtb_ready = dtb_init((uintptr_t) dtb_blob, ops);
 
-    // Always register the UART handler. soct_init_from_dtb_uart() updates
-    // s_uart_base from the DTB when available; if the DTB is missing or
-    // invalid it leaves s_uart_base at SOCT_DEFAULT_UART_ADDR so output
-    // still works with the fallback address.
-    soct_init_from_dtb_uart();
-    soct_register_default_handler((soct_handler_t){
-        .handle = soct_handle_uart,
-    });
+    const bool have_uart = soct_init_from_dtb_uart();
+    if (have_uart || !s_dtb_ready) {
+        soct_register_default_handler((soct_handler_t){
+            .handle = soct_handle_uart,
+        });
+    }
 
     init_soct_ff();
 
