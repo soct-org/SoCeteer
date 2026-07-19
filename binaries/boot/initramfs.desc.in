@@ -1,7 +1,0 @@
-# Initramfs contents (kernel usr/gen_init_cpio syntax): the bring-up /init and the
-# device nodes/mount points it needs. Configured by boot/CMakeLists.txt.
-dir /dev 0755 0 0
-nod /dev/console 0600 0 0 c 5 1
-dir /proc 0755 0 0
-dir /sys 0755 0 0
-file /init @SOCT_BOOT_INIT@ 0755 0 0

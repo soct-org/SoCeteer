@@ -1,0 +1,7 @@
+# Initramfs contents (kernel usr/gen_init_cpio syntax): one program as /init plus the
+# device nodes/mount points it needs. Configured per boot image by initram.cmake.
+dir /dev 0755 0 0
+nod /dev/console 0600 0 0 c 5 1
+dir /proc 0755 0 0
+dir /sys 0755 0 0
+file /init @INIT_ELF@ 0755 0 0

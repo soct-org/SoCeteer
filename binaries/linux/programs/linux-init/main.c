@@ -1,8 +1,8 @@
 /*
  * PID 1 of the bring-up initramfs, as an ordinary Linux userspace program (static
- * riscv64-linux-musl via programs/linux-userspace.cmake). Mounts the pseudo
- * filesystems, reports what came up, then echoes console input back forever -
- * verifying the console in both directions. PID 1 must never exit.
+ * riscv64-linux-musl via the initram.cmake template). Mounts the pseudo filesystems,
+ * reports what came up, then echoes console input back forever - verifying the
+ * console in both directions. PID 1 must never exit.
  */
 #include <stdio.h>
 #include <string.h>

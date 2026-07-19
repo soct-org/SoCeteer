@@ -39,10 +39,6 @@ add_custom_command(
 )
 add_custom_target(device_tree ALL DEPENDS "${SOCT_DTB}")
 
-# The riscv64-linux-musl sysroot for Linux userspace programs; must precede the
-# programs loop so programs/linux-userspace.cmake finds its targets and variables.
-add_subdirectory(linux-sysroot)
-
 file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}"
         "${CMAKE_CURRENT_LIST_DIR}/bootroms/*/"
         "${CMAKE_CURRENT_LIST_DIR}/programs/*/"
@@ -66,8 +62,6 @@ foreach (ENTRY ${ALL_ENTRIES})
         add_subdirectory("${ENTRY_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/${ENTRY}")
     endif ()
 endforeach ()
-
-add_subdirectory(boot)
 
 ###########################################################################################
 # General targets and utilities

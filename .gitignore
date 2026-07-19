@@ -44,3 +44,4 @@ cmake-build-*
 /test_run_dir/
 SOCTSystem-latest.cmake
 docs/api/
+/binaries/.zig-cache

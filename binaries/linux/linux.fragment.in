@@ -1,4 +1,4 @@
-# Kernel config fragment merged onto the riscv defconfig (boot/CMakeLists.txt).
+# Kernel config fragment merged onto the riscv defconfig (linux/CMakeLists.txt).
 #
 # The console lives on the design's AXI UART Lite. The command line comes from the
 # device tree's /chosen node, which the SoC generator emits (console selection and
@@ -6,6 +6,8 @@
 # image serves any hardware generation. HZ is pinned so the timeconst generation is
 # deterministic across hosts. The rootfs is an initramfs embedded into the Image -
 # the SD controller has no mainline driver, so there is no storage for Linux to mount.
+# The initramfs description is a FIXED path in the kernel build dir; each boot image
+# copies its own description there, so switching programs never reconfigures.
 # AppArmor is useless on this SoC and its capability_names.h generation needs GNU
 # sed (\L), which BSD/macOS sed lacks - the only known GNU-sed site in the build.
 # CONFIG_SECURITY_APPARMOR is not set
@@ -13,4 +15,4 @@ CONFIG_SERIAL_UARTLITE=y
 CONFIG_SERIAL_UARTLITE_CONSOLE=y
 CONFIG_HZ_250=y
 CONFIG_BLK_DEV_INITRD=y
-CONFIG_INITRAMFS_SOURCE="@SOCT_BOOT_INITRAMFS_DESC@"
+CONFIG_INITRAMFS_SOURCE="@KBUILD_DESC@"

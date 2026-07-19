@@ -103,15 +103,20 @@
   <p>Programs and boot ROMs are auto-discovered subdirectories. Each directory's
   CMakeLists includes one of the shared templates &mdash; and <em>which</em> template it
   includes decides what kind of binary it becomes:</p>
-<pre><code>binaries/
+<pre><code>binaries/                          # The bare-metal CMake project (vendored riscv toolchain)
   programs/&lt;name&gt;/                 # One directory per program, auto-discovered
   programs/soctglue-static.cmake   # Template: bare-metal programs (soctglue + newlib)
-  programs/linux-userspace.cmake   # Template: Linux userspace programs (static musl)
   programs/xsdb-flash.cmake        # Included by the bare-metal template: JTAG flash targets
   bootroms/&lt;name&gt;/                 # Same pattern for boot ROMs (e.g. sd-boot)
   bootroms/template.cmake          # Template for boot ROMs (self-contained, no soctglue)
-  linux-sysroot/                   # riscv64-linux-musl sysroot for userspace programs
+  linux/                           # A SEPARATE CMake project: everything Linux
+    programs/&lt;name&gt;/               # Userspace programs (real add_executable targets)
+    userspace.cmake                # Template: static riscv64-linux-musl ELF
+    initram.cmake                  # Template: userspace + a bootable &lt;name&gt;.BOOT.ELF
 shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall layer, FatFs glue</code></pre>
+  <p><code>binaries/linux</code> is its own project because CMake allows one toolchain per
+  build tree, and the bare-metal toolchain cannot target Linux &mdash; see
+  <em>Booting Linux</em> below.</p>
   <p>Browse <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/programs"><code>binaries/programs</code></a>
   for the bundled examples and hardware-validation tools.</p>
 
@@ -259,12 +264,15 @@ fclose(f);</code></pre>
   automatically, no registration needed. Then pick the template matching where the binary
   runs:</p>
   <table>
-    <tr><th>Template</th><th>Produces</th></tr>
-    <tr><td><code>soctglue-static.cmake</code></td>
+    <tr><th>Template</th><th>Project</th><th>Produces</th></tr>
+    <tr><td><code>soctglue-static.cmake</code></td><td><code>binaries/</code></td>
       <td>A bare-metal ELF linked against soctglue and newlib, laid out by
         <code>soct.ld</code>, flashable over JTAG</td></tr>
-    <tr><td><code>linux-userspace.cmake</code></td>
-      <td>A static riscv64-linux-musl ELF for the Linux boot image's initramfs</td></tr>
+    <tr><td><code>linux/userspace.cmake</code></td><td><code>binaries/linux/</code></td>
+      <td>A static riscv64-linux-musl ELF (a real <code>add_executable</code>)</td></tr>
+    <tr><td><code>linux/initram.cmake</code></td><td><code>binaries/linux/</code></td>
+      <td>The same, plus a bootable <code>&lt;name&gt;.BOOT.ELF</code> with the program as
+        the initramfs <code>/init</code></td></tr>
   </table>
 
   <h3>Bare-metal programs (<code>soctglue-static.cmake</code>)</h3>
@@ -305,24 +313,29 @@ endif ()</code></pre>
   <code>fopen</code>/<code>fread</code>/<code>fwrite</code>. The volume root is
   <code>SOCT_SD_PATH</code> (defined to <code>/SD</code> by default with Linux-style volume IDs).</p>
 
-  <h3>Linux userspace programs (<code>linux-userspace.cmake</code>)</h3>
+  <h3>Linux userspace programs (<code>binaries/linux</code>)</h3>
   <p>Programs that run under the Linux kernel (see <em>Booting Linux</em> below) instead of on
-  bare metal follow the same directory pattern but include the Linux template:</p>
-<pre><code>cmake_minimum_required(VERSION 3.20)
+  bare metal live in the separate <code>binaries/linux</code> project and follow the same
+  directory-plus-template pattern with two templates:</p>
+<pre><code>cmake_minimum_required(VERSION 3.21)
 
 list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../linux-userspace.cmake)</code></pre>
-  <p>The target (named after the directory) is a <em>static</em> riscv64-linux-musl ELF in
-  <code>SOCT_ELFS_DIR</code>, compiled with the LLVM toolchain against the sysroot that the
-  <code>linux-sysroot</code> target builds: the kernel tree's sanitized UAPI headers plus a
-  static musl. Static, because the target system is initramfs-only &mdash; there is no
-  shared-library ecosystem to link against. soctglue, the bare-metal linker script and the
-  syscall handler chain play no role here; these are ordinary Linux programs with a full C
-  library. The initramfs <code>/init</code> (<code>programs/linux-init</code>) is the
-  reference example. When the kernel tree or a required host tool is missing, the targets
-  are skipped with a status message; extra compile options go into
-  <code>SOCT_LINUX_USERSPACE_FLAGS</code> before the include.</p>
+include(${CMAKE_CURRENT_LIST_DIR}/../../userspace.cmake)  # ELF only
+# ...or ../../initram.cmake to also get a bootable image (below)</code></pre>
+  <p>The target (named after the directory) is a real <code>add_executable</code> &mdash; IDEs
+  index it with full cross-compilation flags &mdash; producing a <em>static</em>
+  riscv64-linux-musl ELF, copied to <code>SOCT_ELFS_DIR</code>. Static, because the target
+  system is initramfs-only; there is no shared-library ecosystem to link against. soctglue,
+  the bare-metal linker script and the syscall handler chain play no role here: these are
+  ordinary Linux programs with a full C library. A program that includes
+  <code>initram.cmake</code> instead additionally gets a <code>&lt;name&gt;-boot-elf</code>
+  target: a complete <code>&lt;name&gt;.BOOT.ELF</code> with the program as the initramfs
+  <code>/init</code> &mdash; running a userspace program on hardware becomes build, copy to
+  SD, boot. The initramfs <code>/init</code> itself (<code>linux/programs/linux-init</code>,
+  which must never exit &mdash; it is PID&nbsp;1) is the reference example. For IDE support,
+  link <code>binaries/linux</code> as its own CMake project (CLion: Tools &rarr; CMake &rarr;
+  Link CMake Project) configured with the same <code>-DSOCT_SYSTEM</code>.</p>
 
   <h2>Adding a boot ROM</h2>
   <p>Boot ROMs live under <code>binaries/bootroms/</code> and follow the same auto-discovery
@@ -366,10 +379,15 @@ cmake --build build -j$(nproc)</code></pre>
   so every bare-metal program gets a <code>&lt;name&gt;-flash</code> target that loads the
   compiled ELF onto the FPGA over JTAG using Xilinx <code>xsdb</code> &mdash; locally, or
   through an SSH host on which <code>xsdb</code> runs. The targets are only created when at
-  least one of <code>SOCT_FLASH_XSDB</code> or <code>SOCT_FLASH_HOST</code> is set. Linux
-  userspace programs get no flash target: JTAG loads ELF segments into physical memory with
-  the hart halted, which cannot deliver a file into a running kernel &mdash; they reach the
-  target inside the boot image's initramfs instead.</p>
+  least one of <code>SOCT_FLASH_XSDB</code> or <code>SOCT_FLASH_HOST</code> is set. The
+  machinery is shared with the linux project
+  (<code>shared/cmake/SoctXsdbFlash.cmake</code>), where the flashable artifact is the
+  <em>boot image</em>: an <code>initram.cmake</code> program's <code>&lt;name&gt;-flash</code>
+  target JTAG-loads its <code>&lt;name&gt;.BOOT.ELF</code> &mdash; a plain physical-address
+  ELF &mdash; booting Linux with that program as <code>/init</code> without touching the SD
+  card. A plain userspace <em>ELF</em> is still not flashable: JTAG writes physical memory
+  with the hart halted and cannot deliver a file into a running kernel &mdash; such programs
+  reach the target inside a boot image's initramfs.</p>
 <pre><code>cmake --build build --target hello-hart-flash</code></pre>
 
   <h3>CMake variables</h3>
@@ -402,28 +420,35 @@ cmake --build build -j$(nproc)</code></pre>
   pipeline needs once per power-up.</p>
 
   <h2>Booting Linux (<code>boot-elf</code>)</h2>
-  <p>When kernel and OpenSBI source trees are dropped in as <code>binaries/linux-stable/</code>
-  and <code>binaries/opensbi/</code>, the build offers targets that produce
-  <code>BOOT.ELF</code> &mdash; an OpenSBI <em>fw_payload</em> wrapping a Linux kernel (with a
-  minimal embedded initramfs) and the design's device tree &mdash; which the
-  <code>sd-boot</code> boot ROM loads from the SD card like any other program:</p>
+  <p>The <code>binaries/linux</code> project &mdash; configured against the same
+  <code>SOCT_SYSTEM</code>, with kernel and OpenSBI source trees dropped in as
+  <code>binaries/linux-stable/</code> and <code>binaries/opensbi/</code> &mdash; produces
+  bootable images: an OpenSBI <em>fw_payload</em> wrapping a Linux kernel (with an embedded
+  initramfs) and the design's device tree, which the <code>sd-boot</code> boot ROM loads
+  from the SD card like any other program. Its targets:</p>
   <ul>
-    <li><code>linux-sysroot</code> &mdash; the riscv64-linux-musl sysroot every Linux userspace
-      program (including the initramfs <code>/init</code>) is compiled against; see
-      <em>Linux userspace programs</em> above.</li>
+    <li><code>linux-sysroot</code> &mdash; the riscv64-linux-musl sysroot (built automatically
+      at configure time when missing, shared across build trees under
+      <code>shared/vendor/</code>); see <em>Linux userspace programs</em> above.</li>
     <li><code>boot-dtb</code> &mdash; the design DTS compiled with fixup padding; it is embedded
-      into the firmware, so <code>BOOT.ELF</code> does not depend on the ROM copy of the DTB
+      into the firmware, so boot images do not depend on the ROM copy of the DTB
       (but must match the flashed hardware).</li>
-    <li><code>linux-image</code> &mdash; the kernel (riscv defconfig plus
-      <code>boot/linux.fragment.in</code>: UART Lite console, baked-in command line, initramfs).
-      Requires GNU make &ge; 4.0 on the host (auto-detected, Homebrew's <code>gmake</code>
-      included; override with <code>-DSOCT_BOOT_MAKE</code>); a prebuilt kernel can be supplied
-      instead with <code>-DSOCT_LINUX_IMAGE=&lt;path&gt;</code>.</li>
-    <li><code>boot-elf</code> &mdash; the final <code>BOOT.ELF</code> in <code>SOCT_ELFS_DIR</code>.</li>
+    <li><code>&lt;name&gt;-boot-elf</code> &mdash; for every program that includes
+      <code>initram.cmake</code>: <code>&lt;name&gt;.BOOT.ELF</code> in
+      <code>SOCT_ELFS_DIR</code>, a kernel with that program as <code>/init</code>. The kernel
+      and OpenSBI build directories are shared: the ~2000 kernel objects compile once, and
+      switching programs re-runs only the initramfs packing and the links (the initramfs
+      description is a fixed path in the kernel build dir that each image overwrites &mdash;
+      never a reconfigure). Image builds are serialized through a job pool; honored by the
+      Ninja generator. With the <code>SOCT_FLASH_*</code> variables set, each image also gets
+      a <code>&lt;name&gt;-flash</code> target that JTAG-loads it (see
+      <em>Flashing to an FPGA</em>) &mdash; booting Linux without touching the SD card.</li>
+    <li><code>boot-elf</code> &mdash; the canonical <code>BOOT.ELF</code>: a copy of
+      <code>linux-init.BOOT.ELF</code>, under the name the boot ROM loads.</li>
   </ul>
   <p>There is no storage driver for the SD controller in mainline Linux, which is why the root
   filesystem is an initramfs embedded in the kernel image. The kernel configuration is the
-  riscv defconfig plus <code>boot/linux.fragment.in</code>: the UART Lite console driver, a
+  riscv defconfig plus <code>linux/linux.fragment.in</code>: the UART Lite console driver, a
   pinned <code>HZ</code>, the initramfs, and AppArmor disabled (useless on this SoC, and its
   header generation is the one build step requiring GNU sed's <code>\L</code> on every host).
   The command line is deliberately <em>not</em> baked into the kernel: the generator emits a
@@ -456,9 +481,11 @@ cmake --build build -j$(nproc)</code></pre>
   (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindGNUMake.cmake"><code>FindGNUMake</code></a>:
   every <code>gmake</code>/<code>gnumake</code>/<code>make</code> candidate is
   version-checked, so an ancient system <code>make</code> cannot shadow a usable one).
-  Every unmet requirement is reported at configure time and enforced when the affected
-  target is built &mdash; with the exact remedy in the message; the rest of
-  <code>binaries/</code> is never blocked.</p>
+  Userspace programs get their cross flags from the project's toolchain file
+  (<code>shared/cmake/toolchain-riscv-linux-musl.cmake</code>), built on the same discovery.
+  Any unmet requirement fails the <code>binaries/linux</code> configure loudly, with the
+  remedy in the message; the bare-metal project is untouched by construction &mdash; the two
+  worlds are separate build trees.</p>
 
   <h3>Host requirements</h3>
   <p><strong>Every host:</strong></p>
@@ -483,13 +510,13 @@ cmake --build build -j$(nproc)</code></pre>
   tools on Darwin only &mdash; target code and Linux hosts never see any of them:</p>
   <table>
     <tr><th>Accommodation</th><th>Why</th></tr>
-    <tr><td><code>boot/host-compat/elf.h</code> (verbatim musl, MIT) on the host include path</td>
+    <tr><td><code>linux/host-compat/elf.h</code> (verbatim musl, MIT) on the host include path</td>
       <td>macOS ships no <code>&lt;elf.h&gt;</code>; the kernel's host tools
         (<code>scripts/elf-parse.h</code> users, <code>modpost</code>) require one.</td></tr>
-    <tr><td><code>boot/host-compat/byteswap.h</code></td>
+    <tr><td><code>linux/host-compat/byteswap.h</code></td>
       <td>glibc-only header (<code>bswap_*</code>) used by <code>modpost</code>; shimmed with
         compiler builtins.</td></tr>
-    <tr><td><code>boot/host-compat/darwin-compat.h</code>, force-included</td>
+    <tr><td><code>linux/host-compat/darwin-compat.h</code>, force-included</td>
       <td><code>usr/gen_init_cpio.c</code> uses <code>O_LARGEFILE</code> and
         <code>copy_file_range</code>, which Darwin lacks; defined to 0 and a read/write
         fallback respectively.</td></tr>
@@ -516,9 +543,7 @@ cmake --build build -j$(nproc)</code></pre>
     <tr><td><code>SOCT_BOOT_LLVM_DIR</code></td><td><em>(auto-detect)</em></td>
       <td>LLVM bin directory; must contain <code>clang</code> and <code>ld.lld</code></td></tr>
     <tr><td><code>SOCT_BOOT_MAKE</code></td><td><em>(auto-detect)</em></td>
-      <td>GNU make &ge; 4.0 used for the kernel and OpenSBI</td></tr>
-    <tr><td><code>SOCT_LINUX_IMAGE</code></td><td><em>(empty)</em></td>
-      <td>Prebuilt kernel Image to embed instead of building <code>linux-image</code></td></tr>
+      <td>GNU make &ge; 4.0 used for the kernel, OpenSBI and musl</td></tr>
   </table>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
