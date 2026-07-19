@@ -140,10 +140,10 @@
   <h2>Validating on hardware</h2>
   <p>Two bundled programs verify the result end to end:</p>
   <ul>
-    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/mem-test/main.c"><code>mem-test</code></a> &mdash; reads the memory range from the DTB, then runs a capacity
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/mem-test/main.c"><code>mem-test</code></a> &mdash; reads the memory range from the DTB, then runs a capacity
       probe (detects aliasing/wrap-around from a mis-sized decode window), a cache-line-edge test,
       and moving-inversion sweeps over the full range.</li>
-    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/heap-test/main.c"><code>heap-test</code></a> &mdash; allocates the DTB-bounded heap and probes the newlib
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/heap-test/main.c"><code>heap-test</code></a> &mdash; allocates the DTB-bounded heap and probes the newlib
       allocator limits.</li>
   </ul>
 

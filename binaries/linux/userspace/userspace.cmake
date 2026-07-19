@@ -2,7 +2,7 @@
 # bare-metal soctglue-static.cmake:
 #
 #   list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
-#   include(${CMAKE_CURRENT_LIST_DIR}/../../userspace.cmake)
+#   include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)
 #
 # The target (named after the directory) is a real add_executable - IDEs index it - and
 # produces a static riscv64-linux-musl ELF, copied to SOCT_ELFS_DIR. All cross flags

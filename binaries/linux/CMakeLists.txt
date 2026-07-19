@@ -8,8 +8,10 @@ cmake_minimum_required(VERSION 3.21)
 # boots the kernel:
 #   - the riscv64-linux-musl sysroot (kernel UAPI headers + static musl), built on demand
 #     into shared/vendor/ so every build tree and IDE profile shares one copy
-#   - userspace programs under programs/ (auto-discovered; plain add_executable targets,
-#     so IDEs index them - include userspace.cmake or initram.cmake, see those files)
+#   - userspace programs under userspace/ (auto-discovered; plain add_executable targets,
+#     so IDEs index them - include userspace/userspace.cmake or userspace/initram.cmake)
+#   - reserved for the future: drivers/ (out-of-tree kernel modules for SoCeteer IP) and
+#     rootfs/ (dynamically linked userspace + root-filesystem staging) - see their READMEs
 #   - the kernel Image, OpenSBI, and per-program boot images (<name>.BOOT.ELF: a kernel
 #     with that program as the initramfs /init, wrapped in OpenSBI fw_payload)
 #
@@ -39,9 +41,9 @@ project(RV_Linux C)
 include(ProcessorCount)
 include(SoctBootHostTools)
 
-set(SOCT_BOOT_LINUX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../linux-stable" CACHE PATH
+set(SOCT_BOOT_LINUX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/linux-stable" CACHE PATH
         "Linux kernel source tree")
-set(SOCT_BOOT_OPENSBI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../opensbi" CACHE PATH
+set(SOCT_BOOT_OPENSBI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/opensbi" CACHE PATH
         "OpenSBI source tree")
 set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary")
 
@@ -232,23 +234,23 @@ endfunction()
 ################################################################################################
 # Programs (auto-discovered; each includes userspace.cmake or initram.cmake)
 ################################################################################################
-file(GLOB _linux_programs RELATIVE "${CMAKE_CURRENT_LIST_DIR}" "${CMAKE_CURRENT_LIST_DIR}/programs/*/")
+file(GLOB _linux_programs RELATIVE "${CMAKE_CURRENT_LIST_DIR}" "${CMAKE_CURRENT_LIST_DIR}/userspace/*/")
 foreach (_entry ${_linux_programs})
     if (IS_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/${_entry}")
         add_subdirectory("${_entry}")
     endif ()
 endforeach ()
 
-# Canonical BOOT.ELF: the linux-init program's boot image, under the name the sd-boot
+# Canonical BOOT.ELF: the echo program's boot image, under the name the sd-boot
 # bootrom loads.
-if (TARGET linux-init-boot-elf)
+if (TARGET echo-boot-elf)
     add_custom_command(OUTPUT "${SOCT_ELFS_DIR}/BOOT.ELF"
-            COMMAND ${CMAKE_COMMAND} -E copy "${SOCT_ELFS_DIR}/linux-init.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
-            DEPENDS "${SOCT_ELFS_DIR}/linux-init.BOOT.ELF"
-            COMMENT "BOOT.ELF = linux-init.BOOT.ELF"
+            COMMAND ${CMAKE_COMMAND} -E copy "${SOCT_ELFS_DIR}/echo.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
+            DEPENDS "${SOCT_ELFS_DIR}/echo.BOOT.ELF"
+            COMMENT "BOOT.ELF = echo.BOOT.ELF"
             VERBATIM)
     add_custom_target(boot-elf DEPENDS "${SOCT_ELFS_DIR}/BOOT.ELF")
     # File-level custom-command outputs are only reliably visible within their own
     # directory (Makefiles generator); the target-level edge covers every generator.
-    add_dependencies(boot-elf linux-init-boot-elf)
+    add_dependencies(boot-elf echo-boot-elf)
 endif ()

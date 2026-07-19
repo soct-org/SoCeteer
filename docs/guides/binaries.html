@@ -104,20 +104,22 @@
   CMakeLists includes one of the shared templates &mdash; and <em>which</em> template it
   includes decides what kind of binary it becomes:</p>
 <pre><code>binaries/                          # The bare-metal CMake project (vendored riscv toolchain)
-  programs/&lt;name&gt;/                 # One directory per program, auto-discovered
-  programs/soctglue-static.cmake   # Template: bare-metal programs (soctglue + newlib)
-  programs/xsdb-flash.cmake        # Included by the bare-metal template: JTAG flash targets
-  bootroms/&lt;name&gt;/                 # Same pattern for boot ROMs (e.g. sd-boot)
+  bootroms/&lt;name&gt;/                 # Runs from on-chip ROM at reset (first stage)
   bootroms/template.cmake          # Template for boot ROMs (self-contained, no soctglue)
+  baremetal/&lt;name&gt;/                # Runs directly on the SoC, no OS (M-mode, soctglue)
+  baremetal/soctglue-static.cmake  # Template: bare-metal programs (soctglue + newlib)
+  baremetal/xsdb-flash.cmake       # Included by the bare-metal template: JTAG flash targets
   linux/                           # A SEPARATE CMake project: everything Linux
-    programs/&lt;name&gt;/               # Userspace programs (real add_executable targets)
-    userspace.cmake                # Template: static riscv64-linux-musl ELF
-    initram.cmake                  # Template: userspace + a bootable &lt;name&gt;.BOOT.ELF
+    userspace/&lt;name&gt;/              # Runs in Linux userspace (real add_executable targets)
+    userspace/userspace.cmake      # Template: static riscv64-linux-musl ELF
+    userspace/initram.cmake        # Template: userspace + a bootable &lt;name&gt;.BOOT.ELF
+    linux-stable/, opensbi/        # Drop-in kernel and OpenSBI source checkouts
+    drivers/, rootfs/              # Reserved: kernel modules; dynamic userspace (see READMEs)
 shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall layer, FatFs glue</code></pre>
   <p><code>binaries/linux</code> is its own project because CMake allows one toolchain per
   build tree, and the bare-metal toolchain cannot target Linux &mdash; see
   <em>Booting Linux</em> below.</p>
-  <p>Browse <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/programs"><code>binaries/programs</code></a>
+  <p>Browse <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/baremetal"><code>binaries/baremetal</code></a>
   for the bundled examples and hardware-validation tools.</p>
 
   <h2>soctglue</h2>
@@ -176,12 +178,12 @@ shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall lay
     Allocator caveat: newlib's malloc (both the nano and the full allocator) rejects single
     requests of &ge;&nbsp;2&nbsp;GiB, and nano-malloc additionally cannot split a free chunk when
     the remainder would be &ge;&nbsp;2&nbsp;GiB. For huge allocations use several
-    &lt;&nbsp;2&nbsp;GiB blocks (see <code>binaries/programs/heap-test</code>, which probes exactly
+    &lt;&nbsp;2&nbsp;GiB blocks (see <code>binaries/baremetal/heap-test</code>, which probes exactly
     these limits).
   </div>
 
   <h3>Static stack-usage checking</h3>
-  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/soctglue-static.cmake"><code>bare-metal template</code></a> compiles everything with <code>-fstack-usage</code> and
+  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/soctglue-static.cmake"><code>bare-metal template</code></a> compiles everything with <code>-fstack-usage</code> and
   <code>-Wstack-usage=&lt;bytes&gt;</code> (default threshold 2048; override with
   <code>-DSOCT_STACK_WARN=&lt;bytes&gt;</code>). Any single function with a larger frame produces a
   compile-time warning, and the <code>&lt;prog&gt;-info</code> target (built by default) prints the
@@ -259,7 +261,7 @@ fclose(f);</code></pre>
   SoCeteer creates automatically.</p>
 
   <h2>Adding a program</h2>
-  <p>Create a subdirectory under <code>binaries/programs/</code> with a
+  <p>Create a subdirectory under <code>binaries/baremetal/</code> with a
   <code>CMakeLists.txt</code> and your sources &mdash; the top-level build discovers it
   automatically, no registration needed. Then pick the template matching where the binary
   runs:</p>
@@ -268,9 +270,9 @@ fclose(f);</code></pre>
     <tr><td><code>soctglue-static.cmake</code></td><td><code>binaries/</code></td>
       <td>A bare-metal ELF linked against soctglue and newlib, laid out by
         <code>soct.ld</code>, flashable over JTAG</td></tr>
-    <tr><td><code>linux/userspace.cmake</code></td><td><code>binaries/linux/</code></td>
+    <tr><td><code>linux/userspace/userspace.cmake</code></td><td><code>binaries/linux/</code></td>
       <td>A static riscv64-linux-musl ELF (a real <code>add_executable</code>)</td></tr>
-    <tr><td><code>linux/initram.cmake</code></td><td><code>binaries/linux/</code></td>
+    <tr><td><code>linux/userspace/initram.cmake</code></td><td><code>binaries/linux/</code></td>
       <td>The same, plus a bootable <code>&lt;name&gt;.BOOT.ELF</code> with the program as
         the initramfs <code>/init</code></td></tr>
   </table>
@@ -321,8 +323,8 @@ endif ()</code></pre>
 
 list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../../userspace.cmake)  # ELF only
-# ...or ../../initram.cmake to also get a bootable image (below)</code></pre>
+include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
+# ...or ../initram.cmake to also get a bootable image (below)</code></pre>
   <p>The target (named after the directory) is a real <code>add_executable</code> &mdash; IDEs
   index it with full cross-compilation flags &mdash; producing a <em>static</em>
   riscv64-linux-musl ELF, copied to <code>SOCT_ELFS_DIR</code>. Static, because the target
@@ -332,7 +334,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../userspace.cmake)  # ELF only
   <code>initram.cmake</code> instead additionally gets a <code>&lt;name&gt;-boot-elf</code>
   target: a complete <code>&lt;name&gt;.BOOT.ELF</code> with the program as the initramfs
   <code>/init</code> &mdash; running a userspace program on hardware becomes build, copy to
-  SD, boot. The initramfs <code>/init</code> itself (<code>linux/programs/linux-init</code>,
+  SD, boot. The console-echo bring-up demo (<code>linux/userspace/echo</code>,
   which must never exit &mdash; it is PID&nbsp;1) is the reference example. For IDE support,
   link <code>binaries/linux</code> as its own CMake project (CLion: Tools &rarr; CMake &rarr;
   Link CMake Project) configured with the same <code>-DSOCT_SYSTEM</code>.</p>
@@ -375,7 +377,7 @@ cmake --build build -j$(nproc)</code></pre>
 
   <h2>Flashing to an FPGA</h2>
   <p>The bare-metal template ends by including
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/xsdb-flash.cmake"><code>xsdb-flash.cmake</code></a>,
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/xsdb-flash.cmake"><code>xsdb-flash.cmake</code></a>,
   so every bare-metal program gets a <code>&lt;name&gt;-flash</code> target that loads the
   compiled ELF onto the FPGA over JTAG using Xilinx <code>xsdb</code> &mdash; locally, or
   through an SSH host on which <code>xsdb</code> runs. The targets are only created when at
@@ -415,14 +417,14 @@ cmake --build build -j$(nproc)</code></pre>
   into the generated flash wrapper and runs with <code>elf</code>, <code>xsdb</code>,
   <code>host</code> and <code>remote_dir</code> in scope, so one prelude serves local and
   remote flashing alike. The reference use is
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/CMakeLists.txt"><code>dp-test</code></a>,
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/CMakeLists.txt"><code>dp-test</code></a>,
   whose prelude runs the Vivado-generated <code>psu_init</code> sequence the DisplayPort
   pipeline needs once per power-up.</p>
 
   <h2>Booting Linux (<code>boot-elf</code>)</h2>
   <p>The <code>binaries/linux</code> project &mdash; configured against the same
   <code>SOCT_SYSTEM</code>, with kernel and OpenSBI source trees dropped in as
-  <code>binaries/linux-stable/</code> and <code>binaries/opensbi/</code> &mdash; produces
+  <code>binaries/linux/linux-stable/</code> and <code>binaries/linux/opensbi/</code> &mdash; produces
   bootable images: an OpenSBI <em>fw_payload</em> wrapping a Linux kernel (with an embedded
   initramfs) and the design's device tree, which the <code>sd-boot</code> boot ROM loads
   from the SD card like any other program. Its targets:</p>
@@ -444,7 +446,7 @@ cmake --build build -j$(nproc)</code></pre>
       a <code>&lt;name&gt;-flash</code> target that JTAG-loads it (see
       <em>Flashing to an FPGA</em>) &mdash; booting Linux without touching the SD card.</li>
     <li><code>boot-elf</code> &mdash; the canonical <code>BOOT.ELF</code>: a copy of
-      <code>linux-init.BOOT.ELF</code>, under the name the boot ROM loads.</li>
+      <code>echo.BOOT.ELF</code>, under the name the boot ROM loads.</li>
   </ul>
   <p>There is no storage driver for the SD controller in mainline Linux, which is why the root
   filesystem is an initramfs embedded in the kernel image. The kernel configuration is the
@@ -536,9 +538,9 @@ cmake --build build -j$(nproc)</code></pre>
   <h3>Boot-image CMake variables</h3>
   <table>
     <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
-    <tr><td><code>SOCT_BOOT_LINUX_DIR</code></td><td><code>binaries/linux-stable</code></td>
+    <tr><td><code>SOCT_BOOT_LINUX_DIR</code></td><td><code>binaries/linux/linux-stable</code></td>
       <td>Kernel source tree</td></tr>
-    <tr><td><code>SOCT_BOOT_OPENSBI_DIR</code></td><td><code>binaries/opensbi</code></td>
+    <tr><td><code>SOCT_BOOT_OPENSBI_DIR</code></td><td><code>binaries/linux/opensbi</code></td>
       <td>OpenSBI source tree</td></tr>
     <tr><td><code>SOCT_BOOT_LLVM_DIR</code></td><td><em>(auto-detect)</em></td>
       <td>LLVM bin directory; must contain <code>clang</code> and <code>ld.lld</code></td></tr>

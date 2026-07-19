@@ -5,11 +5,11 @@
 # userspace program on the hardware" into: build, copy to SD as BOOT.ELF, boot.
 #
 #   list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
-#   include(${CMAKE_CURRENT_LIST_DIR}/../../initram.cmake)
+#   include(${CMAKE_CURRENT_LIST_DIR}/../initram.cmake)
 #
 # The kernel and OpenSBI build directories are shared between all boot images (only the
 # initramfs packing and links re-run per image, serialized through a job pool); the
-# program runs as PID 1 and must never exit - see programs/linux-init for the pattern.
+# program runs as PID 1 and must never exit - see userspace/echo for the pattern.
 
 include(${CMAKE_CURRENT_LIST_DIR}/userspace.cmake)
 

@@ -28,8 +28,8 @@
 	url = https://github.com/verilator/verilator.git
 	branch = stable
 [submodule "binaries/linux-stable"]
-	path = binaries/linux-stable
+	path = binaries/linux/linux-stable
 	url = https://github.com/gregkh/linux.git
 [submodule "binaries/opensbi"]
-	path = binaries/opensbi
+	path = binaries/linux/opensbi
 	url = https://github.com/riscv-software-src/opensbi.git

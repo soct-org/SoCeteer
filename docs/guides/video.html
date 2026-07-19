@@ -226,7 +226,7 @@
   </ul>
 
   <h2>The software contract</h2>
-  <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/main.c"><code>dp-test</code></a>
+  <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/main.c"><code>dp-test</code></a>
   is the reference implementation of everything below, in the order listed. It doubles as the
   pipeline's diagnostic tool and ends in a rotating-teapot demo.</p>
 
@@ -241,7 +241,7 @@ psu_post_config
 psu_ps_pl_isolation_removal
 psu_ps_pl_reset_config</code></pre>
   <p>The <code>dp-test</code> flash target runs this automatically before every flash (see its
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/CMakeLists.txt">CMakeLists</a>).</p>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/CMakeLists.txt">CMakeLists</a>).</p>
 
   <h3>1. Discover the pipeline from the device tree</h3>
   <p>The design describes itself; nothing is hardcoded in software:</p>
@@ -273,10 +273,10 @@ psu_ps_pl_reset_config</code></pre>
 
   <h3>3. Program the PS: routing and the DP link</h3>
   <p>The PS side is driven by the vendored Xilinx drivers in
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/xilinx">dp-test/xilinx</a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/xilinx">dp-test/xilinx</a>
   (dppsu for the DP controller, avbuf for the AV buffer manager), kept byte-for-byte unmodified.
   The shim layer in
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/programs/dp-test/soct_xil">dp-test/soct_xil</a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/soct_xil">dp-test/soct_xil</a>
   provides the BSP headers they include by name &mdash; crucially <code>Xil_In32/Out32</code>,
   which translate the drivers' hardcoded PS addresses through the window &mdash; so the drivers
   never know they are running on a RISC-V. The sequence: select the live input and the PL video

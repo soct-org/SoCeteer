@@ -26,7 +26,10 @@ endif ()
 project(RV_Binaries C CXX ASM)
 
 ###########################################################################################
-# This Cmake can build both programs and bootroms.
+# The BARE-METAL project: everything that runs directly on the SoC without an OS -
+# boot ROMs (bootroms/, executed from on-chip ROM at reset) and programs on the soctglue
+# runtime (baremetal/, loaded by the sd-boot bootrom or over JTAG). Everything involving
+# the Linux kernel lives in the separate binaries/linux project (own toolchain).
 ###########################################################################################
 set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary (dtc). If not set, looks for dtc in PATH.")
 
@@ -41,7 +44,7 @@ add_custom_target(device_tree ALL DEPENDS "${SOCT_DTB}")
 
 file(GLOB ALL_ENTRIES RELATIVE "${CMAKE_CURRENT_LIST_DIR}"
         "${CMAKE_CURRENT_LIST_DIR}/bootroms/*/"
-        "${CMAKE_CURRENT_LIST_DIR}/programs/*/"
+        "${CMAKE_CURRENT_LIST_DIR}/baremetal/*/"
 )
 
 set(SOCTGLUE_DIR ${SOCETEER_ROOT}/shared/soctglue)
