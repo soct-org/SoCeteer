@@ -335,7 +335,12 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
   target: a complete <code>&lt;name&gt;.BOOT.ELF</code> with the program as the initramfs
   <code>/init</code> &mdash; running a userspace program on hardware becomes build, copy to
   SD, boot. The console-echo bring-up demo (<code>linux/userspace/echo</code>,
-  which must never exit &mdash; it is PID&nbsp;1) is the reference example. For IDE support,
+  which must never exit &mdash; it is PID&nbsp;1) is the reference example. A boot image
+  need not wrap a compiled program at all: <code>linux/userspace/shell</code> compiles
+  nothing and instead hands its own initramfs description to
+  <code>soct_linux_add_boot_image(&lt;name&gt; DESC &lt;desc&gt; DEPENDS &lt;packed
+  files&hellip;&gt;)</code>, packing the prebuilt BusyBox and a boot script
+  (see <em>Booting Linux</em>). For IDE support,
   link <code>binaries/linux</code> as its own CMake project (CLion: Tools &rarr; CMake &rarr;
   Link CMake Project) configured with the same <code>-DSOCT_SYSTEM</code>.</p>
 
@@ -445,8 +450,9 @@ cmake --build build -j$(nproc)</code></pre>
       Ninja generator. With the <code>SOCT_FLASH_*</code> variables set, each image also gets
       a <code>&lt;name&gt;-flash</code> target that JTAG-loads it (see
       <em>Flashing to an FPGA</em>) &mdash; booting Linux without touching the SD card.</li>
-    <li><code>boot-elf</code> &mdash; the canonical <code>BOOT.ELF</code>: a copy of
-      <code>echo.BOOT.ELF</code>, under the name the boot ROM loads.</li>
+    <li><code>boot-elf</code> &mdash; the canonical <code>BOOT.ELF</code>, under the name
+      the boot ROM loads: a copy of the boot image selected by
+      <code>SOCT_BOOT_PROGRAM</code> (default: <code>shell</code>).</li>
   </ul>
   <p>There is no storage driver for the SD controller in mainline Linux, which is why the root
   filesystem is an initramfs embedded in the kernel image. The kernel configuration is the
@@ -456,6 +462,16 @@ cmake --build build -j$(nproc)</code></pre>
   The command line is deliberately <em>not</em> baked into the kernel: the generator emits a
   <code>/chosen</code> node whose <code>bootargs</code> select the design's UART as console
   and early console, so one kernel image serves any hardware generation.</p>
+  <p>The default image, <code>shell.BOOT.ELF</code>, boots into an interactive BusyBox
+  shell. Its <code>/init</code> (<code>linux/userspace/shell/init.sh</code>) mounts the
+  pseudo filesystems, installs the applet links and keeps a job-controlled shell alive on
+  the console (<code>setsid</code> + <code>cttyhack</code>; the script itself stays
+  PID&nbsp;1, so an exiting shell is respawned instead of panicking the kernel). BusyBox
+  is not built from source &mdash; that would add a second kbuild frontier for one binary
+  &mdash; but taken from Debian's <code>busybox-static</code> riscv64 package: a static
+  rv64gc binary, hash-pinned and fetched once at configure time into
+  <code>shared/vendor/busybox/</code> from <em>snapshot.debian.org</em>, whose archive
+  URLs are permanent (regular pool URLs disappear once a package version is superseded).</p>
 
   <h3>Toolchains</h3>
   <p>Two toolchains split the work, deliberately:</p>
@@ -546,6 +562,8 @@ cmake --build build -j$(nproc)</code></pre>
       <td>LLVM bin directory; must contain <code>clang</code> and <code>ld.lld</code></td></tr>
     <tr><td><code>SOCT_BOOT_MAKE</code></td><td><em>(auto-detect)</em></td>
       <td>GNU make &ge; 4.0 used for the kernel, OpenSBI and musl</td></tr>
+    <tr><td><code>SOCT_BOOT_PROGRAM</code></td><td><code>shell</code></td>
+      <td>Program whose boot image becomes the canonical <code>BOOT.ELF</code></td></tr>
   </table>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>

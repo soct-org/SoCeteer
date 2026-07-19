@@ -111,6 +111,7 @@ const SOCT_GLOSSARY = [
       { t: ["sysroot"], d: "A directory tree mimicking the target system's root (headers and libraries) that a cross compiler searches instead of the host's. The Linux userspace sysroot combines the kernel tree's UAPI headers with musl." },
       { t: ["OpenSBI", "SBI"], d: "The Supervisor Binary Interface is RISC-V's contract between an OS kernel (S-mode) and machine-mode firmware - timers, inter-processor interrupts, early console. OpenSBI is its reference implementation; the Linux boot image wraps it around the kernel as fw_payload." },
       { t: ["initramfs"], d: "A file archive embedded in the kernel image and unpacked into a RAM-backed root filesystem at boot. It is the only root filesystem option when no storage driver exists - the boot image bakes a minimal /init into it." },
+      { t: ["BusyBox", "busybox"], d: "Hundreds of Unix utilities (sh, ls, mount, vi, ...) compiled into one multi-call binary that dispatches on its invocation name - the standard userland for embedded Linux. The shell boot image packs a prebuilt static build of it." },
       { t: ["vDSO"], d: "Virtual dynamic shared object - a small shared library the kernel maps into every userspace process for fast syscalls and signal return. RISC-V MMU kernels cannot be built without it, which is why the kernel build demands a linker with shared-object support." },
     ],
   },

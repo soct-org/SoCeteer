@@ -7,7 +7,8 @@ target, instead of baking a static copy into every binary.
 Prerequisites, in order:
 1. an SD-controller kernel driver (`drivers/` - gives Linux storage to mount a rootfs
    from),
-2. BusyBox (a shell and the userland to make a rootfs worth having),
+2. BusyBox (the static build already boots from `userspace/shell`; a rootfs promotes it
+   to the installed userland),
 3. the sysroot's musl built `--enable-shared` (its dynamic linker is tiny and comes from
    the same build that already produces the static archives).
 

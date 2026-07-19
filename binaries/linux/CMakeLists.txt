@@ -8,6 +8,8 @@ cmake_minimum_required(VERSION 3.21)
 # boots the kernel:
 #   - the riscv64-linux-musl sysroot (kernel UAPI headers + static musl), built on demand
 #     into shared/vendor/ so every build tree and IDE profile shares one copy
+#   - the prebuilt static BusyBox for the shell boot image (hash-pinned Debian package,
+#     fetched into shared/vendor/ once)
 #   - userspace programs under userspace/ (auto-discovered; plain add_executable targets,
 #     so IDEs index them - include userspace/userspace.cmake or userspace/initram.cmake)
 #   - reserved for the future: drivers/ (out-of-tree kernel modules for SoCeteer IP) and
@@ -147,6 +149,49 @@ add_custom_command(OUTPUT "${_sysroot_stamp}"
 add_custom_target(linux-sysroot DEPENDS "${_sysroot_stamp}")
 
 ################################################################################################
+# BusyBox: a prebuilt static riscv64 userland for the shell boot image. Building BusyBox
+# from source would mean a second kbuild frontier for one binary; Debian's busybox-static
+# package is a hash-pinned, bit-exact stand-in (static glibc, rv64gc - runs on any
+# SoCeteer core). Fetched once into shared/vendor/ from snapshot.debian.org, whose URLs
+# are permanent - pool URLs disappear when a package version is superseded.
+################################################################################################
+set(_busybox_deb_name "busybox-static_1.37.0-6+b9_riscv64.deb")
+set(_busybox_sha256 "4add476d2b185c5b487c285b38d790f0881a7e4a8e2ddde835f917e770eb8633")
+set(_busybox_url "https://snapshot.debian.org/archive/debian/20260712T202631Z/pool/main/b/busybox/busybox-static_1.37.0-6%2Bb9_riscv64.deb")
+set(SOCT_BUSYBOX "${SOCETEER_ROOT}/shared/vendor/busybox/busybox")
+if (NOT EXISTS "${SOCT_BUSYBOX}")
+    set(_busybox_deb "${SOCETEER_ROOT}/shared/vendor/busybox/${_busybox_deb_name}")
+    if (NOT EXISTS "${_busybox_deb}")
+        message(STATUS "linux: fetching ${_busybox_deb_name} (snapshot.debian.org, ~1 MB)")
+        file(DOWNLOAD "${_busybox_url}" "${_busybox_deb}"
+                EXPECTED_HASH SHA256=${_busybox_sha256} STATUS _bb_dl)
+        list(GET _bb_dl 0 _bb_dl_code)
+        if (NOT _bb_dl_code EQUAL 0)
+            file(REMOVE "${_busybox_deb}")
+            message(FATAL_ERROR "linux: busybox download failed (${_bb_dl})")
+        endif ()
+    endif ()
+    # A .deb is an ar archive carrying the payload as data.tar.*; libarchive (behind
+    # ARCHIVE_EXTRACT) reads both layers.
+    set(_bb_x "${CMAKE_CURRENT_BINARY_DIR}/busybox-extract")
+    file(REMOVE_RECURSE "${_bb_x}")
+    file(ARCHIVE_EXTRACT INPUT "${_busybox_deb}" DESTINATION "${_bb_x}")
+    file(GLOB _bb_data "${_bb_x}/data.tar.*")
+    list(LENGTH _bb_data _bb_data_n)
+    if (NOT _bb_data_n EQUAL 1)
+        message(FATAL_ERROR "linux: ${_busybox_deb_name} is not a .deb (no data.tar.* inside)")
+    endif ()
+    file(ARCHIVE_EXTRACT INPUT "${_bb_data}" DESTINATION "${_bb_x}")
+    if (NOT EXISTS "${_bb_x}/usr/bin/busybox")
+        message(FATAL_ERROR "linux: ${_busybox_deb_name} does not contain usr/bin/busybox")
+    endif ()
+    file(COPY "${_bb_x}/usr/bin/busybox" "${_bb_x}/usr/share/doc/busybox-static/copyright"
+            DESTINATION "${SOCETEER_ROOT}/shared/vendor/busybox")
+    file(REMOVE_RECURSE "${_bb_x}")
+    message(STATUS "linux: busybox ready at ${SOCT_BUSYBOX}")
+endif ()
+
+################################################################################################
 # Kernel + OpenSBI machinery (shared by every boot image). The initramfs description is a
 # FIXED path inside the kernel build dir; each program's boot image copies its own
 # description there before building, so switching programs re-runs only the initramfs
@@ -195,14 +240,22 @@ set_property(GLOBAL PROPERTY JOB_POOLS soct_kbuild=1)
 
 # Create the boot-image target chain for a userspace program: <name>.BOOT.ELF in
 # SOCT_ELFS_DIR, a kernel with the program as /init, wrapped in OpenSBI fw_payload.
-# Called by initram.cmake from the program's directory scope.
+# Called by initram.cmake from the program's directory scope. By default the initramfs is
+# the standard description with the program's executable as /init; DESC substitutes an
+# already-configured description of the caller's own (with DEPENDS naming the files and
+# targets it packs) - the shell image's route.
 function(soct_linux_add_boot_image name)
-    set(_desc "${CMAKE_CURRENT_BINARY_DIR}/${name}-initramfs.desc")
-    set(INIT_ELF "$<TARGET_FILE:${name}>")
-    # configure_file cannot expand generator expressions; the executable's path is
-    # deterministic (current binary dir + name), so spell it out.
-    set(INIT_ELF "${CMAKE_CURRENT_BINARY_DIR}/${name}")
-    configure_file("${CMAKE_SOURCE_DIR}/initramfs.desc.in" "${_desc}" @ONLY)
+    cmake_parse_arguments(_bi "" "DESC" "DEPENDS" ${ARGN})
+    if (_bi_DESC)
+        set(_desc "${_bi_DESC}")
+    else ()
+        set(_desc "${CMAKE_CURRENT_BINARY_DIR}/${name}-initramfs.desc")
+        # configure_file cannot expand $<TARGET_FILE:...>; the executable's path is
+        # deterministic (current binary dir + name), so spell it out.
+        set(INIT_ELF "${CMAKE_CURRENT_BINARY_DIR}/${name}")
+        configure_file("${CMAKE_SOURCE_DIR}/initramfs.desc.in" "${_desc}" @ONLY)
+        set(_bi_DEPENDS ${name})
+    endif ()
 
     set(_out "${SOCT_ELFS_DIR}/${name}.BOOT.ELF")
     add_custom_command(OUTPUT "${_out}"
@@ -224,7 +277,7 @@ function(soct_linux_add_boot_image name)
             COMMAND ${CMAKE_COMMAND} -E copy
             "${_sbibuild}/platform/generic/firmware/fw_payload.elf" "${_out}"
             COMMAND ${CMAKE_COMMAND} -E echo "${name}-boot-elf: ${_out} - copy to the SD card FAT root (as BOOT.ELF)"
-            DEPENDS ${name} "${_desc}" kernel-config boot-dtb
+            DEPENDS ${_bi_DEPENDS} "${_desc}" kernel-config boot-dtb
             JOB_POOL soct_kbuild
             COMMENT "Building boot image ${name}.BOOT.ELF (kernel + ${name} as /init + OpenSBI)"
             VERBATIM)
@@ -241,16 +294,18 @@ foreach (_entry ${_linux_programs})
     endif ()
 endforeach ()
 
-# Canonical BOOT.ELF: the echo program's boot image, under the name the sd-boot
-# bootrom loads.
-if (TARGET echo-boot-elf)
-    add_custom_command(OUTPUT "${SOCT_ELFS_DIR}/BOOT.ELF"
-            COMMAND ${CMAKE_COMMAND} -E copy "${SOCT_ELFS_DIR}/echo.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
-            DEPENDS "${SOCT_ELFS_DIR}/echo.BOOT.ELF"
-            COMMENT "BOOT.ELF = echo.BOOT.ELF"
-            VERBATIM)
-    add_custom_target(boot-elf DEPENDS "${SOCT_ELFS_DIR}/BOOT.ELF")
-    # File-level custom-command outputs are only reliably visible within their own
-    # directory (Makefiles generator); the target-level edge covers every generator.
-    add_dependencies(boot-elf echo-boot-elf)
+# Canonical BOOT.ELF: one program's boot image under the name the sd-boot bootrom loads.
+set(SOCT_BOOT_PROGRAM "shell" CACHE STRING
+        "Userspace program whose boot image becomes the canonical BOOT.ELF")
+if (NOT TARGET ${SOCT_BOOT_PROGRAM}-boot-elf)
+    message(FATAL_ERROR "linux: SOCT_BOOT_PROGRAM='${SOCT_BOOT_PROGRAM}' has no boot image - choose a userspace/ program that includes initram.cmake (or calls soct_linux_add_boot_image itself).")
 endif ()
+add_custom_command(OUTPUT "${SOCT_ELFS_DIR}/BOOT.ELF"
+        COMMAND ${CMAKE_COMMAND} -E copy "${SOCT_ELFS_DIR}/${SOCT_BOOT_PROGRAM}.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
+        DEPENDS "${SOCT_ELFS_DIR}/${SOCT_BOOT_PROGRAM}.BOOT.ELF"
+        COMMENT "BOOT.ELF = ${SOCT_BOOT_PROGRAM}.BOOT.ELF"
+        VERBATIM)
+add_custom_target(boot-elf DEPENDS "${SOCT_ELFS_DIR}/BOOT.ELF")
+# File-level custom-command outputs are only reliably visible within their own
+# directory (Makefiles generator); the target-level edge covers every generator.
+add_dependencies(boot-elf ${SOCT_BOOT_PROGRAM}-boot-elf)
