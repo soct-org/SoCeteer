@@ -75,7 +75,12 @@ class RocketSimBaseConfig extends Config(
 
 /** Base config of the Vivado FPGA target: block-design builder, JTAG debug, SD card and UART. */
 class RocketVivadoBaseConfig extends Config(
-  new WithDTS("freechips,rocketchip-vivado", Nil) ++
+  // All fabric peripheral interrupts cascade through one AXI INTC into the PLIC, so the
+  // core sees exactly one external interrupt regardless of how many devices the design
+  // has (see soct.system.vivado.components.AXIIntc for why the PLIC cannot take the
+  // peripherals directly).
+  new WithNExtTopInterrupts(1) ++
+    new WithDTS("freechips,rocketchip-vivado", Nil) ++
     new WithBdBuilder(new SOCTBdBuilder) ++
     new WithDefaultSlavePort ++
     new WithJtagDTM ++
@@ -147,7 +152,6 @@ case object NeedsFatFS extends Field[Boolean](false)
 class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((site, here, up) => {
   case HasSDCardPMOD => Some(pmodIdx)
   case NeedsFatFS => true
-  case NExtTopInterrupts => up(NExtTopInterrupts) + 1
 }
 )
 
@@ -200,14 +204,12 @@ case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, here, up) => {
   case HasVideoStream => Some(VideoStreamParams())
-  case NExtTopInterrupts => up(NExtTopInterrupts) + 1 // VDMA mm2s frame-transfer interrupt
 }))
 
 case object HasUART extends Field[Boolean](false)
 
 class WithUART extends Config((site, here, up) => {
   case HasUART => true
-  case NExtTopInterrupts => up(NExtTopInterrupts) + 1
 })
 
 

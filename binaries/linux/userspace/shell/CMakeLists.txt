@@ -4,11 +4,12 @@
 # which mounts the pseudo filesystems, installs the applet links and keeps a
 # job-controlled shell alive on the console.
 set(INIT_SH "${CMAKE_CURRENT_SOURCE_DIR}/init.sh")
+set(PROFILE_SH "${CMAKE_CURRENT_SOURCE_DIR}/profile.sh")
 configure_file(initramfs.desc.in "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc" @ONLY)
 
 soct_linux_add_boot_image(shell
         DESC "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc"
-        DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}")
+        DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}" "${PROFILE_SH}")
 
 # shell-flash: JTAG-boot straight into the shell, no SD card involved (see initram.cmake
 # for how the flash handoff works). Only created when the SOCT_FLASH_* variables are set.

@@ -1,0 +1,81 @@
+irqchip/xilinx: also register as a platform driver for chained probing
+
+The driver only registers via IRQCHIP_DECLARE, so a chained instance is
+initialized exclusively by of_irq_init() - which cannot cascade onto a
+parent that is not itself an early irqchip. On RISC-V the PLIC probes as
+a platform device, so an AXI INTC chained below it is abandoned
+("of_irq_init: children remain, but no parents") and every peripheral
+behind it defers forever.
+
+Register a platform driver as well, mirroring the dual registration of
+irq-sifive-plic: of_irq_init() leaves the abandoned node unpopulated, so
+the platform device is created normally and the probe defers (of_irq_get)
+until the parent domain exists.
+
+---
+diff --git a/drivers/irqchip/irq-xilinx-intc.c b/drivers/irqchip/irq-xilinx-intc.c
+index bba6f6dc4..6602f1ebd 100644
+--- a/drivers/irqchip/irq-xilinx-intc.c
++++ b/drivers/irqchip/irq-xilinx-intc.c
+@@ -18,6 +18,7 @@
+ #include <linux/jump_label.h>
+ #include <linux/bug.h>
+ #include <linux/of_irq.h>
++#include <linux/platform_device.h>
+ 
+ /* No one else should require these constants, so define them locally here. */
+ #define ISR 0x00			/* Interrupt Status Register */
+@@ -165,8 +166,8 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
+ 	} while (true);
+ }
+ 
+-static int __init xilinx_intc_of_init(struct device_node *intc,
+-					     struct device_node *parent)
++static int xilinx_intc_of_init(struct device_node *intc,
++			       struct device_node *parent)
+ {
+ 	struct xintc_irq_chip *irqc;
+ 	int ret, irq;
+@@ -248,3 +249,42 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
+ 
+ IRQCHIP_DECLARE(xilinx_intc_xps, "xlnx,xps-intc-1.00.a", xilinx_intc_of_init);
+ IRQCHIP_DECLARE(xilinx_intc_opb, "xlnx,opb-intc-1.00.c", xilinx_intc_of_init);
++
++/*
++ * As a secondary controller chained below a parent that is not an early
++ * irqchip - the RISC-V PLIC probes as a platform device - of_irq_init()
++ * cannot initialize this controller: it abandons children whose parent
++ * never shows up in the early pass ("children remain, but no parents")
++ * and leaves the node unpopulated.  Also register as a platform driver,
++ * mirroring the dual registration of irq-sifive-plic: the device then
++ * probes normally, deferring until the parent domain exists.
++ */
++static int xilinx_intc_probe(struct platform_device *pdev)
++{
++	struct device_node *node = pdev->dev.of_node;
++	int irq;
++
++	irq = of_irq_get(node, 0);
++	if (irq < 0)
++		return irq;	/* -EPROBE_DEFER until the parent is up */
++	if (!irq)
++		return -ENODEV;
++
++	return xilinx_intc_of_init(node, of_irq_find_parent(node));
++}
++
++static const struct of_device_id xilinx_intc_of_match[] = {
++	{ .compatible = "xlnx,xps-intc-1.00.a" },
++	{ .compatible = "xlnx,opb-intc-1.00.c" },
++	{}
++};
++
++static struct platform_driver xilinx_intc_driver = {
++	.driver = {
++		.name			= "xilinx-intc",
++		.of_match_table		= xilinx_intc_of_match,
++		.suppress_bind_attrs	= true,
++	},
++	.probe = xilinx_intc_probe,
++};
++builtin_platform_driver(xilinx_intc_driver);

@@ -123,10 +123,22 @@
   </ol>
   <p>At elaboration time, <code>Field</code>s from this stack gate what gets built:
   <code>HasUART</code>/<code>HasSDCardPMOD</code> decide whether the UART and SD-card controllers
-  (and their device-tree nodes and PLIC interrupts) exist; <code>XilinxFPGAKey</code>/<code>BdBuilderKey</code>
+  (and their device-tree nodes and interrupt lines) exist; <code>XilinxFPGAKey</code>/<code>BdBuilderKey</code>
   select the board definition and collect the block design; <code>PeripheryClockDomain</code> (a
   <code>Freq</code>) sets the periphery clock; <code>RegisteredMems</code>/<code>ExtMem</code>
   define the memory channels; <code>BootROMLocated</code> binds the SOCT boot ROM described next.</p>
+  <p>Peripheral interrupts share one topology across every Vivado design: the fabric devices'
+  interrupt lines are concatenated into a Xilinx AXI interrupt controller
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIIntc.scala"><code>AXIIntc</code></a>),
+  whose single level output is the core's only external interrupt (PLIC source&nbsp;1). The
+  INTC is an impedance matcher: the PLIC's per-source gateways assume <em>level</em> sources
+  &mdash; a source is masked between claim and completion, on the contract that a still-pending
+  level re-asserts afterwards &mdash; which silently loses the one-clock <em>pulses</em> of
+  edge peripherals such as the AXI UART Lite, permanently wedging the device once its FIFO
+  stops transitioning. The INTC latches edges per input (<code>xlnx,kind-of-intr</code>) and
+  holds a level the PLIC cannot lose. The device tree mirrors the cascade: devices name the
+  INTC node as their interrupt parent (0-based, two-cell entries), and the INTC chains to the
+  PLIC; operating systems drive it as an ordinary chained interrupt controller.</p>
   <p>Feature fragments that change the design substantially extend
   <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>SOCTFeatureConfig</code></a>,
   which contributes a name suffix: the system name becomes

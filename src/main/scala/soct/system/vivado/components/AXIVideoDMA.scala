@@ -27,6 +27,10 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.c_include_s2mm" -> "0", // read-only: no stream-to-memory channel
     "CONFIG.c_include_mm2s" -> "1",
+    // Pinned because the device tree advertises them (xlnx,num-fstores and the channel's
+    // xlnx,datawidth): hardware and DTS must not drift apart.
+    "CONFIG.c_num_fstores" -> s"${AXIVideoDMA.FrameStores}",
+    "CONFIG.c_m_axi_mm2s_data_width" -> s"${AXIVideoDMA.MmDataWidth}",
     "CONFIG.c_m_axis_mm2s_tdata_width" -> "24", // RGB888 stream towards the video out
     "CONFIG.c_use_mm2s_fsync" -> "0", // free-running; the video out aligns to the timing generator
     "CONFIG.c_mm2s_genlock_mode" -> "0",
@@ -100,4 +104,16 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
 
     masterConnects ++ slaveConnects
   }
+}
+
+object AXIVideoDMA {
+  /** Frame-store count (`c_num_fstores`): three, the classic frame-buffer triple, giving
+   * a Linux driver tear-free page flipping without over-provisioning registers. The DTS
+   * `xlnx,num-fstores` advertises the same value. */
+  val FrameStores = 3
+
+  /** Memory-map data width of the MM2S frame-read master in bits
+   * (`c_m_axi_mm2s_data_width`, the IP default; the SmartConnect upconverts to the
+   * 64-bit DMA path). The DTS channel node's `xlnx,datawidth` must match. */
+  val MmDataWidth = 32
 }

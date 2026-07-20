@@ -2,7 +2,7 @@ package soct.system.vivado
 
 import chisel3._
 import freechips.rocketchip.amba.axi4.AXI4SlaveParameters
-import freechips.rocketchip.resources.{Description, Device, Resource, ResourceBinding, ResourceBindings, ResourceInt, ResourceString}
+import freechips.rocketchip.resources.{Description, Device, FixedClockResource, Resource, ResourceAddress, ResourceBinding, ResourceBindings, ResourceInt, ResourceString, SimpleDevice}
 import org.chipsalliance.cde.config.Parameters
 import soct._
 import soct.SOCTFreq._
@@ -12,7 +12,7 @@ import soct.system.vivado.abstracts._
 import soct.system.vivado.components._
 import soct.system.vivado.fpga.{DDR4PortParams, FPGA, FPGAResetPortSource, HasZynqUltraPS, UARTPortParams}
 import soct.system.vivado.intf.JTAGIntf
-import soct.system.vivado.misc.{AXI4BusInfo, AxiSlaveBinder, ClkDesc, DTSInfo, Irq}
+import soct.system.vivado.misc.{AXI4BusInfo, AddressSets, AxiSlaveBinder, ClkDesc, DTSInfo, Irq}
 
 import scala.annotation.unused
 
@@ -126,8 +126,40 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     throw new VivadoDesignException("SOCTVivadoSystemBase requires a PLIC to be present in the system for interrupt wiring.")
   ).device
 
-  /** Next free PLIC interrupt index; bumped for every bound MMIO device. */
+  /** Next free INTC input; bumped for every bound MMIO device that raises interrupts. */
   protected var irqIdx = 0
+
+  /** Bitmask of INTC inputs carrying edge/pulse interrupts (bit i = input i; unset bits
+   * are levels). Accumulated while the devices below claim their inputs; read at DTS
+   * emission time and by the INTC instantiation, when it is final. Same encoding as the
+   * IP's C_KIND_OF_INTR and the device tree's xlnx,kind-of-intr. */
+  protected var intcEdgeMask = 0
+
+  /** Register base of the AXI interrupt controller. */
+  private val intcBase = 0x60050000L
+
+  /**
+   * The AXI interrupt controller's device-tree node: every fabric peripheral cascades its
+   * interrupt through it into the PLIC (see [[soct.system.vivado.components.AXIIntc]] for
+   * why the PLIC cannot take the peripherals directly). Created before the peripherals -
+   * they name it as their interrupt parent - while its input-dependent properties are
+   * computed in [[freechips.rocketchip.resources.Device.describe]], which runs at DTS
+   * emission when every input is claimed.
+   */
+  protected val intcDev: SimpleDevice = new SimpleDevice("interrupt-controller", Seq("xlnx,xps-intc-1.00.a")) {
+    override def parent: Some[Device] = Some(mmioBusDevice.get)
+    override def describe(resources: ResourceBindings): Description = {
+      val Description(name, mapping) = super.describe(resources)
+      Description(name, mapping ++ Map(
+        "interrupt-controller" -> Nil,
+        // Two cells per interrupt; the Xilinx binding documents the second as unused
+        // (trigger types are hardware configuration, carried by xlnx,kind-of-intr).
+        "#interrupt-cells" -> Seq(ResourceInt(2)),
+        "xlnx,num-intr-inputs" -> Seq(ResourceInt(irqIdx)),
+        "xlnx,kind-of-intr" -> Seq(ResourceInt(intcEdgeMask))
+      ))
+    }
+  }
 
   /** UART register base and fixed baud; the DTS `reg`, `current-speed` and the
    * `/chosen` boot arguments below must all agree with the IP configuration
@@ -140,7 +172,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     val dts = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", uartBase, 0x10000L)),
-      irqs = Seq(Irq(plicDev, irqIdx)),
+      irqs = Seq(Irq(intcDev, irqIdx)),
       // The soct compatible first (soctglue matches it); the Xilinx one second, so
       // Linux's uartlite driver (SERIAL_UARTLITE) binds the console to this UART.
       compatibles = Seq("riscv,axi-uart-1.0", "xlnx,xps-uartlite-1.00.a"),
@@ -152,6 +184,9 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
         "current-speed" -> Seq(ResourceInt(uartBaud))
       )
     )
+    // The UART Lite interrupt is a one-clock PULSE per FIFO transition (PG142) - the
+    // INTC must latch it as an edge or it is lost (hardware-diagnosed console wedge).
+    intcEdgeMask |= 1 << irqIdx
     irqIdx += 1
     Some(dts)
   } else None
@@ -181,16 +216,22 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
 
   /** Device-tree entry of the SD-card controller, if the design has one ([[HasSDCardPMOD]]). */
   protected val sdDTSOpt: Option[DTSInfo] = p(HasSDCardPMOD).map { idx =>
+    // The controller divides the periphery clock, so the DTS must carry the ACTUAL
+    // frequency (the driver derives every SD rate from it) - not a hardcoded value that
+    // silently goes stale when the domain is reconfigured. The fastest reachable SD clock
+    // is clock/2 (minimum divider), which is also what the driver would derive on its
+    // own; anything higher underflows its divider computation.
+    val periphHz = p(PeripheryClockDomain).toHz.toLong
     val sdDTS = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60000000L, 0x10000L)),
-      irqs = Seq(Irq(plicDev, irqIdx)),
+      irqs = Seq(Irq(intcDev, irqIdx)),
       compatibles = Seq("riscv,axi-sd-card-1.0"),
       extraProps = Map(
-        "clock" -> Seq(ResourceInt(100000000)),
+        "clock" -> Seq(ResourceInt(BigInt(periphHz))),
         "bus-width" -> Seq(ResourceInt(4)),
         "fifo-depth" -> Seq(ResourceInt(256)),
-        "max-frequency" -> Seq(ResourceInt(300000000)),
+        "max-frequency" -> Seq(ResourceInt(BigInt(periphHz / 2))),
         "cap-sd-highspeed" -> Nil,
         "cap-mmc-highspeed" -> Nil,
         "no-sdio" -> Nil
@@ -205,25 +246,64 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     sdDTS
   }
 
-  /** Device-tree entries of the DisplayPort video pipeline (see [[videoDTSOpt]]). */
+  /** Device-tree entries of the DisplayPort video pipeline (see [[videoDTSOpt]]).
+   *
+   * @param vdmaIrq the VDMA frame-transfer interrupt's INTC input, for the concat wiring
+   *                (in the DTS it lives on the VDMA's channel CHILD node, not in
+   *                `vdma.irqs`, following the mainline binding)
+   */
   protected case class VideoStreamDTS(vdma: DTSInfo, vtc: DTSInfo, dpWindow: DTSInfo,
-                                      vidStatus: DTSInfo)
+                                      vidStatus: DTSInfo, vdmaIrq: Irq)
 
   /**
    * Device-tree entries of the DisplayPort video pipeline, if the design has one
    * ([[HasVideoStream]]): the VDMA control registers, the video timing controller, and the
    * window through which the PS DP registers are reached (see
    * [[soct.system.vivado.components.AxiAddrOffset]]).
+   *
+   * The VDMA node follows the mainline `xlnx,axi-dma.yaml` binding exactly, so the stock
+   * dmaengine driver (CONFIG_XILINX_DMA) probes it: the controller node carries
+   * `#dma-cells`, addressing, `dma-ranges`, `xlnx,num-fstores` and a clock reference
+   * (`s_axi_lite_aclk` is the one clock the driver refuses to probe without - emitted
+   * here as a fixed-clock, since the periphery clock is fixed in hardware); the interrupt
+   * and `xlnx,datawidth` sit on a `dma-channel` CHILD node per the binding.
    */
   protected val videoDTSOpt: Option[VideoStreamDTS] = p(HasVideoStream).map { vs =>
+    val periphHz = p(PeripheryClockDomain).toHz.toLong
     val vdmaDTS = DTSInfo(
       parent = mmioBusDevice.get,
       regs = Seq(("reg", 0x60020000L, 0x10000L)),
-      irqs = Seq(Irq(plicDev, irqIdx)),
-      compatibles = Seq("xlnx,axi-vdma-6.3", "xlnx,axi-vdma-1.00.a")
+      compatibles = Seq("xlnx,axi-vdma-1.00.a"),
+      extraProps = Map(
+        "#dma-cells" -> Seq(ResourceInt(1)),
+        "#address-cells" -> Seq(ResourceInt(1)),
+        "#size-cells" -> Seq(ResourceInt(1)),
+        "xlnx,addrwidth" -> Seq(ResourceInt(32)),
+        "xlnx,num-fstores" -> Seq(ResourceInt(AXIVideoDMA.FrameStores)),
+        // The MM2S master reaches DRAM's first (32-bit-addressable) 2 GiB at identical
+        // addresses - see AXIVideoDMA.dmaMasterRange for why framebuffers live there.
+        "dma-ranges" -> Seq(ResourceInt(0x80000000L), ResourceInt(0x80000000L),
+          ResourceInt(0x80000000L)),
+        "clock-names" -> Seq(ResourceString("s_axi_lite_aclk"))
+      )
     )
+    val vdmaDev = AxiSlaveBinder.bindSimpleDevice(devname = "dma-controller", dts = vdmaDTS,
+      perms = AxiSlaveBinder.mmioPerms)
+    new FixedClockResource("periph_clock", periphHz / 1e6).bind(vdmaDev)
+
+    val vdmaIrq = Irq(intcDev, irqIdx)
     irqIdx += 1
-    AxiSlaveBinder.bindSimpleDevice(devname = "vdma0", dts = vdmaDTS, perms = AxiSlaveBinder.mmioPerms)
+    val vdmaChanDev = new SimpleDevice("dma-channel", Seq("xlnx,axi-vdma-mm2s-channel")) {
+      override def parent: Some[Device] = Some(vdmaDev)
+      override def describe(resources: ResourceBindings): Description = {
+        val Description(name, mapping) = super.describe(resources)
+        Description(name, AxiSlaveBinder.withXilinxIntcCells(mapping) ++ Map(
+          "xlnx,datawidth" -> Seq(ResourceInt(AXIVideoDMA.MmDataWidth))))
+      }
+    }
+    ResourceBinding {
+      Resource(vdmaChanDev, "int").bind(intcDev, ResourceInt(vdmaIrq.index))
+    }
 
     // The video mode is baked into the design (pixel clock); advertise it so the driver
     // programs matching timing without hardcoding a resolution.
@@ -260,8 +340,32 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     )
     AxiSlaveBinder.bindSimpleDevice(devname = "vidstat0", dts = vidStatusDTS, perms = AxiSlaveBinder.mmioPerms)
 
-    VideoStreamDTS(vdmaDTS, vtcDTS, dpWindowDTS, vidStatusDTS)
+    VideoStreamDTS(vdmaDTS, vtcDTS, dpWindowDTS, vidStatusDTS, vdmaIrq)
   }
+
+  /**
+   * The INTC's own device-tree resources, bound after every peripheral has claimed its
+   * input (the input count and edge mask are final only then): the register region and
+   * the single level line into the PLIC. None when no device raises interrupts - the
+   * design then has no INTC at all and the core's external interrupt is tied off.
+   */
+  protected val intcDTSOpt: Option[DTSInfo] = if (irqIdx > 0) {
+    val dts = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", intcBase, 0x10000L)),
+      compatibles = Seq("xlnx,xps-intc-1.00.a")
+    )
+    ResourceBinding {
+      dts.regs.foreach { case (name, offset, rangeBytes) =>
+        Resource(intcDev, s"reg/$name").bind(
+          ResourceAddress(AddressSets.fromOffsetRange(offset, rangeBytes), AxiSlaveBinder.mmioPerms))
+      }
+      // PLIC sources are 1-based (source 0 is reserved "no interrupt"): external-interrupt
+      // vector position 0 - the only one, see WithNExtTopInterrupts(1) - is source 1.
+      Resource(intcDev, "int").bind(plicDev, ResourceInt(1))
+    }
+    Some(dts)
+  } else None
 
   //-------------------------------------------------------------------------
   // Common design construction (called from the concrete systems' InModuleBody)
@@ -289,6 +393,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
                                      dmaSMC: AXISmartConnect,
                                      interruptConcat: InlineConcat,
                                      uartOpt: Option[AXIUartLite],
+                                     intcOpt: Option[AXIIntc],
                                    )
 
   /**
@@ -345,15 +450,24 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     val corePsr = ProcSysReset().withInstanceName("core_psr")
     val mmioSMC = AXISmartConnect().withInstanceName("mmio_smc")
     val dmaSMC = AXISmartConnect().withInstanceName("dma_smc")
-    val interruptConcat = InlineConcat(nExtInterrupts)
+    // Sized by the devices that claimed an INTC input, not by NExtTopInterrupts: the core
+    // sees a single external interrupt (the INTC's), no matter how many devices exist.
+    // Floor of 1 keeps the (then dangling) component constructible in device-less designs.
+    val interruptConcat = InlineConcat(math.max(irqIdx, 1))
 
     val uartOpt = uartParamOpt.map { uartParams =>
       val port = uartParams.initPort
       AXIUartLite(uartDTSOpt.get, axiMMIO, port, uartParams)
     }
 
+    val intcOpt = intcDTSOpt.map { dts =>
+      AXIIntc(dts, axiMMIO, nInputs = irqIdx, edgeMask = intcEdgeMask)
+        .withInstanceName("fabric_intc")
+    }
+
     CommonDesign(fpga, top, axiMems, axiMMIO, axiDMA, clockPins, resetPins,
-      peripheryDomain, coreDomain, periphPsr, corePsr, mmioSMC, dmaSMC, interruptConcat, uartOpt)
+      peripheryDomain, coreDomain, periphPsr, corePsr, mmioSMC, dmaSMC, interruptConcat,
+      uartOpt, intcOpt)
   }
 
   //-------------------------------------------------------------------------
@@ -430,9 +544,11 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
       c.dmaSMC.ACLK.next()
     )
     c.uartOpt.foreach(uart => peripheryClock --> uart.S_AXI_ACLK)
+    c.intcOpt.foreach(intc => peripheryClock --> intc.S_AXI_ACLK)
 
     c.periphPsr.PeripheralAResetN --> Seq(c.mmioSMC.ARESETN, c.dmaSMC.ARESETN)
     c.uartOpt.foreach(uart => c.periphPsr.PeripheralAResetN --> uart.S_AXI_ARESETN)
+    c.intcOpt.foreach(intc => c.periphPsr.PeripheralAResetN --> intc.S_AXI_ARESETN)
   }
 
   /**
@@ -453,16 +569,21 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   }
 
   /**
-   * Wire the external interrupt concat to the top (or tie it off when no device raised an
-   * interrupt) and connect the UART interrupt to its PLIC index.
+   * Wire the interrupt cascade: the concatenated peripheral interrupts feed the AXI INTC,
+   * whose single level output is the core's one external interrupt (or a tie-off when no
+   * device raises interrupts); then connect the UART interrupt to its INTC input.
+   * See [[soct.system.vivado.components.AXIIntc]] for why the PLIC never takes the
+   * peripherals directly.
    *
    * @param c the common design
    */
   protected def wireInterrupts(c: CommonDesign): Unit = {
-    if (irqIdx > 0) {
-      c.interruptConcat --> c.top.INTERRUPTS
-    } else {
-      TieOff() --> c.top.INTERRUPTS
+    c.intcOpt match {
+      case Some(intc) =>
+        c.interruptConcat --> intc.INTR
+        intc.IRQ --> c.top.INTERRUPTS
+      case None =>
+        TieOff() --> c.top.INTERRUPTS
     }
 
     uartDTSOpt.foreach { dts =>
@@ -481,6 +602,7 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
   protected def wireMmioAndDma(c: CommonDesign): Unit = {
     c.mmioSMC.S_AXI.next() <-> c.axiMMIO
     c.uartOpt.foreach(uart => c.mmioSMC.M_AXI.next() <-> uart.S_AXI)
+    c.intcOpt.foreach(intc => c.mmioSMC.M_AXI.next() <-> intc.S_AXI)
     c.dmaSMC.M_AXI.next() <-> c.axiDMA
   }
 
@@ -653,10 +775,9 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
     vidOut.OVERFLOW --> statusBits.IN(2)
     statusBits --> vidStatus.GPIO_IO_I
 
-    // Interrupt
-    dts.vdma.irqs.foreach { irq =>
-      vdma.MM2S_INTROUT --> c.interruptConcat.IN(irq.index)
-    }
+    // Interrupt (a level, held until the driver clears DMASR - INTC input configured as
+    // level accordingly; the DTS carries it on the VDMA's channel child node)
+    vdma.MM2S_INTROUT --> c.interruptConcat.IN(dts.vdmaIrq.index)
 
     // Parallel video into the PS live input. The PS wants 12 bit per component (36-bit
     // pixel); the stream carries 8 bit per component (24-bit), so each component is padded

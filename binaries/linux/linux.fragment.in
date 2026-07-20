@@ -13,6 +13,12 @@
 # CONFIG_SECURITY_APPARMOR is not set
 CONFIG_SERIAL_UARTLITE=y
 CONFIG_SERIAL_UARTLITE_CONSOLE=y
+# All fabric peripheral interrupts cascade through an AXI INTC into the PLIC (the PLIC's
+# level-only gateways lose the UART Lite's edge pulses); the INTC is a chained irqchip,
+# so without this driver NO peripheral interrupt - console included - ever fires.
+CONFIG_XILINX_INTC=y
+# The VDMA of video-stream designs (dmaengine driver; probes via the device tree).
+CONFIG_XILINX_DMA=y
 CONFIG_HZ_250=y
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_INITRAMFS_SOURCE="@KBUILD_DESC@"

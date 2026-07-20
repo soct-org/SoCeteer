@@ -9,13 +9,15 @@ import soct.system.vivado.abstracts.BdIntfPin
  * Describes a single interrupt line routed to an interrupt controller.
  *
  * @param parent
- * The interrupt-controller [[freechips.rocketchip.resources.Device]] that is the IRQ parent
- * (e.g. the PLIC device).
+ * The interrupt-controller [[freechips.rocketchip.resources.Device]] that is the IRQ parent:
+ * the AXI INTC device, behind which every fabric peripheral interrupt cascades (see
+ * [[soct.system.vivado.components.AXIIntc]] for why the PLIC cannot take them directly).
  * @param index
- * The line's 0-based position in the external-interrupt vector (the interrupt concat input
- * the device drives). NOTE: this is NOT the PLIC source number - RocketChip maps vector
- * position `i` to PLIC source `i + 1`, since PLIC source 0 is reserved ("no interrupt").
- * The DTS emission performs that translation; the concat wiring uses the index as-is.
+ * The line's 0-based INTC input number (the interrupt concat input the device drives).
+ * Unlike the PLIC's sources, INTC inputs start at 0, so the DTS emits the index as-is -
+ * as the first of two cells (`interrupts = <index 0>`; the Xilinx INTC binding fixes
+ * `#interrupt-cells = 2` and documents the second cell as unused, the trigger type being
+ * hardware configuration carried by `xlnx,kind-of-intr` on the controller node).
  */
 final case class Irq(parent: Device, index: Int)
 
@@ -95,6 +97,22 @@ object AxiSlaveBinder {
     ResourcePermissions(r = true, w = true, x = false, c = false, a = false)
 
   /**
+   * Expand every bound interrupt index in a device description to the two-cell Xilinx
+   * INTC form `<index 0>` (`#interrupt-cells = 2`; the binding documents the second cell
+   * as unused). Done at describe time rather than by binding a second ResourceInt:
+   * identical bindings are deduplicated by the resource system, which collapsed
+   * `interrupts = <0 0>` to `<0>` for input 0.
+   *
+   * @param mapping a device description's property map
+   * @return the map with the `interrupts` values expanded
+   */
+  def withXilinxIntcCells(mapping: Map[String, Seq[ResourceValue]]): Map[String, Seq[ResourceValue]] =
+    mapping.get("interrupts") match {
+      case Some(ints) => mapping.updated("interrupts", ints.flatMap(v => Seq(v, ResourceInt(0))))
+      case None => mapping
+    }
+
+  /**
    * Create and bind a DTS node for an AXI MMIO slave.
    *
    * This:
@@ -123,7 +141,7 @@ object AxiSlaveBinder {
       override def parent: Some[Device] = Some(dts.parent)
       override def describe(resources: ResourceBindings): Description = {
         val Description(name, mapping) = super.describe(resources)
-        Description(name, mapping ++ dts.extraProps)
+        Description(name, withXilinxIntcCells(mapping) ++ dts.extraProps)
       }
     }
 
@@ -133,12 +151,9 @@ object AxiSlaveBinder {
         Resource(dev, s"reg/$name").bind(ResourceAddress(sets, perms))
       }
       dts.irqs.foreach { case Irq(intc, idx) =>
-        // PLIC sources are 1-based (source 0 is reserved); external-interrupt vector
-        // position i is PLIC source i+1 - RocketChip emits the same mapping in its
-        // `external-interrupts` DTS node. Emitting the raw index made every device IRQ
-        // off by one, which no bare-metal code noticed (all of it polls) but which left
-        // Linux waiting on interrupts that can never fire.
-        Resource(dev, "int").bind(intc, ResourceInt(idx + 1))
+        // Only the input index is bound; the second cell the Xilinx binding requires is
+        // appended at describe time (see withXilinxIntcCells).
+        Resource(dev, "int").bind(intc, ResourceInt(idx))
       }
     }
     dev

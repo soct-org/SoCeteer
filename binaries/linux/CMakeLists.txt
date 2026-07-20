@@ -52,6 +52,42 @@ set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary")
 if (NOT EXISTS "${SOCT_BOOT_LINUX_DIR}/Makefile" OR NOT EXISTS "${SOCT_BOOT_OPENSBI_DIR}/Makefile")
     message(FATAL_ERROR "The linux project requires the kernel and OpenSBI source trees at ${SOCT_BOOT_LINUX_DIR} and ${SOCT_BOOT_OPENSBI_DIR} (drop-in checkouts; see the binaries guide).")
 endif ()
+
+################################################################################################
+# Kernel patches (patches/*.patch): minimal upstream-candidate fixes the boot depends on -
+# see patches/README.md for the policy and each patch header for its rationale. Applied to
+# the kernel tree once, idempotently: an already-applied patch is detected and skipped, a
+# conflicting tree fails the configure loudly. `git apply` on purpose: it never prompts -
+# macOS's BSD `patch` 2.0 answers its own "previously applied?" prompt with yes when
+# stdin is silent, reporting unapplied patches as applied.
+################################################################################################
+file(GLOB _kernel_patches "${CMAKE_CURRENT_SOURCE_DIR}/patches/*.patch")
+list(SORT _kernel_patches)
+if (_kernel_patches)
+    execute_process(COMMAND git -C "${SOCT_BOOT_LINUX_DIR}" rev-parse --is-inside-work-tree
+            RESULT_VARIABLE _ktree_git OUTPUT_QUIET ERROR_QUIET)
+    if (NOT _ktree_git EQUAL 0)
+        message(FATAL_ERROR "linux: ${SOCT_BOOT_LINUX_DIR} is not a git tree, so the kernel patches in patches/ cannot be applied reliably - use a git checkout (the standard submodule), or apply them manually and make the tree a git repository.")
+    endif ()
+endif ()
+foreach (_kpatch ${_kernel_patches})
+    execute_process(COMMAND git -C "${SOCT_BOOT_LINUX_DIR}" apply --reverse --check "${_kpatch}"
+            RESULT_VARIABLE _kpatch_applied OUTPUT_QUIET ERROR_QUIET)
+    if (_kpatch_applied EQUAL 0)
+        continue () # already applied
+    endif ()
+    execute_process(COMMAND git -C "${SOCT_BOOT_LINUX_DIR}" apply --check "${_kpatch}"
+            RESULT_VARIABLE _kpatch_ok ERROR_VARIABLE _kpatch_err)
+    if (NOT _kpatch_ok EQUAL 0)
+        message(FATAL_ERROR "linux: kernel patch ${_kpatch} is neither applied nor applicable to ${SOCT_BOOT_LINUX_DIR}:\n${_kpatch_err}\nThe tree likely diverged from the version the patch was written against - rebase the patch or restore the tree.")
+    endif ()
+    execute_process(COMMAND git -C "${SOCT_BOOT_LINUX_DIR}" apply "${_kpatch}"
+            RESULT_VARIABLE _kpatch_res)
+    if (NOT _kpatch_res EQUAL 0)
+        message(FATAL_ERROR "linux: failed to apply kernel patch ${_kpatch} (the --check passed - tree changed mid-configure?)")
+    endif ()
+    message(STATUS "linux: applied kernel patch ${_kpatch}")
+endforeach ()
 if (NOT DEFINED SOCT_MEM_BASE_ADDR OR NOT DEFINED SOCT_ELFS_DIR OR NOT DEFINED SOCT_DTS)
     message(FATAL_ERROR "The system file must define SOCT_MEM_BASE_ADDR, SOCT_ELFS_DIR and SOCT_DTS")
 endif ()
@@ -258,7 +294,12 @@ function(soct_linux_add_boot_image name)
     endif ()
 
     set(_out "${SOCT_ELFS_DIR}/${name}.BOOT.ELF")
-    add_custom_command(OUTPUT "${_out}"
+    # An always-run custom TARGET, deliberately not a file-dated custom command: kernel
+    # SOURCE changes (or the patches applied at configure) are invisible to the build
+    # system's dependency graph, and a dated command would happily declare a stale image
+    # current. kbuild is its own dependency tracker - re-entering it costs seconds when
+    # there is nothing to do - and copy_if_different keeps the output content-stable.
+    add_custom_target(${name}-boot-elf
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_desc}" "${_kdesc}"
             COMMAND ${_kenv} ${_boot_make} -C "${SOCT_BOOT_LINUX_DIR}" ARCH=riscv
             ${_kllvm} O=${_kbuild} ${_khostflags} -j${_ncpu} Image
@@ -274,14 +315,14 @@ function(soct_linux_add_boot_image name)
             FW_PAYLOAD=y FW_PAYLOAD_OFFSET=0x200000
             FW_PAYLOAD_PATH=${_kbuild}/arch/riscv/boot/Image
             FW_FDT_PATH=${_boot_dtb} FW_PAYLOAD_FDT_ADDR=${_fw_fdt_addr} -j${_ncpu}
-            COMMAND ${CMAKE_COMMAND} -E copy
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${_sbibuild}/platform/generic/firmware/fw_payload.elf" "${_out}"
             COMMAND ${CMAKE_COMMAND} -E echo "${name}-boot-elf: ${_out} - copy to the SD card FAT root (as BOOT.ELF)"
-            DEPENDS ${_bi_DEPENDS} "${_desc}" kernel-config boot-dtb
+            DEPENDS ${_bi_DEPENDS} "${_desc}"
             JOB_POOL soct_kbuild
             COMMENT "Building boot image ${name}.BOOT.ELF (kernel + ${name} as /init + OpenSBI)"
             VERBATIM)
-    add_custom_target(${name}-boot-elf DEPENDS "${_out}")
+    add_dependencies(${name}-boot-elf kernel-config boot-dtb)
 endfunction()
 
 ################################################################################################
@@ -300,12 +341,10 @@ set(SOCT_BOOT_PROGRAM "shell" CACHE STRING
 if (NOT TARGET ${SOCT_BOOT_PROGRAM}-boot-elf)
     message(FATAL_ERROR "linux: SOCT_BOOT_PROGRAM='${SOCT_BOOT_PROGRAM}' has no boot image - choose a userspace/ program that includes initram.cmake (or calls soct_linux_add_boot_image itself).")
 endif ()
-add_custom_command(OUTPUT "${SOCT_ELFS_DIR}/BOOT.ELF"
-        COMMAND ${CMAKE_COMMAND} -E copy "${SOCT_ELFS_DIR}/${SOCT_BOOT_PROGRAM}.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
-        DEPENDS "${SOCT_ELFS_DIR}/${SOCT_BOOT_PROGRAM}.BOOT.ELF"
+# Always-run for the same reason as the boot images themselves; copy_if_different
+# keeps BOOT.ELF untouched when the image did not change.
+add_custom_target(boot-elf
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SOCT_ELFS_DIR}/${SOCT_BOOT_PROGRAM}.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
         COMMENT "BOOT.ELF = ${SOCT_BOOT_PROGRAM}.BOOT.ELF"
         VERBATIM)
-add_custom_target(boot-elf DEPENDS "${SOCT_ELFS_DIR}/BOOT.ELF")
-# File-level custom-command outputs are only reliably visible within their own
-# directory (Makefiles generator); the target-level edge covers every generator.
 add_dependencies(boot-elf ${SOCT_BOOT_PROGRAM}-boot-elf)

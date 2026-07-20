@@ -76,7 +76,9 @@
   --with-config soct.WithVideoStream"</code></pre>
   <p>The config adds the video mode's parameters
   (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>VideoStreamParams</code></a>,
-  default 1280&times;720@60) and one PLIC interrupt for the VDMA. The ZCU104 is the reference
+  default 1280&times;720@60) and one fabric interrupt for the VDMA (cascaded, like every
+  peripheral interrupt, through the AXI interrupt controller into the PLIC; the device tree
+  carries it on the VDMA's channel child node, following the mainline binding). The ZCU104 is the reference
   board throughout this guide; <code>--board</code> takes any registered MPSoC board (see
   <a href="boards.html">Adding an FPGA Board</a>).</p>
   <p>Generation validates that the mode is drivable: the frame fetch must sustain

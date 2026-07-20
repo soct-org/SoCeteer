@@ -13,7 +13,8 @@ echo
 echo "=== SoCeteer Linux: $(uname -sr), $(busybox | busybox head -1 | busybox cut -d' ' -f1-2) ==="
 
 # setsid + cttyhack give the shell a session and the real console tty (found via
-# /sys/class/tty/console/active) as controlling terminal - i.e. working job control.
+# /sys/class/tty/console/active) as controlling terminal - i.e. working job control;
+# -l makes it a login shell so /etc/profile runs (terminal-size setup, see profile.sh).
 while :; do
-    setsid cttyhack sh
+    setsid cttyhack sh -l
 done
