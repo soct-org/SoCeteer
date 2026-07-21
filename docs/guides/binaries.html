@@ -114,7 +114,9 @@
     userspace/userspace.cmake      # Template: static riscv64-linux-musl ELF
     userspace/initram.cmake        # Template: userspace + a bootable &lt;name&gt;.BOOT.ELF
     linux-stable/, opensbi/        # Drop-in kernel and OpenSBI source checkouts
-    drivers/, rootfs/              # Reserved: kernel modules; dynamic userspace (see READMEs)
+    drivers/&lt;name&gt;/                # Out-of-tree kernel modules (auto-discovered Kbuild dirs)
+    patches/                       # Minimal upstream-candidate kernel patches (see README)
+    rootfs/                        # Reserved: dynamic userspace (see README)
 shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall layer, FatFs glue</code></pre>
   <p><code>binaries/linux</code> is its own project because CMake allows one toolchain per
   build tree, and the bare-metal toolchain cannot target Linux &mdash; see
@@ -450,12 +452,21 @@ cmake --build build -j$(nproc)</code></pre>
       Ninja generator. With the <code>SOCT_FLASH_*</code> variables set, each image also gets
       a <code>&lt;name&gt;-flash</code> target that JTAG-loads it (see
       <em>Flashing to an FPGA</em>) &mdash; booting Linux without touching the SD card.</li>
+    <li><code>&lt;name&gt;-driver</code> &mdash; for every <code>Kbuild</code> directory
+      under <code>linux/drivers/</code>: an out-of-tree kernel module, built with kbuild
+      against the shared kernel build (matching vermagic by construction). Boot images
+      pack the <code>.ko</code> files into their initramfs, <code>/init</code> loads
+      them, and the kernel's initramfs rules re-pack a rebuilt module automatically.</li>
     <li><code>boot-elf</code> &mdash; the canonical <code>BOOT.ELF</code>, under the name
       the boot ROM loads: a copy of the boot image selected by
       <code>SOCT_BOOT_PROGRAM</code> (default: <code>shell</code>).</li>
   </ul>
-  <p>There is no storage driver for the SD controller in mainline Linux, which is why the root
-  filesystem is an initramfs embedded in the kernel image. The kernel configuration is the
+  <p>The SD controller has no driver in mainline Linux; the out-of-tree module in
+  <code>linux/drivers/sdc</code> provides one (the shell image loads it at boot, exposing
+  the card as <code>/dev/mmcblk0</code> &mdash; its partitions mount normally from the
+  shell). The <em>root</em> filesystem nevertheless remains an initramfs embedded in the
+  kernel image until the dynamic-userspace world (<code>linux/rootfs</code>) exists. The
+  kernel configuration is the
   riscv defconfig plus <code>linux/linux.fragment.in</code>: the UART Lite console driver, the
   Xilinx interrupt-controller driver (all fabric interrupts cascade through an AXI INTC into
   the PLIC, whose gateways would lose the UART Lite's edge pulses &mdash; without this chained

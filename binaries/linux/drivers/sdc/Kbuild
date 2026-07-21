@@ -1,0 +1,2 @@
+# Out-of-tree module: the AXI SD-card controller (see fpga-axi-sdc.c for provenance).
+obj-m += fpga-axi-sdc.o

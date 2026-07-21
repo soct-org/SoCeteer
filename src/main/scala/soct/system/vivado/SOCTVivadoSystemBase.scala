@@ -234,7 +234,13 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
         "max-frequency" -> Seq(ResourceInt(BigInt(periphHz / 2))),
         "cap-sd-highspeed" -> Nil,
         "cap-mmc-highspeed" -> Nil,
-        "no-sdio" -> Nil
+        "no-sdio" -> Nil,
+        // The PMOD's card-detect switch closes to GROUND when a card sits in the slot,
+        // while the controller's detect debounce assumes an active-high line
+        // (sdio_card_detect_level = 1): the presence level reads inverted. Standard mmc
+        // property; without it a card inserted at boot reads "absent" and is never
+        // enumerated (JTAG-diagnosed: card_detect = 9 with the card in).
+        "cd-inverted" -> Nil
       )
     )
     irqIdx += 1
@@ -280,6 +286,10 @@ abstract class SOCTVivadoSystemBase(implicit p: Parameters) extends SOCTSystem {
         "#size-cells" -> Seq(ResourceInt(1)),
         "xlnx,addrwidth" -> Seq(ResourceInt(32)),
         "xlnx,num-fstores" -> Seq(ResourceInt(AXIVideoDMA.FrameStores)),
+        // Mirrors the IP's C_FLUSH_ON_FSYNC (a Vivado-resolved parameter, readback = 1 =
+        // flush both channels on frame sync). The driver warns without it and would skip
+        // the flush handling the hardware actually performs.
+        "xlnx,flush-fsync" -> Seq(ResourceInt(1)),
         // The MM2S master reaches DRAM's first (32-bit-addressable) 2 GiB at identical
         // addresses - see AXIVideoDMA.dmaMasterRange for why framebuffers live there.
         "dma-ranges" -> Seq(ResourceInt(0x80000000L), ResourceInt(0x80000000L),

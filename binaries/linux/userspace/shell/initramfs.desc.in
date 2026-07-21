@@ -1,13 +1,18 @@
 # Initramfs of the shell boot image (kernel usr/gen_init_cpio syntax): the prebuilt
-# static BusyBox plus init.sh as /init. The /bin/sh link makes init.sh's shebang work
-# before any applet links exist; init.sh installs the rest.
+# static BusyBox plus init.sh as /init, and the out-of-tree kernel modules init.sh loads.
+# The /bin/sh link makes init.sh's shebang work before any applet links exist; init.sh
+# installs the rest.
 dir /dev 0755 0 0
 nod /dev/console 0600 0 0 c 5 1
 dir /proc 0755 0 0
 dir /sys 0755 0 0
 dir /bin 0755 0 0
 dir /etc 0755 0 0
+dir /lib 0755 0 0
+dir /lib/modules 0755 0 0
+dir /mnt 0755 0 0
 file /bin/busybox @SOCT_BUSYBOX@ 0755 0 0
 file /etc/profile @PROFILE_SH@ 0644 0 0
+file /lib/modules/fpga-axi-sdc.ko @SDC_KO@ 0644 0 0
 slink /bin/sh busybox 0777 0 0
 file /init @INIT_SH@ 0755 0 0

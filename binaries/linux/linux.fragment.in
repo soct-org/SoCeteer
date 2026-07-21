@@ -1,4 +1,4 @@
-# Kernel config fragment merged onto the riscv defconfig (linux/CMakeLists.txt).
+# Kernel config fragment merged onto the riscv defconfig (cmake/boot-image.cmake).
 #
 # The console lives on the design's AXI UART Lite. The command line comes from the
 # device tree's /chosen node, which the SoC generator emits (console selection and

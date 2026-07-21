@@ -9,7 +9,7 @@ build tree and the two worlds need different ones.
 | `bootroms/<name>/` | On-chip ROM, at reset (first stage) | vendored bare-metal GCC, self-contained (no soctglue) | baked into the bitstream |
 | `baremetal/<name>/` | Directly on the SoC, no OS (M-mode) | vendored bare-metal GCC + soctglue/newlib | `sd-boot` from SD, or JTAG (`<name>-flash`) |
 | `linux/userspace/<name>/` | Linux userspace, PID 1 or initramfs tool | LLVM/Clang + static musl (own project) | inside a boot image (`<name>.BOOT.ELF`), flashable |
-| `linux/drivers/` | Linux kernel (modules) — *reserved* | kernel kbuild against the shared build dir | see its README |
+| `linux/drivers/<name>/` | Linux kernel (out-of-tree modules) | kernel kbuild against the shared build dir | `.ko` inside a boot image's initramfs, loaded by `/init` |
 | `linux/rootfs/` | Linux userspace, dynamically linked — *reserved* | LLVM/Clang + shared musl | see its README |
 
 - **`binaries/` (this directory) is the bare-metal CMake project** — configure with the

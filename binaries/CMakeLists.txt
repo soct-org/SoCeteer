@@ -23,7 +23,7 @@ if (NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     include(${SOCT_TOOLCHAIN_FILE})
 endif ()
 
-project(RV_Binaries C CXX ASM)
+project(RV_Baremetal C CXX ASM)
 
 ###########################################################################################
 # The BARE-METAL project: everything that runs directly on the SoC without an OS -

@@ -5,8 +5,8 @@ The future home of the dynamic-linking world: a root-filesystem staging tree and
 target, instead of baking a static copy into every binary.
 
 Prerequisites, in order:
-1. an SD-controller kernel driver (`drivers/` - gives Linux storage to mount a rootfs
-   from),
+1. an SD-controller kernel driver (DONE: `drivers/sdc` - Linux mounts the card's
+   partitions as `/dev/mmcblk0*`),
 2. BusyBox (the static build already boots from `userspace/shell`; a rootfs promotes it
    to the installed userland),
 3. the sysroot's musl built `--enable-shared` (its dynamic linker is tiny and comes from
