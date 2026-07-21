@@ -27,10 +27,10 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
   override def defaultProperties: Map[String, String] = Map(
     "CONFIG.c_include_s2mm" -> "0", // read-only: no stream-to-memory channel
     "CONFIG.c_include_mm2s" -> "1",
-    // Pinned because the device tree advertises them (xlnx,num-fstores and the channel's
-    // xlnx,datawidth): hardware and DTS must not drift apart.
+    // Pinned because the device tree advertises it (xlnx,num-fstores): hardware and DTS
+    // must not drift apart. The MM2S data width is deliberately NOT set - see
+    // [[AXIVideoDMA.MmDataWidth]].
     "CONFIG.c_num_fstores" -> s"${AXIVideoDMA.FrameStores}",
-    "CONFIG.c_m_axi_mm2s_data_width" -> s"${AXIVideoDMA.MmDataWidth}",
     "CONFIG.c_m_axis_mm2s_tdata_width" -> "24", // RGB888 stream towards the video out
     "CONFIG.c_use_mm2s_fsync" -> "0", // free-running; the video out aligns to the timing generator
     "CONFIG.c_mm2s_genlock_mode" -> "0",
@@ -112,8 +112,13 @@ object AXIVideoDMA {
    * `xlnx,num-fstores` advertises the same value. */
   val FrameStores = 3
 
-  /** Memory-map data width of the MM2S frame-read master in bits
-   * (`c_m_axi_mm2s_data_width`, the IP default; the SmartConnect upconverts to the
-   * 64-bit DMA path). The DTS channel node's `xlnx,datawidth` must match. */
-  val MmDataWidth = 32
+  /** Memory-map data width of the MM2S frame-read master in bits: the IP default of
+   * `c_m_axi_mm2s_data_width` (64 per the catalog's component.xml), matching the 64-bit
+   * DMA path. The DTS channel node's `xlnx,datawidth` advertises this value, but the IP
+   * parameter is deliberately NOT set: it is marked resolve="generated" in the catalog,
+   * and forcing it produced a hardware-different VDMA whose frame fetch wedged the whole
+   * fabric (reproduced via debug-module system-bus access alone; the same lesson as the
+   * DDR4 board-flow MemoryPart). Verify the effective value by readback on the built
+   * block design when touching anything near it. */
+  val MmDataWidth = 64
 }

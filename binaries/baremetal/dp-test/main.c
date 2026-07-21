@@ -700,7 +700,9 @@ int main(void) {
     probe_ps_window();
 
     uintptr_t vdma_base, vtc_base;
-    read_reg(find_compatible("xlnx,axi-vdma-6.3"), &vdma_base, NULL);
+    /* The VDMA node carries the mainline binding's compatible (the same one the Linux
+     * dmaengine driver matches), not an IP-version-specific soct alias. */
+    read_reg(find_compatible("xlnx,axi-vdma-1.00.a"), &vdma_base, NULL);
     dtb_node *vtc_node = find_compatible("xlnx,v-tc-6.2");
     read_reg(vtc_node, &vtc_base, NULL);
     printf("VDMA at 0x%lx, VTC at 0x%lx\n", (unsigned long) vdma_base,
