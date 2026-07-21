@@ -116,28 +116,15 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
       pack the <code>.ko</code> files into their initramfs, <code>/init</code> loads
       them, and the kernel's initramfs rules re-pack a rebuilt module automatically.</li>
   </ul>
-  <p>The SD controller has no driver in mainline Linux; the out-of-tree module in
-  <code>linux/drivers/sdc</code> provides one (the shell image loads it at boot, exposing
-  the card as <code>/dev/mmcblk0</code> &mdash; its partitions mount normally from the
-  shell). The <em>root</em> filesystem nevertheless remains an initramfs embedded in the
-  kernel image until the dynamic-userspace world (<code>linux/rootfs</code>) exists. The
-  kernel configuration is the
-  riscv defconfig plus <code>linux/linux.fragment.in</code>: the UART Lite console driver, the
-  Xilinx interrupt-controller driver (all fabric interrupts cascade through an AXI INTC into
-  the PLIC, whose gateways would lose the UART Lite's edge pulses &mdash; without this chained
-  irqchip <em>no</em> peripheral interrupt, console included, ever fires), the Xilinx DMA
-  engine driver for the video pipeline's VDMA, a pinned <code>HZ</code>, the initramfs, and
-  AppArmor disabled (useless on this SoC, and its
-  header generation is the one build step requiring GNU sed's <code>\L</code> on every host).
-  The command line is deliberately <em>not</em> baked into the kernel: the generator emits a
-  <code>/chosen</code> node whose <code>bootargs</code> select the design's UART as console
-  and early console, so one kernel image serves any hardware generation.
-  <code>reboot</code> works end to end: the design exposes a system-reset register
-  (a <code>syscon</code> node with a <code>syscon-reboot</code> companion) that OpenSBI's
-  generic platform turns into an SBI SRST backend, so the kernel reboots through the SBI
-  with no driver of its own &mdash; the register pulses the same reset net as the JTAG
-  <code>reset_core</code> flow, restarting core and periphery while DDR keeps its
-  calibration, and the boot ROM reloads <code>BOOT.ELF</code>.</p>
+  <p>The kernel configuration is the riscv defconfig plus
+  <code>linux/linux.fragment.in</code>: the UART Lite console driver, the Xilinx
+  interrupt-controller and DMA-engine drivers, a pinned <code>HZ</code>, the initramfs,
+  and AppArmor disabled (useless on this SoC, and its header generation is the one build
+  step requiring GNU sed's <code>\L</code> on every host) &mdash; <em>why</em> the SoC
+  needs exactly these drivers is the subject of <em>SoC-specific behavior</em> below.
+  The command line is deliberately <em>not</em> baked into the kernel: the generator
+  emits a <code>/chosen</code> node whose <code>bootargs</code> select the design's UART
+  as console and early console, so one kernel image serves any hardware generation.</p>
   <p>The <code>shell</code> image (<code>shell.BOOT.ELF</code>) boots into an interactive
   BusyBox shell. Its <code>/init</code> (<code>linux/userspace/shell/init.sh</code>) mounts the
   pseudo filesystems, installs the applet links and keeps a job-controlled shell alive on
@@ -145,14 +132,84 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
   PID&nbsp;1, so an exiting shell is respawned instead of panicking the kernel). PID&nbsp;1
   also answers shutdown requests: <code>reboot</code> without <code>-f</code> never calls
   the kernel &mdash; it signals init &mdash; so the script traps SIGTERM into the real
-  <code>reboot -f</code> syscall, which lands in the SBI SRST reset described above;
-  <code>halt</code>/<code>poweroff</code> report that the FPGA has no software power
-  control. BusyBox
+  <code>reboot -f</code> syscall, which lands in the SBI SRST reset (see
+  <em>reboot</em> below); <code>halt</code>/<code>poweroff</code> report that the FPGA
+  has no software power control. BusyBox
   is not built from source &mdash; that would add a second kbuild frontier for one binary
   &mdash; but taken from Debian's <code>busybox-static</code> riscv64 package: a static
   rv64gc binary, hash-pinned and fetched once at configure time into
   <code>shared/vendor/busybox/</code> from <em>snapshot.debian.org</em>, whose archive
   URLs are permanent (regular pool URLs disappear once a package version is superseded).</p>
+
+  <h2>SoC-specific behavior</h2>
+  <p>Everything a Linux user notices that is particular to this SoC, and how each piece is
+  achieved &mdash; from the syscall down to the block design.</p>
+
+  <h3>Console and interrupts (<code>ttyUL0</code>)</h3>
+  <p>The console is the design's UART Lite. The generated device tree makes it work without
+  any configuration: the <code>/chosen</code> bootargs select it as console and early
+  console, and the node carries the <code>current-speed</code> property without which the
+  kernel driver refuses to probe. Behind it sits a deliberate piece of block-design
+  topology: the UART Lite signals its interrupt as a <em>one-clock pulse</em>, and the
+  PLIC's per-source gateways can miss a pulse that arrives while a previous claim is still
+  in flight &mdash; after which that source would stay silent forever (the original symptom:
+  a console that froze under load, permanently). All fabric interrupts therefore cascade
+  through an AXI INTC: the UART lands on an edge-latching input, SDC and VDMA on level
+  inputs, and the INTC's single level-typed output is a PLIC source that can never be
+  missed. Linux binds this with its Xilinx interrupt-controller driver as a chained
+  irqchip &mdash; <code>/proc/interrupts</code> shows the peripherals under the INTC domain,
+  not the PLIC directly. One kernel patch (<code>linux/patches/</code>, an upstream
+  candidate) makes that binding order-proof: mainline registers the driver only for
+  early-boot probing, which orphans an INTC whose parent is the later-probing PLIC platform
+  driver; the patch adds a platform-driver registration with probe deferral.</p>
+
+  <h3>Storage (<code>/dev/mmcblk0</code>)</h3>
+  <p>The SD card the system booted from reappears inside Linux as a block device. The SD
+  controller has no mainline driver; the out-of-tree module in <code>linux/drivers/sdc</code>
+  provides one, and the shell image's initramfs carries and loads it at boot &mdash; its
+  partitions then mount normally from the shell. Card detect is a debounced presence
+  <em>level</em> straight from the RTL, with the PMOD's active-low CD line inverted in the
+  hardware configuration &mdash; so a card already inserted at power-on enumerates during
+  boot, and hot insert/removal both work. The <em>root</em> filesystem stays the initramfs
+  embedded in the kernel image until the dynamic-userspace world
+  (<code>linux/rootfs</code>) exists; the card is data storage.</p>
+
+  <h3><code>reboot</code></h3>
+  <p>A working <code>reboot</code> crosses every layer of the stack; each one contributes a
+  small piece:</p>
+  <ol>
+    <li><strong>Userspace:</strong> BusyBox <code>reboot</code> does not call the kernel
+      &mdash; it signals PID&nbsp;1, and the shell image's <code>/init</code> traps that
+      into the real <code>reboot(2)</code> syscall (<code>reboot -f</code> skips straight
+      to the syscall).</li>
+    <li><strong>Kernel:</strong> no reset driver of its own &mdash; the RISC-V kernel
+      forwards the request to the firmware through the SBI SRST extension.</li>
+    <li><strong>OpenSBI:</strong> its generic platform bound a
+      <code>syscon-reboot</code> reset backend at boot, from two generated device-tree
+      nodes: a <code>syscon</code> regmap covering the system-reset register and a reboot
+      node naming offset, value and mask. The SRST call becomes a single M-mode store of
+      <code>1</code> to that register.</li>
+    <li><strong>Block design:</strong> the register is an AXI GPIO output, OR-wired
+      (<code>sw_or_hw_reset</code>) with the hardware reset sources &mdash; the board
+      reset and, when a debug module is present, its <code>ndreset</code> &mdash; into the
+      <code>ext_reset_in</code> of the core and periphery reset synchronizers: the same
+      net the JTAG <code>reset_core</code> flow pulses.</li>
+    <li><strong>Back to the beginning:</strong> core and periphery restart while the DDR
+      domain is untouched and keeps its calibration; the boot ROM runs again and reloads
+      <code>BOOT.ELF</code> from the card. The register clears itself &mdash; the reset it
+      raises also resets the GPIO driving it &mdash; so the system comes back up instead of
+      boot-looping.</li>
+  </ol>
+  <p><code>halt</code>/<code>poweroff</code>: the FPGA has no software power control, and
+  <code>/init</code> says so instead of pretending.</p>
+
+  <h3>Video (VDMA)</h3>
+  <p>In designs with the video stream, the generated VDMA node binds the kernel's Xilinx
+  DMA-engine driver as a dmaengine provider &mdash; channel, frame stores and data width
+  all described by the device tree. No framebuffer driver sits on top of it yet: the
+  DisplayPort pipeline is exercised by the bare-metal <code>dp-test</code> (see
+  <a href="video.html">DisplayPort Video</a>), and Linux framebuffer glue is future
+  work.</p>
 
   <h2>Toolchains</h2>
   <p>Two toolchains split the work, deliberately:</p>
