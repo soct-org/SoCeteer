@@ -93,7 +93,7 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
     )
 
     // The VDMA names its read master's address space "Data_MM2S" (not after the interface pin).
-    val mm2sSpace = s"$instanceName/Data_MM2S"
+    val mm2sSpace = s"$bdPath/Data_MM2S"
     val masterConnects = getAxiSlavePins.map { case (pin, regName) =>
       s"""assign_bd_address -offset 0x00000000 -range 0x${dmaMasterRange.toHexString.toUpperCase} -target_address_space [get_bd_addr_spaces $mm2sSpace] [get_bd_addr_segs ${pin.ref}/$regName]
          |# The exported bus segment is tagged 'register' usage while Data_MM2S expects 'memory',

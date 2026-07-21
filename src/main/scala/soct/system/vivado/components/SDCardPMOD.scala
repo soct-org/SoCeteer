@@ -129,7 +129,15 @@ case class SDCardPMOD(
   }
 
   override def defaultProperties: Map[String, String] = Map(
-    "CONFIG.dma_addr_bits" -> java.lang.Long.numberOfTrailingZeros(dmaMasterRange).toString
+    "CONFIG.dma_addr_bits" -> java.lang.Long.numberOfTrailingZeros(dmaMasterRange).toString,
+    // The PMOD's card-detect switch closes to GROUND when a card sits in the slot; the
+    // RTL's debounced presence detector must be told (its default assumes active-high).
+    // Getting this wrong is silent and nasty: a card inserted at boot reads "absent",
+    // Linux never enumerates it, while a re-inserted card works (JTAG-diagnosed via
+    // card_detect = 9 with the card in). Must stay in lockstep with the DTS: a mismatch
+    // is describable there with the standard `cd-inverted` property, which the sdc
+    // driver honors (binaries/linux/drivers/sdc).
+    "CONFIG.sdio_card_detect_level" -> "0"
   )
 
 

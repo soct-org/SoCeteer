@@ -109,9 +109,15 @@ class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
 }
 )
 
-/** Field enabling faster place-and-route at the cost of timing closure quality. */
+/**
+ * Field for a faster place-and-route mode that would trade away convenience hardware.
+ * Currently UNUSED: nothing in the generator consumes it (its former use - dropping the
+ * debugger-reset wiring - was removed because the savings were negligible). Kept, with
+ * the `--fast-pnr` launcher flag, as a hook for future PnR-effort tradeoffs.
+ */
 case object FastPnR extends Field[Boolean](false)
 
+@unused // reserved: no generator code consumes FastPnR at present (see the field's doc)
 class WithFastPnR extends Config((_, _, _) => {
   case FastPnR => true
 })

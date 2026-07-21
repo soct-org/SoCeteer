@@ -27,8 +27,10 @@ case class ZynqUltraPS()(implicit bd: SOCTBdBuilder, p: Parameters)
    * phase, so [[defaultProperties]] can override individual preset values.
    */
   override def instTcl: TCLCommands = Seq(
-    s"""set $instanceName [create_bd_cell -type ip -vlnv $partName $instanceName]
-       |apply_bd_automation -rule xilinx.com:bd_rule:zynq_ultra_ps_e -config {apply_board_preset "1"} [get_bd_cells $instanceName]""".stripMargin.tcl
+    // Created at bdPath (hierarchy-aware); the automation targets the cell through the
+    // TCL variable, so it needs no path at all.
+    s"""set $instanceName [create_bd_cell -type ip -vlnv $partName $bdPath]
+       |apply_bd_automation -rule xilinx.com:bd_rule:zynq_ultra_ps_e -config {apply_board_preset "1"} $$$instanceName""".stripMargin.tcl
   )
 
   override def defaultProperties: Map[String, String] = Map(

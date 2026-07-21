@@ -100,17 +100,3 @@ foreach (_entry ${_linux_programs})
         add_subdirectory("${_entry}")
     endif ()
 endforeach ()
-
-# Canonical BOOT.ELF: one program's boot image under the name the sd-boot bootrom loads.
-set(SOCT_BOOT_PROGRAM "shell" CACHE STRING
-        "Userspace program whose boot image becomes the canonical BOOT.ELF")
-if (NOT TARGET ${SOCT_BOOT_PROGRAM}-boot-elf)
-    message(FATAL_ERROR "linux: SOCT_BOOT_PROGRAM='${SOCT_BOOT_PROGRAM}' has no boot image - choose a userspace/ program that includes initram.cmake (or calls soct_linux_add_boot_image itself).")
-endif ()
-# Always-run for the same reason as the boot images themselves; copy_if_different
-# keeps BOOT.ELF untouched when the image did not change.
-add_custom_target(boot-elf
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SOCT_ELFS_DIR}/${SOCT_BOOT_PROGRAM}.BOOT.ELF" "${SOCT_ELFS_DIR}/BOOT.ELF"
-        COMMENT "BOOT.ELF = ${SOCT_BOOT_PROGRAM}.BOOT.ELF"
-        VERBATIM)
-add_dependencies(boot-elf ${SOCT_BOOT_PROGRAM}-boot-elf)

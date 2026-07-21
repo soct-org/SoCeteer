@@ -47,10 +47,13 @@ case class ProcSysReset(autoSlice: Boolean = true)(implicit bd: SOCTBdBuilder, p
       sinks.zipWithIndex.foreach {
         case (sink, i) =>
           val sliceIdx = i % maxOutputs
-          val slice = idxToSlice.getOrElseUpdate(sliceIdx,
-            InlineSlice(dinWidth, sliceIdx, sliceIdx, 1)
-            .withInstanceName(s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx")
-          )
+          val slice = idxToSlice.getOrElseUpdate(sliceIdx, {
+            val s = InlineSlice(dinWidth, sliceIdx, sliceIdx, 1)
+              .withInstanceName(s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx")
+            // The fan-out slices belong wherever their reset synchronizer lives.
+            ProcSysReset.this.group.foreach(s.withGroup)
+            s
+          })
           soct.log.debug(s"Connecting sink $sink to slice $slice")
           bd.addEdge(slice.DOUT, sink)
       }

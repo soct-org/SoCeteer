@@ -245,6 +245,13 @@ class SOCTBdBuilder extends SOCTBd {
     checkInit()
     checkFinalized()
 
+    // Hierarchies (create_bd_cell -type hier): each distinct group, created before any
+    // member cell - a cell instantiated under <group>/<name> requires the hierarchy to
+    // exist. Sorted for deterministic emission.
+    lazy val hierarchyCommands = nodes.collect {
+      case inst: BdComp => inst.group
+    }.flatten.toSeq.distinct.sorted.map(g => s"create_bd_cell -type hier $g")
+
     // Instantiations:
     lazy val instantiateCommands = nodes.collect {
       case inst: BdComp => inst.instTcl
@@ -389,6 +396,9 @@ class SOCTBdBuilder extends SOCTBd {
        |
        |
        |######## Instantiate components and connect them ########
+       |
+       |# Hierarchies (purely organizational grouping)
+       |${hierarchyCommands.mkString("\n")}
        |
        |# Instantiate ports and components
        |${instantiateCommands.sorted.mkString("\n")}

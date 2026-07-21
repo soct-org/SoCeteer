@@ -1,4 +1,4 @@
-# shell - an interactive BusyBox userspace, and the default boot image (SOCT_BOOT_PROGRAM).
+# shell - an interactive BusyBox userspace boot image.
 # Nothing is compiled here: the initramfs packs the prebuilt static busybox (fetched at
 # configure - see cmake/busybox.cmake) together with init.sh,
 # which mounts the pseudo filesystems, installs the applet links and keeps a

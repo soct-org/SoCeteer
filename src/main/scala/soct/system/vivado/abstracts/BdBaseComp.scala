@@ -46,6 +46,11 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
   /**
    * The instance name for this component. By default, use the friendly name converted to snake_case with an optional index suffix.
    *
+   * WARNING: this is only the LEAF name (and the TCL variable holding the cell object).
+   * Any TCL that names the cell or its pins by path must use [[bdPath]] instead -
+   * `instanceName` silently breaks the moment the component is placed in a hierarchy
+   * via [[withGroup]] (pin references get this for free through `BdPinBase.ref`).
+   *
    * @return The instance name
    */
   lazy val instanceName: String = {
@@ -64,6 +69,28 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
   }
 
   /**
+   * Place this component inside a named block-design hierarchy (a Vivado
+   * `create_bd_cell -type hier` cell). Purely organizational: the schematic groups the
+   * cell under `<group>/`, pin references become hierarchical, the netlist is unchanged.
+   * The builder creates each distinct hierarchy once, before any member cell.
+   *
+   * @param name the hierarchy name (shared by every member; no nesting support)
+   * @return this with the hierarchy applied
+   */
+  def withGroup(name: String): this.type = {
+    groupOpt = Some(name)
+    this
+  }
+
+  /** The hierarchy this component lives in, if any (see [[withGroup]]). */
+  def group: Option[String] = groupOpt
+
+  /** The full block-design path of this cell: `<group>/<instanceName>` inside a
+   * hierarchy, the bare instance name at top level. Everything that names the cell or
+   * its pins in TCL must go through this (see BdPinBase.ref). */
+  final def bdPath: String = groupOpt.map(g => s"$g/$instanceName").getOrElse(instanceName)
+
+  /**
    * Default properties for this component influenced by parameters, can be overridden by subclasses
    *
    * @return A map of default properties
@@ -79,9 +106,9 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
   def instTcl: TCLCommands = {
     this match {
       case x: IsXilinx =>
-        Seq(s"set $instanceName [create_bd_cell -type ${x.tpe} -vlnv ${x.partName} $instanceName]".tcl)
+        Seq(s"set $instanceName [create_bd_cell -type ${x.tpe} -vlnv ${x.partName} $bdPath]".tcl)
       case module: IsModule =>
-        Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $instanceName]".tcl)
+        Seq(s"set $instanceName [create_bd_cell -type module -reference ${module.reference} $bdPath]".tcl)
       case _ =>
         throw VivadoDesignException(s"Component $friendlyName must be either IsXilinxIP or IsModule to be instantiated.")
     }
@@ -89,6 +116,9 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
 
   // Optional custom instance name provided by the user set via withInstanceName
   private var customNameOpt: Option[String] = None
+
+  // Optional hierarchy set via withGroup
+  private var groupOpt: Option[String] = None
 
   // Regex to convert CamelCase to snake_case for default instance names
   private val camelToSnake = "([a-z])([A-Z])".r

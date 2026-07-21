@@ -1,4 +1,4 @@
-<p align="center">SoCeteer - A framework for designing and running RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.</p>
+<p align="center">SoCeteer - A framework for designing and running RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.<br/>From a Scala design to a Linux shell on your board.</p>
 
 <p align="center">
   <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml/badge.svg?branch=main" alt="CI" /></a><a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml/badge.svg?branch=main" alt="Release Workflow" /></a><a href="https://github.com/orgs/soct-org/packages/container/package/soceteer"><img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" /></a>
@@ -17,8 +17,17 @@
  FPGA synthesis using [Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html)
 * Built-in Vivado Block Design DSL: components, ports, connections, clock domains, timing constraints and TCL generation - all in Scala, without hand-writing TCL
 * Custom DIMM support: select the inserted memory module with `--ext-mem-part`; capacities, device tree and address decode follow automatically
+* **Boots Linux on your design**: OpenSBI, the kernel and a BusyBox initramfs are packed into a single
+ `BOOT.ELF` that the stock boot ROM loads from the SD card - device tree, memory map and console
+ configuration are generated from the design, and `reboot` round-trips through the SoC's reset network (SBI SRST)
+* Out-of-tree kernel driver workflow: modules build with kbuild against the shared kernel tree in one
+ CMake target, are packed into the initramfs and loaded at boot, and index in clangd/CLion for
+ comfortable driver development; an SD-card block driver ships in-tree (`/dev/mmcblk0`)
+* Optional DisplayPort video output (`--with-config soct.WithVideoStream`): a VDMA-driven framebuffer
+ in DRAM streamed into the PS DisplayPort live input ([guide](docs/guides/video.html))
 * Support for edu.berkeley.cs.chisel (3.6.1) and org.chipsalliance.chisel (7.11.0)
-* CMake projects for building bootroms and binaries for the generated designs (simulation and FPGA)
+* CMake projects for bootroms and bare-metal programs (simulation and FPGA), plus a separate
+ LLVM/musl CMake project for everything Linux: kernel, firmware, userspace and drivers
 * Docker images for x86_64 and ARM64 hosts; runs natively on Linux, macOS and Windows
 
 ### Documentation
@@ -94,8 +103,9 @@ sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --vivado /path/to/
 ```
 
 Open the generated project (`workspace/<config>/ZCU104/vivado-project`), run synthesis and
-implementation, and program the bitstream. Programs are then loaded over JTAG - see the
-[Bare-Metal Programs guide](docs/guides/binaries.html) for the `<program>-flash` targets.
+implementation, and program the bitstream. Programs are then loaded over JTAG
+(`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
+application at reset. See the [Binaries guide](docs/guides/binaries.html).
 
 **Using the DIMM that is actually inserted:** Vivado's board flow locks the DDR4 controller to the
 board-preset module (ZCU104 preset: 4 GiB). If your board carries a different DIMM, pass its
@@ -110,6 +120,35 @@ sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --ext-mem-part MTA
 Details (part registry, custom interface internals, on-hardware validation with `mem-test`):
 [FPGA Memory & Custom DDR4](docs/guides/fpga-memory.html). Supported boards:
 ZCU104, VCU118 - add new boards by extending `FPGA` and registering them in `FPGARegistry`.
+
+---
+
+## Quick Start: Linux
+
+The FPGA designs boot Linux: `BOOT.ELF` is an OpenSBI firmware wrapping the kernel, the
+design's device tree and a BusyBox initramfs - loaded from the SD card by the boot ROM
+like any other program.
+
+```bash
+# 1. Drop in the source trees (plain checkouts, recent versions)
+git clone --depth 1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git binaries/linux/linux-stable
+git clone --depth 1 https://github.com/riscv-software-src/opensbi.git binaries/linux/opensbi
+
+# 2. Configure and build (host clang + ld.lld with RISC-V support; musl sysroot bootstraps itself)
+cmake -S binaries/linux -B workspace/RocketB1-64/ZCU104/build/linux-build -DSOCT_SYSTEM=/path/to/workspace/RocketB1-64/ZCU104/SOCTSystem.cmake
+cmake --build workspace/RocketB1-64/ZCU104/build/linux-build --target shell-boot-elf
+
+# 3. Copy workspace/RocketB1-64/ZCU104/elfs/shell.BOOT.ELF to a FAT-formatted SD card as BOOT.ELF and reset the board
+```
+
+The `shell` image boots into an interactive BusyBox shell on the
+UART, with the SD card itself available as `/dev/mmcblk0` through the bundled out-of-tree
+driver. Every program under [binaries/linux/userspace/](binaries/linux/userspace) that
+includes `initram.cmake` becomes its own bootable image (`<name>-boot-elf`, running as
+`/init`); kernel modules under [binaries/linux/drivers/](binaries/linux/drivers) are built
+against the shared kernel build and packed into the initramfs automatically. Toolchains,
+host requirements, kernel patches and JTAG-flashing images without an SD card:
+[Booting Linux guide](docs/guides/linux.html).
 
 ---
 

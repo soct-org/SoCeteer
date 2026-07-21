@@ -86,6 +86,20 @@
   <p>Instance names default to snake-cased class names with an index; use
   <code>.withInstanceName("...")</code> whenever a stable, readable name matters (timing
   constraints reference instance names!).</p>
+  <p>Components can be placed into a named block-design hierarchy with
+  <code>.withGroup("...")</code> &mdash; purely organizational: the builder creates each
+  distinct hierarchy once (<code>create_bd_cell -type hier</code>) before any member
+  cell, member cells and their pin references become <code>&lt;group&gt;/&lt;cell&gt;</code>,
+  and the netlist is unchanged. TCL that names cells directly must build paths from
+  <code>bdPath</code>, never <code>instanceName</code> &mdash; this includes timing
+  constraints, where paths containing a hierarchy separator must be matched as
+  <code>-hier -filter {NAME&nbsp;=~&nbsp;*&lt;path&gt;}</code> (a bare <code>-hier</code>
+  search pattern silently matches nothing once the path contains <code>/</code>). Reference
+  uses: each reset synchronizer plus its auto-generated fan-out slices forms its own
+  block (<code>periph_reset</code>, <code>core_reset</code>, <code>ddr_reset_&lt;i&gt;</code>,
+  <code>pixel_reset</code>), each memory channel bundles controller, SmartConnect,
+  deinterleaver and reset gate as <code>mem_&lt;i&gt;</code>, and the PL video pipeline
+  collapses into <code>video</code>.</p>
 
   <h2>Pins, ports and the connect operators</h2>
   <p>Endpoints carry a direction in their type: <code>BdPinIn</code>/<code>BdPinOut</code>/

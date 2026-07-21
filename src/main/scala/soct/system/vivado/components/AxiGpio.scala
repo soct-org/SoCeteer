@@ -6,18 +6,21 @@ import soct.system.vivado.misc.DTSInfo
 import soct.system.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesignException}
 
 /**
- * Xilinx AXI GPIO as a read-only status port: software reads fabric signals (e.g. lock and
- * error flags of the video pipeline) that have no register interface of their own.
- * Channel 1 data is at register offset 0x0, the optional channel 2 at 0x8.
+ * Xilinx AXI GPIO as a register port for fabric signals that have no register interface of
+ * their own: read-only by default (software reads e.g. the video pipeline's lock and error
+ * flags), or all-outputs with [[outputs]] (software drives fabric signals, e.g. the system
+ * reset bit). Channel 1 data is at register offset 0x0, the optional channel 2 at 0x8.
  * Documentation: https://docs.amd.com/r/en-US/pg144-axi-gpio
  *
  * @param dtsInfo         device-tree description (control registers)
  * @param getAxiMasterPin the AXI master reaching the registers (the Rocket MMIO port)
- * @param ch1Width        bit width of input channel 1 (1 to 32)
+ * @param ch1Width        bit width of channel 1 (1 to 32)
  * @param ch2Width        bit width of the optional input channel 2 (1 to 32)
+ * @param outputs         make channel 1 all-outputs ([[GPIO_IO_O]], reset value 0) instead
+ *                        of all-inputs ([[GPIO_IO_I]])
  */
 case class AxiGpio(override val dtsInfo: DTSInfo, override val getAxiMasterPin: BdIntfPin,
-                   ch1Width: Int, ch2Width: Option[Int] = None)
+                   ch1Width: Int, ch2Width: Option[Int] = None, outputs: Boolean = false)
                   (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps with HasAxiSlave with HasDTSInfo {
 
@@ -28,7 +31,7 @@ case class AxiGpio(override val dtsInfo: DTSInfo, override val getAxiMasterPin: 
   override def partName: String = "xilinx.com:ip:axi_gpio:2.0"
 
   override def defaultProperties: Map[String, String] = Map(
-    "CONFIG.C_ALL_INPUTS" -> "1",
+    (if (outputs) "CONFIG.C_ALL_OUTPUTS" else "CONFIG.C_ALL_INPUTS") -> "1",
     "CONFIG.C_GPIO_WIDTH" -> s"$ch1Width"
   ) ++ ch2Width.map(w => Map(
     "CONFIG.C_IS_DUAL" -> "1",
@@ -43,8 +46,11 @@ case class AxiGpio(override val dtsInfo: DTSInfo, override val getAxiMasterPin: 
 
   object S_AXI_ARESETN extends BdPinIn("s_axi_aresetn", AxiGpio.this)
 
-  /** Channel 1 input (read at offset 0x0) */
+  /** Channel 1 input (read at offset 0x0), without [[outputs]] */
   object GPIO_IO_I extends BdPinIn("gpio_io_i", AxiGpio.this)
+
+  /** Channel 1 output (written at offset 0x0, resets to 0), only with [[outputs]] */
+  object GPIO_IO_O extends BdPinOut("gpio_io_o", AxiGpio.this)
 
   /** Channel 2 input (read at offset 0x8), only with [[ch2Width]] set */
   object GPIO2_IO_I extends BdPinIn("gpio2_io_i", AxiGpio.this)

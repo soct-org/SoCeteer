@@ -193,7 +193,7 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
       soct.log.debug(s"DDR4 $instanceName aperture 0x${aperture.toString(16)} is not a power of two; assigning address range 0x${range.toString(16)} instead.")
     }
     Seq(
-      s"assign_bd_address -offset 0 -range 0x${range.toString(16).toUpperCase} -target_address_space [get_bd_addr_spaces ${info.axiAddrSpacePin.ref}] [get_bd_addr_segs $instanceName/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
+      s"assign_bd_address -offset 0 -range 0x${range.toString(16).toUpperCase} -target_address_space [get_bd_addr_spaces ${info.axiAddrSpacePin.ref}] [get_bd_addr_segs $bdPath/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]".tcl
     )
   }
 }

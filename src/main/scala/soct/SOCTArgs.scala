@@ -262,7 +262,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
     })
     .text("The Vivado DDR4 memory part name of the DIMM to use (e.g., MTA16ATF2G64HZ-2G3). Can be specified multiple times for multiple external memory ports (first occurrence configures the first external memory port, second occurrence the second one, etc.). The memory capacity is derived from the part name (see PartRegistry - unknown parts must be added there). If omitted, the board's preset part is used. A part differing from the board preset switches the port to a custom (non board-flow) DDR4 interface, which requires the board definition to provide the pin map and clock timing (the ZCU104 does).")
 
-  opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(s"Enable fast place&route mode to simplify generated logic at the cost of removing some of the more advanced features. The exact tradeoff depends on the block design and the FPGA board being targeted")
+  opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(s"Reserved: fast place&route mode. Currently a no-op - no generated logic is simplified; the flag is kept for future PnR-effort tradeoffs.")
 
   // Remote development options
   opt[String]("remote-dir").action((x, c) => c.copy(remoteDir = Some(Paths.get(x)))).text("The directory on the remote machine to use for remote development. This should be a path relative to the remote user home directory. If not set, remote development features will be disabled.")

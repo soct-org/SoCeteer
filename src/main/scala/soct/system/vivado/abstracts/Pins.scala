@@ -13,7 +13,7 @@ abstract class BdPinBase(pinFn: => String, instFn: => BdComp) extends BdPinPort 
 
   override lazy val parentInst: BdComp = instFn
 
-  override lazy val ref: String = s"${parentInst.instanceName}/$pin"
+  override lazy val ref: String = s"${parentInst.bdPath}/$pin"
 
   override val vivadoKind: VivadoHandleKind = VivadoHandleKind.ScalarPin // Overridden in BdIntfPin - different retrieval
 }

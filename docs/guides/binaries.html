@@ -3,106 +3,56 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bare-Metal Programs &amp; soctglue — SoCeteer</title>
+<title>Binaries — SoCeteer</title>
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
 <main>
-  <p class="crumb"><a href="../docs.html">Documentation</a> / Bare-Metal Programs &amp; soctglue</p>
-  <h1>Bare-Metal Programs &amp; soctglue</h1>
-  <p class="lead">The <code>binaries/</code> directory contains RISC-V bare-metal programs and boot
-  ROMs that run on the SoCeteer-generated SoC. All binaries share a common build infrastructure
-  provided by <code>soctglue</code>.</p>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Binaries</p>
+  <h1>Binaries</h1>
+  <p class="lead">Everything that runs <em>on</em> the SoCeteer-generated SoC lives under
+  <code>binaries/</code>, organized by execution context. This guide covers what the contexts
+  are and the infrastructure they share: the system file, building, and JTAG flashing.
+  The two specialized guides build on it:
+  <a href="baremetal.html">Bare-Metal Programs &amp; soctglue</a> for programs without an OS
+  and boot ROMs, and <a href="linux.html">Booting Linux</a> for the kernel, boot images,
+  drivers and Linux userspace.</p>
 
-  <h2>Background</h2>
-  <p>What &ldquo;bare metal&rdquo; actually implies. Readers who have written for
-  microcontrollers can skip ahead.</p>
-
-  <h3>No operating system means no environment</h3>
-  <p>A bare-metal program is the only software on the machine. Nothing exists before its first
-  instruction: no stack, no zeroed variables, no console, no files, no <code>argv</code> &mdash;
-  the CPU simply starts executing at an address. Everything a hosted C program takes for granted
-  must be established by the program itself, which is the job of the startup code
-  (conventionally named <em>crt0</em>, &ldquo;C runtime zero&rdquo;): set up a stack, zero the
-  BSS segment (the region holding zero-initialized globals, which only exists as a size in the
-  binary), initialize globals, and only then call <code>main()</code>.</p>
-
-  <h3>The linker script decides where things live</h3>
-  <p>With no loader and no virtual memory, the binary's layout <em>is</em> the memory layout:
-  a linker script assigns each section (code, data, BSS) a physical address and defines symbols
-  (like the end of the image) that the runtime uses to know where free memory begins. Stack and
-  heap are not provided by anyone &mdash; they are just address ranges the linker script and
-  runtime agree on, which is why this guide talks about budgets and boundaries.</p>
-
-  <h3>newlib and the syscall boundary</h3>
-  <p>The C standard library used here is <em>newlib</em> (its &ldquo;nano&rdquo; variant), a libc
-  built for exactly this situation. Its portable core (<code>printf</code> formatting,
-  <code>malloc</code> bookkeeping) is self-contained, but everything that would normally ask an
-  OS for help funnels into a small set of stub functions &mdash; <code>_write</code>,
-  <code>_read</code>, <code>_sbrk</code>, <code>_open</code>, &hellip; &mdash; that the platform
-  must implement. Providing those stubs (and routing them somewhere useful, like a UART or an SD
-  card) is most of what a bare-metal runtime <em>is</em>; soctglue's syscall handler chain below
-  is its version of that boundary.</p>
-
-  <h3>Harts start all at once</h3>
-  <p>RISC-V calls a hardware thread a <em>hart</em>. On a multi-core SoC every hart comes out of
-  reset simultaneously and races into the same entry point &mdash; there is no primary CPU that
-  boots the others, unless software creates that convention. Startup code therefore elects a
-  primary hart, parks the rest on a barrier, and releases them once the runtime is initialized.</p>
-
-  <h3>Hardware discovery via the device tree</h3>
-  <p>The SoC generator emits a different memory map per configuration, so binaries cannot
-  hardcode addresses. Instead the boot flow passes a pointer to the device tree blob (DTB), the
-  hardware self-description generated alongside the design, and the runtime parses it to find
-  the UART, SD controller, memory size and CPU count at run time. One compiled program therefore
-  runs unchanged on any generated variant of the SoC.</p>
-
-  <h3>The device tree's journey: boot ROM, OpenSBI, Linux</h3>
-  <p>For the Linux boot image (see <em>Booting Linux</em> below), the device tree is not
-  consulted once &mdash; it flows down the whole boot chain, and each stage uses and reshapes
-  the <em>same</em> tree. Nothing is ever literally merged from two trees; one blob is passed
-  along and amended:</p>
-  <ol>
-    <li><strong>Boot ROM.</strong> The generator's DTB is baked into the boot ROM, and
-      <code>sd-boot</code> hands its address to whatever it loads in register <code>a1</code>
-      (hart id in <code>a0</code>) &mdash; the RISC-V boot convention every later stage speaks
-      as well. Bare-metal programs consume this ROM copy directly.</li>
-    <li><strong>BOOT.ELF ignores the ROM copy.</strong> The boot image embeds its own DTB,
-      compiled from the design's DTS at build time (OpenSBI's <code>FW_FDT_PATH</code>) with
-      slack space added (<code>dtc -p</code>). Two reasons: the ROM copy is not writable, and
-      the next stage <em>must write</em> to the tree; and the boot image becomes self-contained
-      &mdash; it does not care which ROM DTB the flashed bitstream carries, only that the
-      embedded one matches the flashed <em>hardware</em>.</li>
-    <li><strong>OpenSBI reads it&hellip;</strong> The firmware's own drivers are device-tree
-      probed exactly like Linux's: the CLINT it uses for timers and IPIs and the UART behind
-      its banner output come from the same nodes Linux will bind later &mdash; one description
-      serving two consumers.</li>
-    <li><strong>&hellip;then relocates and fixes it up.</strong> OpenSBI copies the tree to a
-      configured DRAM address (<code>FW_PAYLOAD_FDT_ADDR</code>) and edits it in place: it
-      inserts <code>reserved-memory</code> nodes covering its own footprint &mdash; the memory
-      it shields with PMP so the OS can never touch machine-mode firmware. These appear in a
-      boot log as <code>mmode_resv*</code> regions. This is the closest thing to a
-      &ldquo;merge&rdquo; in the chain: the hardware description gains firmware-owned
-      annotations before the OS ever sees it.</li>
-    <li><strong>Linux receives the fixed-up tree</strong> &mdash; <code>a1</code> again, at the
-      S-mode kernel entry. The kernel parses the memory node into its zones (honoring the
-      reservations from step 4), binds drivers by <code>compatible</code>, and reads device
-      properties (the UART's <code>current-speed</code>, without which the console driver
-      refuses to probe). The command line, too, comes from the tree: the generator emits a
-      <code>/chosen</code> node whose <code>bootargs</code> name the design's UART as console
-      and early console &mdash; hardware facts, kept with the hardware description. (A kernel
-      can also carry a built-in <code>CONFIG_CMDLINE</code>; by default that is only a
-      fallback for trees without <code>/chosen</code>, and this build leaves it unset so the
-      tree is the single source.)</li>
-  </ol>
-  <p>The corollary: the embedded DTB is a snapshot of one hardware generation. Rebuild the boot
-  image whenever the design changes &mdash; a tree describing more memory than the flashed
-  decode backs, or devices at moved addresses, fails at run time, not loudly at build time.</p>
+  <h2>What runs where</h2>
+  <p>Every directory is named after the <strong>execution context</strong> of the binaries it
+  holds. Two independent CMake projects live side by side, because CMake allows one toolchain
+  per build tree and the two worlds need different ones:</p>
+  <table>
+    <tr><th>Directory</th><th>Execution context</th><th>Toolchain / runtime</th><th>Delivered by</th></tr>
+    <tr><td><code>bootroms/&lt;name&gt;/</code></td><td>On-chip ROM, at reset (first stage)</td>
+      <td>vendored bare-metal GCC, self-contained (no soctglue)</td><td>baked into the bitstream</td></tr>
+    <tr><td><code>baremetal/&lt;name&gt;/</code></td><td>Directly on the SoC, no OS (M-mode)</td>
+      <td>vendored bare-metal GCC + soctglue/newlib</td><td><code>sd-boot</code> from SD, or JTAG (<code>&lt;name&gt;-flash</code>)</td></tr>
+    <tr><td><code>linux/userspace/&lt;name&gt;/</code></td><td>Linux userspace, PID 1 or initramfs tool</td>
+      <td>LLVM/Clang + static musl (own project)</td><td>inside a boot image (<code>&lt;name&gt;.BOOT.ELF</code>), flashable</td></tr>
+    <tr><td><code>linux/drivers/&lt;name&gt;/</code></td><td>Linux kernel (out-of-tree modules)</td>
+      <td>kernel kbuild against the shared build dir</td><td><code>.ko</code> inside a boot image's initramfs, loaded by <code>/init</code></td></tr>
+    <tr><td><code>linux/rootfs/</code></td><td>Linux userspace, dynamically linked &mdash; <em>reserved</em></td>
+      <td>LLVM/Clang + shared musl</td><td>see its README</td></tr>
+  </table>
+  <p>Programs and boot ROMs are auto-discovered subdirectories. Each directory's CMakeLists
+  includes one of the shared templates &mdash; and <em>which</em> template it includes decides
+  what kind of binary it becomes:</p>
+  <table>
+    <tr><th>Template</th><th>Project</th><th>Produces</th></tr>
+    <tr><td><code>baremetal/soctglue-static.cmake</code></td><td><code>binaries/</code></td>
+      <td>A bare-metal ELF linked against soctglue and newlib, laid out by
+        <code>soct.ld</code>, flashable over JTAG</td></tr>
+    <tr><td><code>bootroms/template.cmake</code></td><td><code>binaries/</code></td>
+      <td>A self-contained boot ROM, stripped to the raw image the bitstream embeds</td></tr>
+    <tr><td><code>linux/userspace/userspace.cmake</code></td><td><code>binaries/linux/</code></td>
+      <td>A static riscv64-linux-musl ELF (a real <code>add_executable</code>)</td></tr>
+    <tr><td><code>linux/userspace/initram.cmake</code></td><td><code>binaries/linux/</code></td>
+      <td>The same, plus a bootable <code>&lt;name&gt;.BOOT.ELF</code> with the program as
+        the initramfs <code>/init</code></td></tr>
+  </table>
 
   <h2>Directory layout</h2>
-  <p>Programs and boot ROMs are auto-discovered subdirectories. Each directory's
-  CMakeLists includes one of the shared templates &mdash; and <em>which</em> template it
-  includes decides what kind of binary it becomes:</p>
 <pre><code>binaries/                          # The bare-metal CMake project (vendored riscv toolchain)
   bootroms/&lt;name&gt;/                 # Runs from on-chip ROM at reset (first stage)
   bootroms/template.cmake          # Template for boot ROMs (self-contained, no soctglue)
@@ -120,126 +70,9 @@
 shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall layer, FatFs glue</code></pre>
   <p><code>binaries/linux</code> is its own project because CMake allows one toolchain per
   build tree, and the bare-metal toolchain cannot target Linux &mdash; see
-  <em>Booting Linux</em> below.</p>
+  <a href="linux.html">Booting Linux</a>.</p>
   <p>Browse <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/baremetal"><code>binaries/baremetal</code></a>
   for the bundled examples and hardware-validation tools.</p>
-
-  <h2>soctglue</h2>
-  <p><a href="https://github.com/soct-org/SoCeteer/tree/main/shared/soctglue"><code>soctglue</code></a> is a static C library (<code>libsoctglue.a</code>) that every program
-  links against. It provides the bare-metal runtime that sits between the hardware and your
-  <code>main()</code>.</p>
-
-  <h3>Startup (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/soctglue/src/crt0.S"><code>crt0.S</code></a> &rarr; <code>_soct_start_main</code>)</h3>
-  <p>The assembly entry point <code>_start</code> (placed in <code>.text.init</code>) runs on every
-  hart. It:</p>
-  <ol>
-    <li>Zeros all registers except <code>a0</code> (hart ID) and <code>a1</code> (DTB pointer),
-      which the SoC passes at reset.</li>
-    <li>Initializes the FPU if the ISA extension is present.</li>
-    <li>Sets up the global pointer, thread pointer, and per-hart stack (each hart gets its own
-      stack slice, sized by <code>__stack_shift</code> from the linker script).</li>
-    <li>On the primary hart (hart 0 by default), zeros BSS and calls global constructors.</li>
-    <li>Secondary harts spin on a boot barrier until the primary releases them.</li>
-    <li>Calls <code>_soct_start_main(hartid, dtb_ptr)</code> on the primary hart.</li>
-  </ol>
-
-  <h3><code>_soct_start_main</code></h3>
-  <p>Before calling <code>main()</code>, this function:</p>
-  <ol>
-    <li>Parses the DTB blob using the embedded <code>smoldtb</code> parser to discover peripherals.</li>
-    <li>If a UART is found in the DTB, registers a UART syscall handler so <code>printf</code>
-      works over serial.</li>
-    <li>If an SD controller is found and <code>SOCT_NEEDS_FATFS</code> is set, mounts the SD volume
-      via FatFs.</li>
-    <li>If the HTIF device is present (Verilator simulation), registers an HTIF syscall handler and
-      fetches <code>argc</code>/<code>argv</code> from the host.</li>
-    <li>Releases secondary harts, then calls <code>main()</code>.</li>
-  </ol>
-  <p>Secondary harts jump to <code>__main()</code> if your program defines it, or spin in
-  <code>wfi</code> otherwise.</p>
-
-  <h3>Memory layout, heap and stacks (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/soctglue/soct.ld"><code>soct.ld</code></a> + <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/soctglue/src/posix/sbrk.c"><code>sbrk</code></a>)</h3>
-  <p>Programs are linked at the DRAM base (<code>SOCT_MEM_BASE_ADDR</code>, typically
-  <code>0x8000_0000</code>). The layout enforces a fixed <strong>program budget</strong>:</p>
-  <ul>
-    <li>The program image (text, data, BSS) plus a minimum early heap of 128&nbsp;KiB must fit into
-      <code>SOCT_PROGRAM_MAX_SIZE</code> (default <strong>4&nbsp;MiB</strong>). If it does not,
-      linking fails with a readable assertion &mdash; increase the budget with
-      <code>target_link_options(&lt;prog&gt; PRIVATE "LINKER:--defsym=SOCT_PROGRAM_MAX_SIZE=&lt;bytes&gt;")</code>
-      or shrink the program.</li>
-    <li>The per-hart stacks sit at the <em>fixed</em> boundary <code>base + SOCT_PROGRAM_MAX_SIZE</code>.
-      Per-hart stack size is the next power of two above <code>24&nbsp;KiB + TLS size</code>;
-      contiguous slices are allocated for up to <code>SOCT_MAX_HARTS</code> harts.</li>
-    <li><strong>Everything above the stacks belongs to the heap.</strong> soctglue's
-      <code>sbrk</code> serves three regions in order: the early heap between <code>_end</code> and
-      the stacks, then the extended heap from the end of the stacks to the end of RAM as reported
-      by the device tree (<code>soct_ram_end()</code>). On a 16&nbsp;GiB board the heap capacity is
-      ~16&nbsp;GiB minus the program budget.</li>
-  </ul>
-  <div class="note">
-    Allocator caveat: newlib's malloc (both the nano and the full allocator) rejects single
-    requests of &ge;&nbsp;2&nbsp;GiB, and nano-malloc additionally cannot split a free chunk when
-    the remainder would be &ge;&nbsp;2&nbsp;GiB. For huge allocations use several
-    &lt;&nbsp;2&nbsp;GiB blocks (see <code>binaries/baremetal/heap-test</code>, which probes exactly
-    these limits).
-  </div>
-
-  <h3>Static stack-usage checking</h3>
-  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/soctglue-static.cmake"><code>bare-metal template</code></a> compiles everything with <code>-fstack-usage</code> and
-  <code>-Wstack-usage=&lt;bytes&gt;</code> (default threshold 2048; override with
-  <code>-DSOCT_STACK_WARN=&lt;bytes&gt;</code>). Any single function with a larger frame produces a
-  compile-time warning, and the <code>&lt;prog&gt;-info</code> target (built by default) prints the
-  largest collected frames alongside the <code>.objdump</code>/<code>.nm</code> files it writes.
-  Runtime recursion is of course not caught.</p>
-
-  <h3>Syscall handler chain</h3>
-  <p>Standard C library calls (<code>fopen</code>, <code>printf</code>, <code>read</code>, &hellip;)
-  are redirected through a handler table. The linker wraps <code>puts</code>, <code>printf</code>,
-  <code>vprintf</code>, <code>sprintf</code>, <code>snprintf</code>, <code>fopen</code>,
-  <code>fopen64</code>, <code>freopen</code>, and <code>freopen64</code> so every I/O call passes
-  through soctglue's dispatch instead of the newlib stubs.</p>
-  <p>The dispatch chain has two priority levels:</p>
-  <ul>
-    <li><strong>User handlers</strong> &mdash; registered by program code with
-      <code>soct_register_handler()</code>. Tried first.</li>
-    <li><strong>Default handlers</strong> &mdash; registered by soctglue internals (UART, HTIF) with
-      <code>soct_register_default_handler()</code>. Tried only if every user handler passes.</li>
-  </ul>
-  <p>Each handler inspects the syscall number and arguments and either handles the call (returning
-  <code>SOCT_HANDLER_HANDLED</code>) or passes it on (<code>SOCT_HANDLER_PASS</code>). If no handler
-  claims the syscall, <code>errno</code> is set to <code>ENOSYS</code>.</p>
-<pre><code>// Registering a custom handler from main():
-static void handle_exit(soct_handler_resp_t *resp, sc_type_t syscall, ...) {
-    if (syscall == SOCT_EXIT)
-        printf("Exiting with code %llu\n", a0);
-    resp-&gt;status = SOCT_HANDLER_PASS; // let default handler actually exit
-}
-
-soct_register_handler((soct_handler_t){ .handle = handle_exit });</code></pre>
-
-  <h3>FatFs integration (<code>soct_ff</code>)</h3>
-  <p>When <code>SOCT_NEEDS_FATFS</code> is defined, soctglue compiles in <code>soct_ff</code> &mdash;
-  a glue layer that bridges FatFs with the standard <code>fopen</code>/<code>fread</code>/<code>fwrite</code>/<code>fclose</code>
-  API. Programs access the SD card using ordinary POSIX file calls:</p>
-<pre><code>FILE *f = fopen(SOCT_SD_PATH "/data.bin", "r");
-fread(buf, 1, sizeof(buf), f);
-fclose(f);</code></pre>
-  <p>Without <code>SOCT_NEEDS_FATFS</code>, a stub is compiled instead that returns
-  <code>ENOSYS</code> for all file operations.</p>
-
-  <h3>Helper API</h3>
-  <table>
-    <tr><th>Function</th><th>Description</th></tr>
-    <tr><td><code>soct_hart_id()</code></td><td>Returns the current hart's MHARTID</td></tr>
-    <tr><td><code>soct_n_harts()</code></td><td>Returns the number of CPU harts from the DTB, or &minus;1 if unavailable</td></tr>
-    <tr><td><code>soct_ram_end()</code></td><td>End of the RAM region containing the program, from the DTB (upper heap bound)</td></tr>
-    <tr><td><code>soct_heap_remaining()</code></td><td>Bytes sbrk can still hand out across all heap regions</td></tr>
-    <tr><td><code>soct_syscall(nr, a0&hellip;a6)</code></td><td>Make a raw syscall through the handler chain</td></tr>
-    <tr><td><code>soct_register_handler(h)</code></td><td>Register a high-priority user handler</td></tr>
-    <tr><td><code>soct_register_default_handler(h)</code></td><td>Register a low-priority default handler</td></tr>
-  </table>
-  <p>You can override the linker script by setting <code>SOCT_LD_SCRIPT</code> before including
-  the bare-metal template.</p>
 
   <h2>The system file (<code>SOCT_SYSTEM</code>)</h2>
   <p>Every build requires a <strong>system file</strong> &mdash; a CMake file generated by SoCeteer
@@ -262,125 +95,15 @@ fclose(f);</code></pre>
   then falls back to a <code>SOCTSystem-latest.cmake</code> symlink in the repository root that
   SoCeteer creates automatically.</p>
 
-  <h2>Adding a program</h2>
-  <p>Create a subdirectory under <code>binaries/baremetal/</code> with a
-  <code>CMakeLists.txt</code> and your sources &mdash; the top-level build discovers it
-  automatically, no registration needed. Then pick the template matching where the binary
-  runs:</p>
-  <table>
-    <tr><th>Template</th><th>Project</th><th>Produces</th></tr>
-    <tr><td><code>soctglue-static.cmake</code></td><td><code>binaries/</code></td>
-      <td>A bare-metal ELF linked against soctglue and newlib, laid out by
-        <code>soct.ld</code>, flashable over JTAG</td></tr>
-    <tr><td><code>linux/userspace/userspace.cmake</code></td><td><code>binaries/linux/</code></td>
-      <td>A static riscv64-linux-musl ELF (a real <code>add_executable</code>)</td></tr>
-    <tr><td><code>linux/userspace/initram.cmake</code></td><td><code>binaries/linux/</code></td>
-      <td>The same, plus a bootable <code>&lt;name&gt;.BOOT.ELF</code> with the program as
-        the initramfs <code>/init</code></td></tr>
-  </table>
-
-  <h3>Bare-metal programs (<code>soctglue-static.cmake</code>)</h3>
-<pre><code>cmake_minimum_required(VERSION 3.20)
-
-list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
-# list(APPEND CMAKE_CXX_SRCS ...) for C++ sources
-
-include(${CMAKE_CURRENT_LIST_DIR}/../soctglue-static.cmake)
-
-# Optional: add per-program flags after the include
-target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11 -O2)</code></pre>
-  <p>The entry point is the standard <code>main(int argc, char **argv, char **envp)</code>. If
-  the program uses multiple harts, also define <code>__main(...)</code> for secondary harts
-  (same signature). The target is named after the directory, adjustable with
-  <code>SOCT_PROGRAM_PREFIX</code>/<code>SOCT_PROGRAM_SUFFIX</code> (set before the include)
-  &mdash; useful for building variants of the same program. The template ends by including
-  <code>xsdb-flash.cmake</code>, so every bare-metal program has a flash target (see
-  <em>Flashing to an FPGA</em>); the linked C library defaults to newlib-nano and can be
-  swapped with <code>SOCT_LIBC</code>/<code>SOCT_LIBCXX</code>, the linker script with
-  <code>SOCT_LD_SCRIPT</code>.</p>
-
-  <h3>C++ programs</h3>
-  <p>Bare-metal only: list sources in <code>CMAKE_CXX_SRCS</code> instead of (or in addition to)
-  <code>CMAKE_C_SRCS</code>. The template detects the presence of C++ sources and links
-  <code>supc++</code>/<code>stdc++</code> automatically. Exceptions and RTTI are disabled.
-  (The Linux userspace template is C-only.)</p>
-
-  <h3>Conditionally building for a specific target</h3>
-<pre><code>if (SOCT_TARGET STREQUAL "verilator")
-    include(${CMAKE_CURRENT_LIST_DIR}/../soctglue-static.cmake)
-    # ...
-endif ()</code></pre>
-
-  <h3>Using the SD card / FatFs</h3>
-  <p>Define <code>SOCT_NEEDS_FATFS</code> before the build (or in your program's CMakeLists.txt via
-  <code>target_compile_definitions</code>) and access the SD volume with standard
-  <code>fopen</code>/<code>fread</code>/<code>fwrite</code>. The volume root is
-  <code>SOCT_SD_PATH</code> (defined to <code>/SD</code> by default with Linux-style volume IDs).</p>
-
-  <h3>Linux userspace programs (<code>binaries/linux</code>)</h3>
-  <p>Programs that run under the Linux kernel (see <em>Booting Linux</em> below) instead of on
-  bare metal live in the separate <code>binaries/linux</code> project and follow the same
-  directory-plus-template pattern with two templates:</p>
-<pre><code>cmake_minimum_required(VERSION 3.21)
-
-list(APPEND CMAKE_C_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/main.c)
-
-include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
-# ...or ../initram.cmake to also get a bootable image (below)</code></pre>
-  <p>The target (named after the directory) is a real <code>add_executable</code> &mdash; IDEs
-  index it with full cross-compilation flags &mdash; producing a <em>static</em>
-  riscv64-linux-musl ELF, copied to <code>SOCT_ELFS_DIR</code>. Static, because the target
-  system is initramfs-only; there is no shared-library ecosystem to link against. soctglue,
-  the bare-metal linker script and the syscall handler chain play no role here: these are
-  ordinary Linux programs with a full C library. A program that includes
-  <code>initram.cmake</code> instead additionally gets a <code>&lt;name&gt;-boot-elf</code>
-  target: a complete <code>&lt;name&gt;.BOOT.ELF</code> with the program as the initramfs
-  <code>/init</code> &mdash; running a userspace program on hardware becomes build, copy to
-  SD, boot. The console-echo bring-up demo (<code>linux/userspace/echo</code>,
-  which must never exit &mdash; it is PID&nbsp;1) is the reference example. A boot image
-  need not wrap a compiled program at all: <code>linux/userspace/shell</code> compiles
-  nothing and instead hands its own initramfs description to
-  <code>soct_linux_add_boot_image(&lt;name&gt; DESC &lt;desc&gt; DEPENDS &lt;packed
-  files&hellip;&gt;)</code>, packing the prebuilt BusyBox and a boot script
-  (see <em>Booting Linux</em>). For IDE support,
-  link <code>binaries/linux</code> as its own CMake project (CLion: Tools &rarr; CMake &rarr;
-  Link CMake Project) configured with the same <code>-DSOCT_SYSTEM</code>.</p>
-
-  <h2>Adding a boot ROM</h2>
-  <p>Boot ROMs live under <code>binaries/bootroms/</code> and follow the same auto-discovery
-  pattern. Their <code>CMakeLists.txt</code> includes <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/bootroms/template.cmake"><code>bootroms/template.cmake</code></a> instead:</p>
-<pre><code>cmake_minimum_required(VERSION 3.20)
-
-list(APPEND CMAKE_C_SRCS   ${CMAKE_CURRENT_SOURCE_DIR}/bootrom.c)
-list(APPEND CMAKE_ASM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/head.S)
-
-include(${CMAKE_CURRENT_LIST_DIR}/../template.cmake)</code></pre>
-  <p>The bootrom template:</p>
-  <ul>
-    <li>Links against the shared boot-ROM linker script (<code>bootroms/bootrom.lds</code>),
-      which pins the layout every boot ROM shares: <code>_start</code> at the ROM base, the
-      reset stub at the hart reset vector, and the embedded DTB at <code>SOCT_DTB_ADDR</code>
-      &mdash; all three addresses come from the system file (derived from the same parameters
-      that size the hardware ROM), and the link fails loudly if a stub outgrows its slot. Set
-      <code>SOCT_LD_SCRIPT</code> before including the template to override.</li>
-    <li>Compiles the ELF with <code>-Os -fno-pic</code>.</li>
-    <li>Strips the ELF to a raw binary image with <code>objcopy -O binary</code>, rebased by
-      the ROM base address (<code>SOCT_BOOTROM_BASE_ADDR</code>), placing the result at
-      <code>SOCT_BOOTROM_IMG</code>.</li>
-    <li>Passes <code>-DDEVICE_TREE=\"${SOCT_DTB}\"</code> so the source can embed the DTB at
-      compile time.</li>
-  </ul>
-  <p>Boot ROMs do <strong>not</strong> link against soctglue &mdash; they are self-contained.</p>
-
   <h2>Building</h2>
 <pre><code>cmake -S binaries -B build \
   -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake \
   -DCMAKE_TOOLCHAIN_FILE=shared/cmake/toolchain-riscv.cmake
 cmake --build build -j$(nproc)</code></pre>
-  <p>ELF files land in <code>SOCT_ELFS_DIR</code> (set by the system file). Each bare-metal
-  program's <code>&lt;name&gt;-info</code> target (built by default) writes an
-  <code>.objdump</code> and <code>.nm</code> file alongside the ELF and prints the largest
-  static stack frames.</p>
+  <p>ELF files land in <code>SOCT_ELFS_DIR</code> (set by the system file). The
+  <code>binaries/linux</code> project configures the same way &mdash; a separate build tree
+  against the same <code>-DSOCT_SYSTEM</code>, no toolchain file (it discovers its own
+  toolchains; see <a href="linux.html">Booting Linux</a> for host requirements and targets).</p>
 
   <h2>Flashing to an FPGA</h2>
   <p>The bare-metal template ends by including
@@ -427,159 +150,6 @@ cmake --build build -j$(nproc)</code></pre>
   <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/CMakeLists.txt"><code>dp-test</code></a>,
   whose prelude runs the Vivado-generated <code>psu_init</code> sequence the DisplayPort
   pipeline needs once per power-up.</p>
-
-  <h2>Booting Linux (<code>boot-elf</code>)</h2>
-  <p>The <code>binaries/linux</code> project &mdash; configured against the same
-  <code>SOCT_SYSTEM</code>, with kernel and OpenSBI source trees dropped in as
-  <code>binaries/linux/linux-stable/</code> and <code>binaries/linux/opensbi/</code> &mdash; produces
-  bootable images: an OpenSBI <em>fw_payload</em> wrapping a Linux kernel (with an embedded
-  initramfs) and the design's device tree, which the <code>sd-boot</code> boot ROM loads
-  from the SD card like any other program. Its targets:</p>
-  <ul>
-    <li><code>linux-sysroot</code> &mdash; the riscv64-linux-musl sysroot (built automatically
-      at configure time when missing, shared across build trees under
-      <code>shared/vendor/</code>); see <em>Linux userspace programs</em> above.</li>
-    <li><code>boot-dtb</code> &mdash; the design DTS compiled with fixup padding; it is embedded
-      into the firmware, so boot images do not depend on the ROM copy of the DTB
-      (but must match the flashed hardware).</li>
-    <li><code>&lt;name&gt;-boot-elf</code> &mdash; for every program that includes
-      <code>initram.cmake</code>: <code>&lt;name&gt;.BOOT.ELF</code> in
-      <code>SOCT_ELFS_DIR</code>, a kernel with that program as <code>/init</code>. The kernel
-      and OpenSBI build directories are shared: the ~2000 kernel objects compile once, and
-      switching programs re-runs only the initramfs packing and the links (the initramfs
-      description is a fixed path in the kernel build dir that each image overwrites &mdash;
-      never a reconfigure). Image builds are serialized through a job pool; honored by the
-      Ninja generator. With the <code>SOCT_FLASH_*</code> variables set, each image also gets
-      a <code>&lt;name&gt;-flash</code> target that JTAG-loads it (see
-      <em>Flashing to an FPGA</em>) &mdash; booting Linux without touching the SD card.</li>
-    <li><code>&lt;name&gt;-driver</code> &mdash; for every <code>Kbuild</code> directory
-      under <code>linux/drivers/</code>: an out-of-tree kernel module, built with kbuild
-      against the shared kernel build (matching vermagic by construction). Boot images
-      pack the <code>.ko</code> files into their initramfs, <code>/init</code> loads
-      them, and the kernel's initramfs rules re-pack a rebuilt module automatically.</li>
-    <li><code>boot-elf</code> &mdash; the canonical <code>BOOT.ELF</code>, under the name
-      the boot ROM loads: a copy of the boot image selected by
-      <code>SOCT_BOOT_PROGRAM</code> (default: <code>shell</code>).</li>
-  </ul>
-  <p>The SD controller has no driver in mainline Linux; the out-of-tree module in
-  <code>linux/drivers/sdc</code> provides one (the shell image loads it at boot, exposing
-  the card as <code>/dev/mmcblk0</code> &mdash; its partitions mount normally from the
-  shell). The <em>root</em> filesystem nevertheless remains an initramfs embedded in the
-  kernel image until the dynamic-userspace world (<code>linux/rootfs</code>) exists. The
-  kernel configuration is the
-  riscv defconfig plus <code>linux/linux.fragment.in</code>: the UART Lite console driver, the
-  Xilinx interrupt-controller driver (all fabric interrupts cascade through an AXI INTC into
-  the PLIC, whose gateways would lose the UART Lite's edge pulses &mdash; without this chained
-  irqchip <em>no</em> peripheral interrupt, console included, ever fires), the Xilinx DMA
-  engine driver for the video pipeline's VDMA, a pinned <code>HZ</code>, the initramfs, and
-  AppArmor disabled (useless on this SoC, and its
-  header generation is the one build step requiring GNU sed's <code>\L</code> on every host).
-  The command line is deliberately <em>not</em> baked into the kernel: the generator emits a
-  <code>/chosen</code> node whose <code>bootargs</code> select the design's UART as console
-  and early console, so one kernel image serves any hardware generation.</p>
-  <p>The default image, <code>shell.BOOT.ELF</code>, boots into an interactive BusyBox
-  shell. Its <code>/init</code> (<code>linux/userspace/shell/init.sh</code>) mounts the
-  pseudo filesystems, installs the applet links and keeps a job-controlled shell alive on
-  the console (<code>setsid</code> + <code>cttyhack</code>; the script itself stays
-  PID&nbsp;1, so an exiting shell is respawned instead of panicking the kernel). BusyBox
-  is not built from source &mdash; that would add a second kbuild frontier for one binary
-  &mdash; but taken from Debian's <code>busybox-static</code> riscv64 package: a static
-  rv64gc binary, hash-pinned and fetched once at configure time into
-  <code>shared/vendor/busybox/</code> from <em>snapshot.debian.org</em>, whose archive
-  URLs are permanent (regular pool URLs disappear once a package version is superseded).</p>
-
-  <h3>Toolchains</h3>
-  <p>Two toolchains split the work, deliberately:</p>
-  <ul>
-    <li><strong>LLVM/Clang builds the kernel and OpenSBI</strong>, through their upstream
-      <code>LLVM=&lt;bindir&gt;/</code> build mode. The vendored bare-metal binutils cannot
-      link either one: their <code>ld</code> has no dynamic-linking support, OpenSBI links
-      with <code>-pie</code> unconditionally, and a riscv MMU kernel must link its vDSO as a
-      shared object (the failure shows up indirectly, as missing
-      <code>__vdso_*_offset</code> symbols).</li>
-    <li><strong>The repo's vendored toolchain builds everything bare-metal</strong> &mdash;
-      programs and boot ROMs &mdash; and contributes one artifact to the Linux world: its
-      rv64/lp64d <code>libgcc.a</code>, whose OS-agnostic builtins (soft fp128 arithmetic and
-      friends) stand in for the compiler-rt that prebuilt LLVM does not ship for cross
-      targets.</li>
-  </ul>
-  <p>The LLVM toolchain is auto-detected by
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindLLVMRiscv.cmake"><code>FindLLVMRiscv</code></a>:
-  candidates come from PATH, Homebrew (including its split <code>llvm</code>/<code>lld</code>
-  keg-only formulas, for which a unified directory of symlinks is assembled), Debian's
-  <code>/usr/lib/llvm-*</code> and MacPorts &mdash; and each candidate is <em>proved</em> by
-  linking a RISC-V PIE through its <code>ld.lld</code> rather than trusted by name or
-  version. That probe is why Apple's Xcode clang never qualifies: it ships without the
-  RISC-V backend and without <code>ld.lld</code>. GNU make is found the same way
-  (<a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindGNUMake.cmake"><code>FindGNUMake</code></a>:
-  every <code>gmake</code>/<code>gnumake</code>/<code>make</code> candidate is
-  version-checked, so an ancient system <code>make</code> cannot shadow a usable one).
-  Userspace programs get their cross flags from the project's toolchain file
-  (<code>shared/cmake/toolchain-riscv-linux-musl.cmake</code>), built on the same discovery.
-  Any unmet requirement fails the <code>binaries/linux</code> configure loudly, with the
-  remedy in the message; the bare-metal project is untouched by construction &mdash; the two
-  worlds are separate build trees.</p>
-
-  <h3>Host requirements</h3>
-  <p><strong>Every host:</strong></p>
-  <ul>
-    <li>LLVM with the RISC-V backend plus <code>ld.lld</code> and the <code>llvm-*</code>
-      binutils (one directory or Homebrew's split installation).</li>
-    <li>GNU make &ge; 4.0 (the kernel refuses older), plus host <code>flex</code>,
-      <code>bison</code> and <code>bc</code>; <code>dtc</code> for the device tree.</li>
-    <li>A build directory path <em>without</em> commas or spaces: OpenSBI passes linker
-      scripts as <code>-Wl,-T&lt;path&gt;</code> and the compiler driver splits
-      <code>-Wl</code> arguments at every comma, while GNU make cannot handle spaces in
-      paths at all. Such paths are refused at configure time (IDE-generated build
-      directories named after profiles are the usual offender).</li>
-  </ul>
-  <p><strong>Linux hosts:</strong> the distribution packages are sufficient &mdash; on
-  Debian/Ubuntu: <code>clang lld make flex bison bc device-tree-compiler</code>. The repo's
-  Docker image ships all of them; no accommodations of any kind are applied on Linux.</p>
-  <p><strong>macOS (Darwin) hosts:</strong> four Homebrew packages &mdash;
-  <code>make</code>, <code>llvm</code>, <code>lld</code> (a separate formula;
-  <code>llvm</code> alone ships no linker) and <code>gnu-sed</code>. Beyond that, the build
-  applies a set of accommodations automatically, all scoped to the kernel's <em>host</em>
-  tools on Darwin only &mdash; target code and Linux hosts never see any of them:</p>
-  <table>
-    <tr><th>Accommodation</th><th>Why</th></tr>
-    <tr><td><code>linux/host-compat/elf.h</code> (verbatim musl, MIT) on the host include path</td>
-      <td>macOS ships no <code>&lt;elf.h&gt;</code>; the kernel's host tools
-        (<code>scripts/elf-parse.h</code> users, <code>modpost</code>) require one.</td></tr>
-    <tr><td><code>linux/host-compat/byteswap.h</code></td>
-      <td>glibc-only header (<code>bswap_*</code>) used by <code>modpost</code>; shimmed with
-        compiler builtins.</td></tr>
-    <tr><td><code>linux/host-compat/darwin-compat.h</code>, force-included</td>
-      <td><code>usr/gen_init_cpio.c</code> uses <code>O_LARGEFILE</code> and
-        <code>copy_file_range</code>, which Darwin lacks; defined to 0 and a read/write
-        fallback respectively.</td></tr>
-    <tr><td><code>-D_UUID_T -D__GETHOSTUUID_H</code></td>
-      <td>The macOS SDK typedefs <code>uuid_t</code> as a bare byte array (pulled in via
-        <code>unistd.h</code>), colliding with the kernel's struct definition in
-        <code>scripts/mod/file2alias.c</code>; the defines suppress the SDK's.</td></tr>
-    <tr><td>PATH shim mapping <code>sed</code> &rarr; <code>gsed</code> for kernel invocations</td>
-      <td>BSD sed renders a replacement <code>\t</code> as a literal <code>t</code>, mangling
-        every macro in the generated vDSO offsets header
-        (<code>__vdso_&hellip;_offsett0x&hellip;</code>) into nonsense.</td></tr>
-    <tr><td>OpenSBI build directory pre-created</td>
-      <td>BSD <code>readlink -f</code> fails on nonexistent paths, which derails OpenSBI's
-        <code>O=</code> handling before the build starts.</td></tr>
-  </table>
-
-  <h3>Boot-image CMake variables</h3>
-  <table>
-    <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
-    <tr><td><code>SOCT_BOOT_LINUX_DIR</code></td><td><code>binaries/linux/linux-stable</code></td>
-      <td>Kernel source tree</td></tr>
-    <tr><td><code>SOCT_BOOT_OPENSBI_DIR</code></td><td><code>binaries/linux/opensbi</code></td>
-      <td>OpenSBI source tree</td></tr>
-    <tr><td><code>SOCT_BOOT_LLVM_DIR</code></td><td><em>(auto-detect)</em></td>
-      <td>LLVM bin directory; must contain <code>clang</code> and <code>ld.lld</code></td></tr>
-    <tr><td><code>SOCT_BOOT_MAKE</code></td><td><em>(auto-detect)</em></td>
-      <td>GNU make &ge; 4.0 used for the kernel, OpenSBI and musl</td></tr>
-    <tr><td><code>SOCT_BOOT_PROGRAM</code></td><td><code>shell</code></td>
-      <td>Program whose boot image becomes the canonical <code>BOOT.ELF</code></td></tr>
-  </table>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>

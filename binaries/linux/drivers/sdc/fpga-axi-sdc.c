@@ -6,10 +6,10 @@
 //   - spin_lock_init moved before the first lock use (sdc_reset) and the IRQ request;
 //     the original initialized it last, which only CONFIG_DEBUG_SPINLOCK ever noticed.
 //   - the CONFIG_DEBUG_INFO '#pragma GCC optimize' block dropped (clang builds).
-//   - get_cd honors the standard "cd-inverted" DTS property (MMC_CAP2_CD_ACTIVE_HIGH):
-//     the controller's detect debounce assumes an active-high card-detect line
-//     (sdio_card_detect_level=1), but this SoC's PMOD switch closes to ground - without
-//     the inversion a card inserted at boot reads "absent" and is never enumerated.
+//   - get_cd honors the standard "cd-inverted" DTS property (MMC_CAP2_CD_ACTIVE_HIGH),
+//     for controllers whose sdio_card_detect_level parameter does not match the slot's
+//     detect-switch polarity: without the inversion a card inserted at boot reads
+//     "absent" and is never enumerated (while re-inserting appears to work).
 
 #include <linux/version.h>
 #include <linux/delay.h>

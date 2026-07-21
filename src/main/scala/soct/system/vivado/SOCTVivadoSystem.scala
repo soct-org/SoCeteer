@@ -53,7 +53,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     val ddr4Params: Seq[DDR4Info] = mems.zipWithIndex.map {
       case (param, i) =>
         val mem = c.axiMems(i)
-        val deintOpt = AXIAddrDeinterleaver.fromBusInfo(mem).map(_.withInstanceName(s"mem_deint_$i"))
+        val deintOpt = AXIAddrDeinterleaver.fromBusInfo(mem).map(_.withInstanceName(s"mem_deint_$i").withGroup(s"mem_$i"))
         DDR4Info(param, param.initPort, mem, deintOpt)
     }
 
@@ -71,9 +71,11 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
       }
     }
 
+    // One BD hierarchy per memory channel: controller, SmartConnect, deinterleaver (above)
+    // and the channel's reset gate (below) collapse into a mem_<i> block.
     val memPaths = ddr4Params.zipWithIndex.map { case (info, i) =>
-      val smc = AXISmartConnect().withInstanceName(s"mem_smc_$i")
-      MemPath(DDR4(info), smc)
+      val smc = AXISmartConnect().withInstanceName(s"mem_smc_$i").withGroup(s"mem_$i")
+      MemPath(DDR4(info).withGroup(s"mem_$i"), smc)
     }
 
     // --------------------------------------------------------------------------
@@ -109,7 +111,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     // superset: it asserts only after the MMCM has locked AND the DRAM init calibration
     // is finished.
     val ddrPsrs = memPaths.zip(fpgaDoms).zipWithIndex.map { case ((path, dom), i) =>
-      val psr = ProcSysReset().withInstanceName(s"ddr_psr_$i")
+      val psr = ProcSysReset().withInstanceName(s"ddr_psr_$i").withGroup(s"ddr_reset_$i")
       path.ddr4Inst.C0_DDR4_UI_CLK --> psr.SLOWEST_SYNC_CLK
       dom.reset --> psr.EXT_RESET_IN
       path.ddr4Inst.C0_INIT_CALIB_COMPLETE --> psr.DCM_LOCKED
@@ -142,7 +144,8 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     // memSMC reset is influenced by BOTH the core and its channel's DDR domain:
     // hold in reset if either domain is in reset, release only when BOTH are out of reset.
     memPaths.zip(ddrPsrs).zipWithIndex.foreach { case ((path, ddrPsr), i) =>
-      AND(c.corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN).withInstanceName(s"mem_smc_reset_$i") --> path.memSMC.ARESETN
+      AND(c.corePsr.PeripheralAResetN, ddrPsr.PeripheralAResetN).withInstanceName(s"mem_smc_reset_$i")
+        .withGroup(s"mem_$i") --> path.memSMC.ARESETN
     }
 
     // --------------------------------------------------------------------------
