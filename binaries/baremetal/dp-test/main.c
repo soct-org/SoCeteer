@@ -114,6 +114,12 @@ static void open_ps_window(void) {
 #define TEAPOT_SINGLE_BUFFER 0
 #endif
 
+/* 1 = pause the animation for 2 s every 1024 frames to watch the link idle
+ * (see anim_tick). Diagnostic only, and visible on the monitor. */
+#ifndef RUN_IDLE_PROBE
+#define RUN_IDLE_PROBE 0
+#endif
+
 static uintptr_t s_vdma;
 static XDpPsu *s_dp;
 
@@ -161,8 +167,9 @@ static void anim_tick(void) {
     /* Every 1024 frames: stop flipping/copying for 2 s. Lock/stream returning
      * during the pause = memory-contention starvation; staying dead = a
      * one-shot kill (e.g. the DP dropping the live stream on a single timing
-     * glitch). */
-    if (s_frames % 1024 == 0) {
+     * glitch). Off by default: the pause freezes the animation for two seconds
+     * at a time, which is plainly visible on the monitor. */
+    if (RUN_IDLE_PROBE && s_frames % 1024 == 0) {
         printf("[idle-probe] no flips for 2 s...\n");
         probe_lock("idle", 2000);
         dp_sink_status("after-idle");
@@ -276,12 +283,11 @@ static void anim_live(void) {
         if (!TEAPOT_SINGLE_BUFFER) fb_flip(s_vdma);
 
         /* Time-based rotation: constant angular speed at any frame rate. */
-        const unsigned long tnow = cycles_now();
-        angle += 0.7e-6f * (float) cycles_to_us(tnow - tframe);
-        tframe = tnow;
+        angle += 0.7e-6f * (float) cycles_to_us(cycles_now() - tframe);
         if (angle > 6.2831853f) angle -= 6.2831853f;
 
         anim_tick();
+        tframe = cycles_now();
     }
 }
 

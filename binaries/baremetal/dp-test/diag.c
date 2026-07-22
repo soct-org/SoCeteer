@@ -150,17 +150,16 @@ void verify_pipeline(uintptr_t vdma_base, uintptr_t vtc_base) {
  * Controlled experiment: does memory pressure or the park-pointer write break
  * the video lock?
  *
- * The observational data pointed at flips (single-buffer rendering showed 0%
- * unlocked under identical traffic, and a 4x line buffer changed nothing), so
- * this varies each factor on its own, within ONE bitstream - comparing across
- * bitstreams is what produced the wrong answer the first time:
+ * Three phases, each varying one factor and holding the rest still. All must
+ * run against a single bitstream: lock statistics are not comparable across
+ * builds, so a phase measured on one and compared against another proves
+ * nothing.
  *   A  memory pressure ramp, no flips        - pressure innocent?
  *   B  flip-rate ramp, no rendering          - flips guilty?
  *   C  "null flips" (PARK_PTR rewritten with the SAME store), no rendering
  *      - is it the buffer switch, or merely touching the register?
  *
- * Verdict from hardware: pressure is the cause, flips are innocent. Phase A
- * also reports the VDMA's achieved frame rate, which is what makes starvation
+ * Phase A also reports the VDMA's achieved frame rate, which makes starvation
  * directly visible rather than inferred.
  * ========================================================================= */
 

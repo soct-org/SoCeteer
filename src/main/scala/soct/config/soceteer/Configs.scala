@@ -218,7 +218,7 @@ class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, her
  *
  * Why: the coherent DMA port is a control-plane path - its AXI-to-TileLink conversion is
  * FIFO-ordered and caps transactions in flight, so its throughput is latency-bound rather than
- * bandwidth-bound. Measured on the ZCU104 (2026-07-22) with an L2 in that path, the frame fetch
+ * bandwidth-bound. Measured on the ZCU104 with an L2 in that path, the frame fetch
  * fell from 165 MB/s to 82 MB/s under only ~50 MB/s of concurrent CPU traffic - below the
  * 166 MB/s a 720p60 stream needs - so the video out lost lock and the display went black. On the
  * private port the fetch meets other masters only at the memory controller, where the combined

@@ -1,12 +1,12 @@
 /*
  * Instrumentation.
  *
- * The bring-up telemetry reads identical between working and "no video input"
- * runs, so these watch the parts it cannot see: the sink's own view of the
- * link, and the video-out lock bit sampled at high rate instead of once per
- * frame at a fixed phase (where it aliases with per-frame events). The
- * controlled experiment at the bottom is what settled why the lock was being
- * lost at all.
+ * The bring-up telemetry reads identical between a working pipeline and one
+ * the monitor reports as "no video input", so these watch the parts it cannot
+ * see: the sink's own view of the link, and the video-out lock bit sampled at
+ * high rate rather than once per frame at a fixed phase, where it aliases with
+ * per-frame events. The controlled experiment at the bottom attributes lock
+ * loss to a specific cause.
  */
 #ifndef DP_TEST_DIAG_H
 #define DP_TEST_DIAG_H
