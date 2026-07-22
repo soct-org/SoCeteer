@@ -85,6 +85,14 @@ cmake --build workspace/RocketB1-64/sim/build/sim-build
 workspace/RocketB1-64/sim/build/sim-build/simulator workspace/RocketB1-64/sim/elfs/hello-hart.elf
 ```
 
+Step 3 is automated by the `verilator.build` target, which emits the design and then configures
+and builds the simulator in one go (into `workspace/RocketB1-64/sim/build/sim-build`):
+
+```bash
+sbt "runMain soct.SOCTLauncher --target verilator.build"
+workspace/RocketB1-64/sim/build/sim-build/simulator workspace/RocketB1-64/sim/elfs/hello-hart.elf
+```
+
 Every emit writes `workspace/RocketB1-64/sim/SOCTSystem.cmake` (variables for arch, core count, ABI, paths) and updates the
 `SOCTSystem-latest.cmake` symlink at the project root, which all CMake projects fall back to when no
 explicit `SOCT_SYSTEM` is passed. Pick a different system with
@@ -103,7 +111,21 @@ sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --vivado /path/to/
 ```
 
 Open the generated project (`workspace/<config>/ZCU104/vivado-project`), run synthesis and
-implementation, and program the bitstream. Programs are then loaded over JTAG
+implementation, and program the bitstream.
+
+To build without opening the GUI, pick a build target instead of `vivado`: `vivado.syn`
+(synthesis) or `vivado.bs` (through `write_bitstream`), with `--vivado-parallel <jobs>` for
+the job count. The build runs **detached** - the launcher prints its log path and a follow
+command (`tail -f` / `Get-Content -Wait`) and returns immediately:
+
+```bash
+sbt "runMain soct.SOCTLauncher --target vivado.bs --board ZCU104 --vivado-parallel 8 --vivado /path/to/vivado"
+```
+
+Add `--use-remote-vivado` (with `--ssh-config`/`--remote-dir`) to run the build on a remote host;
+follow the remote log it prints, then pull the results back with `--sfr`.
+
+Programs are then loaded over JTAG
 (`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
 application at reset. See the [Binaries guide](docs/guides/binaries.html).
 

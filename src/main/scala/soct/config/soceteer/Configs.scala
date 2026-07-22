@@ -75,11 +75,20 @@ class RocketSimBaseConfig extends Config(
 
 /** Base config of the Vivado FPGA target: block-design builder, JTAG debug, SD card and UART. */
 class RocketVivadoBaseConfig extends Config(
-  // All fabric peripheral interrupts cascade through one AXI INTC into the PLIC, so the
-  // core sees exactly one external interrupt regardless of how many devices the design
-  // has (see soct.system.vivado.components.AXIIntc for why the PLIC cannot take the
-  // peripherals directly).
-  new WithNExtTopInterrupts(1) ++
+  // A banked inclusive L2 (512 KiB, 8-way) as the coherence manager, replacing the default
+  // broadcast hub. This is an FPGA-only win: on hardware an L1 miss otherwise pays the full
+  // DDR4 round trip (SmartConnect CDC + DDRMC = 100+ core cycles), which an L2 hit avoids.
+  // Deliberately NOT in RocketBaseConfig: the Verilator target has a single coherent master
+  // (WithNoSlavePort, no DMA) and models memory as a fast in-RTL TL SRAM, so the L2 neither
+  // exercises its coherence role nor represents any latency it would hide - it would only
+  // slow simulation. The InclusiveCache reads up(SubsystemBankedCoherenceKey), set by
+  // WithCoherentBusTopology in RocketBaseConfig further down this chain.
+  new WithInclusiveCache() ++
+    // All fabric peripheral interrupts cascade through one AXI INTC into the PLIC, so the
+    // core sees exactly one external interrupt regardless of how many devices the design
+    // has (see soct.system.vivado.components.AXIIntc for why the PLIC cannot take the
+    // peripherals directly).
+    new WithNExtTopInterrupts(1) ++
     new WithDTS("freechips,rocketchip-vivado", Nil) ++
     new WithBdBuilder(new SOCTBdBuilder) ++
     new WithDefaultSlavePort ++

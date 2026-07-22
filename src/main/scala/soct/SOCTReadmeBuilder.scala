@@ -166,6 +166,14 @@ object SOCTReadmeBuilder {
        |$simBuildDir/$SOCT_SIMULATOR_EXE $defaultBinPath
        |```
        |
+       |Step 3 is automated by the `verilator.build` target, which emits the design and then configures
+       |and builds the simulator in one go (into `$simBuildDir`):
+       |
+       |```bash
+       |sbt "runMain $slPath --target verilator.build"
+       |$simBuildDir/$SOCT_SIMULATOR_EXE $defaultBinPath
+       |```
+       |
        |Every emit writes `$soctCmakePath` (variables for arch, core count, ABI, paths) and updates the
        |`SOCTSystem-latest.cmake` symlink at the project root, which all CMake projects fall back to when no
        |explicit `${SOCTNames.SOCT_SYSTEM_CMAKE_KEY}` is passed. Pick a different system with
@@ -183,8 +191,22 @@ object SOCTReadmeBuilder {
        |sbt "runMain $slPath --target vivado --board $exampleBoard --vivado /path/to/vivado"
        |```
        |
-       |Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), run synthesis and
-       |implementation, and program the bitstream. Programs are then loaded over JTAG
+Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), run synthesis and
+       |implementation, and program the bitstream.
+       |
+       |To build without opening the GUI, pick a build target instead of `vivado`: `vivado.syn`
+       |(synthesis) or `vivado.bs` (through `write_bitstream`), with `--vivado-parallel <jobs>` for
+       |the job count. The build runs **detached** - the launcher prints its log path and a follow
+       |command (`tail -f` / `Get-Content -Wait`) and returns immediately:
+       |
+       |```bash
+       |sbt "runMain $slPath --target vivado.bs --board $exampleBoard --vivado-parallel 8 --vivado /path/to/vivado"
+       |```
+       |
+       |Add `--use-remote-vivado` (with `--ssh-config`/`--remote-dir`) to run the build on a remote host;
+       |follow the remote log it prints, then pull the results back with `--sfr`.
+       |
+       |Programs are then loaded over JTAG
        |(`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
        |application at reset. See the [Binaries guide](docs/guides/binaries.html).
        |

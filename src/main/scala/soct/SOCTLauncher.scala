@@ -90,12 +90,20 @@ object SOCTLauncher {
 
     val success = SOCTVivado.prepareForVivado(boardPaths, config)
 
+    // The build stage rides on the target (vivado.syn/vivado.bs); plain vivado/vivado.bd only
+    // create the project.
+    val stage = args.target match {
+      case v: VivadoTarget => v.buildStage
+      case _ => None
+    }
+
     if (args.vivado.isEmpty) {
-      log.warn("No Vivado path provided, cannot override existing Vivado project.")
-    } else if (success) {
-      SOCTVivado.generateProject(args, boardPaths, config)
-    } else {
+      log.warn("No Vivado path provided, generated the project sources but not running Vivado.")
+    } else if (!success) {
       log.warn("No Vivado project generated due to errors in design generation.")
+    } else stage match {
+      case None        => SOCTVivado.generateProject(args, boardPaths, config)         // create project only (synchronous)
+      case Some(built) => SOCTVivado.launchBuild(args, boardPaths, config, built)      // create + build, detached
     }
   }
 
@@ -115,6 +123,38 @@ object SOCTLauncher {
     Transpiler.emitLowFirrtl(config, simPaths)
 
     Transpiler.emitVerilog(config, simPaths)
+
+    // verilator.build also compiles the C++ simulator from the emitted Verilog.
+    args.target match {
+      case v: VerilatorTarget if v.build => buildSimulator(simPaths)
+      case _ =>
+    }
+  }
+
+  /**
+   * Configure and build the `sim` CMake project against the just-emitted system, producing the
+   * Verilator simulator executable. Runs in the foreground (streaming CMake output) because a
+   * simulator build is short compared to an FPGA build and its result is normally awaited.
+   *
+   * @param simPaths output paths of the simulation flow
+   * @throws RuntimeException if CMake configuration or the build fails
+   */
+  private def buildSimulator(simPaths: SimSOCTPaths): Unit = {
+    val simSrc = SOCTPaths.get("sim").toAbsolutePath.toString
+    val buildDir = simPaths.buildDir.resolve("sim-build")
+    buildDir.toFile.mkdirs()
+    val soctSystem = simPaths.soctSystemCMakeFile.toAbsolutePath.toString
+
+    def run(cmd: Seq[String], what: String): Unit = {
+      log.info(s"$what: ${cmd.mkString(" ")}")
+      val exit = new ProcessBuilder(cmd: _*).inheritIO().start().waitFor()
+      if (exit != 0) throw new RuntimeException(s"Failed to $what (exit code $exit).")
+    }
+
+    run(Seq("cmake", "-S", simSrc, "-B", buildDir.toString, "-DCMAKE_BUILD_TYPE=Release", s"-DSOCT_SYSTEM=$soctSystem"),
+      "configure the simulator with CMake")
+    run(Seq("cmake", "--build", buildDir.toString), "build the simulator")
+    log.info(s"Simulator built: ${buildDir.resolve(SOCTNames.SOCT_SIMULATOR_EXE)}")
   }
 
   /**
@@ -161,9 +201,9 @@ object SOCTLauncher {
       config.params = config.params.orElse(new WithSOCTConfig(config))
 
       val paths: SOCTPaths = args.target match {
-        case Targets.Verilator =>
+        case _: VerilatorTarget =>
           new SimSOCTPaths(args, config)
-        case Targets.Vivado =>
+        case _: VivadoTarget =>
           new VivadoSOCTPaths(args, config)
         case Targets.Yosys =>
           new YosysSOCTPaths(args, config)
@@ -179,11 +219,11 @@ object SOCTLauncher {
       paths.createSubdirs()
 
       args.target match {
-        case Targets.Verilator =>
+        case _: VerilatorTarget =>
           log.info("Targeting Verilator simulation")
           generateSimDesign(args, paths.asInstanceOf[SimSOCTPaths], config)
-        case Targets.Vivado =>
-          log.info(s"Targeting Vivado synthesis for board ${args.board.get}")
+        case v: VivadoTarget =>
+          log.info(s"Targeting Vivado (${v.name}) for board ${args.board.get}")
           generateVivadoDesign(args, paths.asInstanceOf[VivadoSOCTPaths], config)
         case Targets.Yosys =>
           log.info("Targeting Yosys synthesis")

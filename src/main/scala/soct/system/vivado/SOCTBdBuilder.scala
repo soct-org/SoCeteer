@@ -5,7 +5,7 @@ import soct.system.vivado.SOCTBdVars.k
 import soct.system.vivado.abstracts._
 import soct.system.vivado.fpga.FPGA
 import soct.system.vivado.misc.WantsPMODPins
-import soct.{HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
+import soct.{BuildStage, HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
 
 import java.nio.file.Path
 import scala.collection.mutable
@@ -123,7 +123,7 @@ class SOCTBdBuilder extends SOCTBd {
       k.bdName -> TclVar("The name of the block design to create", s"${config.topModuleName}_bd"),
       k.xilinxPart -> TclVar("The Xilinx part number of the target FPGA", fpga.xilinxPart),
       k.partName -> TclVar("The Xilinx part name of the target FPGA", fpga.partName),
-      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", "1"),
+      k.nThreads -> TclVar("The number of threads to use for synthesis and implementation", config.args.vivadoParallel.toString),
       k.thisDir -> TclVar(
         "The directory this file is located in - all paths are relative to this directory",
         "[file dirname [file normalize [info script]]]",
@@ -447,33 +447,50 @@ class SOCTBdBuilder extends SOCTBd {
   }
 
   /**
-   * Generate a TCL script to launch synthesis for the block design. Assumes the project is already set up and the block design is already generated.
+   * Generate the run TCL for a build stage: open the project (idempotent), set the parallel job
+   * count, reset and launch the run, wait for it, and fail loudly if it did not complete. Written
+   * to be self-contained - safe to `source` standalone (it opens the project itself) or chained
+   * after the init script (it skips the open when a project is already open), so it does not depend
+   * on the `error_exit`/`warn_msg` procs defined in the block-design TCL.
    *
+   * @param stage [[BuildStage.Synthesis]] runs `synth_1` only; [[BuildStage.Bitstream]] drives
+   *              `impl_1` through `write_bitstream` (Vivado runs synthesis first when out of date)
    * @return TCL script as string
    * @throws VivadoDesignException if the builder was not initialized via [[init]]
    */
-  def generateSynthesisTcl(): String = {
+  def generateRunTcl(stage: BuildStage): String = {
     checkInit()
     checkFinalized()
 
+    val (run, launch) = stage match {
+      case BuildStage.Synthesis => (k.synth, s"launch_runs ${k.synth} -jobs ${k.nThreads}")
+      case BuildStage.Bitstream => (k.impl, s"launch_runs ${k.impl} -to_step write_bitstream -jobs ${k.nThreads}")
+    }
+
     s"""${args.genTCLHeader(args.vars.toMap)}
        |
-       |# Set max threads
-       |set_param general.maxThreads ${k.nThreads}
-       |
-       |# Open the project
-       |$openProject
+       |# Open the project if none is open yet (works standalone or chained after the init script).
+       |if {[llength [get_projects -quiet]] == 0} {
+       |  open_project ${k.vivadoProjectDir}/${k.projectName}.xpr
+       |}
        |
        |update_compile_order -fileset ${k.sources}
        |
-       |# Reset previous synthesis runs to ensure a clean synthesis.
-       |reset_run ${k.synth}
+       |# Use up to <n_threads> parallel jobs for the run.
+       |set_param general.maxThreads ${k.nThreads}
        |
-       |# Launch synthesis with verbose output and the specified number of threads
-       |launch_runs -jobs ${k.nThreads} ${k.synth} -verbose
+       |# Reset the run for a clean build, then launch it and block until it finishes.
+       |reset_run $run
+       |$launch
+       |wait_on_run $run
        |
-       |# Wait for synthesis to complete before proceeding
-       |wait_on_run ${k.synth}
+       |# Fail loudly if the run did not finish cleanly, so a detached build reports failure in its log.
+       |set run_status [get_property STATUS [get_runs $run]]
+       |set run_progress [get_property PROGRESS [get_runs $run]]
+       |if {$$run_progress ne "100%"} {
+       |  error "Vivado run $run did not complete (status: $$run_status, progress: $$run_progress)."
+       |}
+       |puts "Vivado run $run completed successfully (status: $$run_status)."
        |""".stripMargin
   }
 
@@ -587,10 +604,6 @@ class SOCTBdBuilder extends SOCTBd {
        |
        |# Generate the block design
        |source ${k.defaultBdGenerator}
-       |
-       |# WARNING, not yet tested - use with caution:
-       |#source ${k.defaultSynthGenerator}
-       |
-       |""".stripMargin // TODO: Add impl and not always launch synth and impl here
+       |""".stripMargin
   }
 }

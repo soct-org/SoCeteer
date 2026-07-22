@@ -287,6 +287,17 @@ class VivadoSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args
   val tclInitFile: Path = vivadoSourceDir.resolve("init.tcl")
 
   /**
+   * Path to the TCL entry point for an automatic detached build (`vivado.syn`/`vivado.bs`):
+   * sources the init script then the stage's run script. Only written when a build is requested.
+   */
+  val tclBuildFile: Path = vivadoSourceDir.resolve("build.tcl")
+
+  /**
+   * Path to the log file a detached local build streams its Vivado output into.
+   */
+  val vivadoBuildLog: Path = systemDir.resolve("vivado-build.log")
+
+  /**
    * Path to the TCL file that loads the block design for the top module in Vivado
    */
   val defaultBdGenerator: Path = vivadoSourceDir.resolve(s"${config.topModuleName}_bd.tcl")
