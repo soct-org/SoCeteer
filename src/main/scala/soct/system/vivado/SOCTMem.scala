@@ -216,6 +216,15 @@ object SOCTMemGen {
   private val writingKinds = Set("rw", "mrw", "write", "mwrite")
 
   /**
+   * Maximum mask lanes packed into one sub-array. Each lane is a byte-write-enable, and Vivado
+   * reliably infers a byte-write-enable RAM only up to a few enables: the 4-lane I-cache data
+   * array is extracted, the 32-lane D-cache array (one array per lane) was silently register-ized.
+   * 4 is the proven-safe count; it also fills a RAMB18 well (a 512x32 array is ~89% of an 18Kb
+   * primitive, versus ~22% for a lone 512x8 lane). Do NOT raise without re-validating inference.
+   */
+  private val maxLanesPerArray = 4
+
+  /**
    * Generate one Verilog implementation per memory in the conf file into `outDir`.
    *
    * @param confFile the ReplSeqMem conf file written by firtool
@@ -278,13 +287,14 @@ object SOCTMemGen {
   private def addrBits(depth: BigInt): Int = ((depth - 1).bitLength).max(1)
 
   /**
-   * Emit the Verilog implementation of one memory: per-lane arrays plus, per port, one
-   * always-block per lane in the canonical single-write/registered-read form Vivado infers.
+   * Emit the Verilog implementation of one memory. The mask lanes are packed into sub-arrays of
+   * up to [[maxLanesPerArray]] lanes; each sub-array is one byte-write-enable RAM with a
+   * registered read - the shape Vivado infers, and packed so it fills BRAM efficiently instead of
+   * one wasteful primitive per lane. Unmasked memories are a single full-width array.
    */
   def emit(m: MemDesc): String = {
     val a = addrBits(m.depth) - 1
     val w = m.width - 1
-    val lanes = 0 until m.lanes
 
     // Assign each port its firtool-convention prefix (R0.., W0.., RW0.. per kind family).
     var (r, wr, rw) = (0, 0, 0)
@@ -305,61 +315,62 @@ object SOCTMemGen {
       }
     }
 
-    val arrays = lanes.map(l => s"  reg [${m.gran - 1}:0] mem_$l [0:${m.depth - 1}];").mkString("\n")
+    // Contiguous lane groups of at most maxLanesPerArray lanes; one sub-array `mem_<gi>` each.
+    val groups: Seq[Seq[Int]] = (0 until m.lanes).grouped(maxLanesPerArray).toSeq
+    val masked = m.maskGran.isDefined
 
-    def range(l: Int) = s"[${(l + 1) * m.gran - 1}:${l * m.gran}]"
+    /** Width of the sub-array holding group `grp`. */
+    def gwHi(grp: Seq[Int]): Int = grp.size * m.gran - 1
+    /** The group's slice of the module's wide data word (contiguous lanes). */
+    def wordSlice(grp: Seq[Int]): String = s"[${(grp.last + 1) * m.gran - 1}:${grp.head * m.gran}]"
+    /** Lane `l`'s slice within its sub-array. */
+    def laneLocal(l: Int, grp: Seq[Int]): String = s"[${(l - grp.head) * m.gran} +: ${m.gran}]"
+    /** Lane `l`'s slice of the module's wide data word. */
+    def laneWord(l: Int): String = s"[${l * m.gran} +: ${m.gran}]"
+
+    val arrays = groups.zipWithIndex.map { case (grp, gi) =>
+      s"  reg [${gwHi(grp)}:0] mem_$gi [0:${m.depth - 1}];"
+    }.mkString("\n")
+
+    /** Per-lane masked write, or a single whole-array write when the memory is unmasked. */
+    def writeBody(p: String, grp: Seq[Int], gi: Int, dataSig: String, maskSig: String): String =
+      if (!masked) s"      mem_$gi[${p}_addr] <= ${p}_$dataSig${wordSlice(grp)};"
+      else grp.map(l =>
+        s"      if (${p}_$maskSig[$l]) mem_$gi[${p}_addr]${laneLocal(l, grp)} <= ${p}_$dataSig${laneWord(l)};").mkString("\n")
 
     val portLogic = prefixed.map { case (kind, p) =>
-      lanes.map { l =>
+      groups.zipWithIndex.map { case (grp, gi) =>
         kind match {
           case "read" =>
-            s"""  reg [${m.gran - 1}:0] ${p}_data_$l;
-               |  always @(posedge ${p}_clk) begin
-               |    if (${p}_en)
-               |      ${p}_data_$l <= mem_$l[${p}_addr];
-               |  end
-               |  assign ${p}_data${range(l)} = ${p}_data_$l;""".stripMargin
-          case "write" =>
+            s"""  reg [${gwHi(grp)}:0] ${p}_data_$gi;
+               |  always @(posedge ${p}_clk)
+               |    if (${p}_en) ${p}_data_$gi <= mem_$gi[${p}_addr];
+               |  assign ${p}_data${wordSlice(grp)} = ${p}_data_$gi;""".stripMargin
+          case "write" | "mwrite" =>
             s"""  always @(posedge ${p}_clk) begin
-               |    if (${p}_en)
-               |      mem_$l[${p}_addr] <= ${p}_data${range(l)};
-               |  end""".stripMargin
-          case "mwrite" =>
-            s"""  always @(posedge ${p}_clk) begin
-               |    if (${p}_en & ${p}_mask[$l])
-               |      mem_$l[${p}_addr] <= ${p}_data${range(l)};
-               |  end""".stripMargin
-          case "rw" =>
-            s"""  reg [${m.gran - 1}:0] ${p}_rdata_$l;
-               |  always @(posedge ${p}_clk) begin
                |    if (${p}_en) begin
-               |      if (${p}_wmode)
-               |        mem_$l[${p}_addr] <= ${p}_wdata${range(l)};
-               |      else
-               |        ${p}_rdata_$l <= mem_$l[${p}_addr];
+               |${writeBody(p, grp, gi, "data", "mask")}
                |    end
-               |  end
-               |  assign ${p}_rdata${range(l)} = ${p}_rdata_$l;""".stripMargin
-          case "mrw" =>
-            s"""  reg [${m.gran - 1}:0] ${p}_rdata_$l;
+               |  end""".stripMargin
+          case "rw" | "mrw" =>
+            s"""  reg [${gwHi(grp)}:0] ${p}_rdata_$gi;
                |  always @(posedge ${p}_clk) begin
                |    if (${p}_en) begin
                |      if (${p}_wmode) begin
-               |        if (${p}_wmask[$l])
-               |          mem_$l[${p}_addr] <= ${p}_wdata${range(l)};
+               |${writeBody(p, grp, gi, "wdata", "wmask")}
                |      end else
-               |        ${p}_rdata_$l <= mem_$l[${p}_addr];
+               |        ${p}_rdata_$gi <= mem_$gi[${p}_addr];
                |    end
                |  end
-               |  assign ${p}_rdata${range(l)} = ${p}_rdata_$l;""".stripMargin
+               |  assign ${p}_rdata${wordSlice(grp)} = ${p}_rdata_$gi;""".stripMargin
         }
       }.mkString("\n")
     }.mkString("\n")
 
     s"""// Generated by SOCTMemGen (SoCeteer) from the firtool ReplSeqMem conf.
        |// ${m.name}: ${m.depth} x ${m.width}, ports ${m.ports.mkString(",")}${m.maskGran.map(g => s", mask_gran $g").getOrElse("")}
-       |// One independent array per mask lane (${m.lanes} lane(s) of ${m.gran} bits), each with a
-       |// single write and a registered read - the shape Vivado reliably infers as BRAM/LUTRAM.
+       |// ${groups.size} sub-array(s) of up to $maxLanesPerArray x ${m.gran}-bit lanes, each a
+       |// byte-write-enable RAM with a registered read - the shape Vivado infers as BRAM/LUTRAM.
        |// Latency 1 read, as the design expects; read-write collision behavior is undefined.
        |module ${m.name}(
        |${portDecls.mkString(",\n").linesIterator.map("  " + _).mkString("\n")}

@@ -75,20 +75,7 @@ class RocketSimBaseConfig extends Config(
 
 /** Base config of the Vivado FPGA target: block-design builder, JTAG debug, SD card and UART. */
 class RocketVivadoBaseConfig extends Config(
-  // A banked inclusive L2 (512 KiB, 8-way) as the coherence manager, replacing the default
-  // broadcast hub. This is an FPGA-only win: on hardware an L1 miss otherwise pays the full
-  // DDR4 round trip (SmartConnect CDC + DDRMC = 100+ core cycles), which an L2 hit avoids.
-  // Deliberately NOT in RocketBaseConfig: the Verilator target has a single coherent master
-  // (WithNoSlavePort, no DMA) and models memory as a fast in-RTL TL SRAM, so the L2 neither
-  // exercises its coherence role nor represents any latency it would hide - it would only
-  // slow simulation. The InclusiveCache reads up(SubsystemBankedCoherenceKey), set by
-  // WithCoherentBusTopology in RocketBaseConfig further down this chain.
-  new WithInclusiveCache() ++
-    // All fabric peripheral interrupts cascade through one AXI INTC into the PLIC, so the
-    // core sees exactly one external interrupt regardless of how many devices the design
-    // has (see soct.system.vivado.components.AXIIntc for why the PLIC cannot take the
-    // peripherals directly).
-    new WithNExtTopInterrupts(1) ++
+  new WithNExtTopInterrupts(1) ++
     new WithDTS("freechips,rocketchip-vivado", Nil) ++
     new WithBdBuilder(new SOCTBdBuilder) ++
     new WithDefaultSlavePort ++
@@ -199,11 +186,14 @@ abstract class SOCTFeatureConfig(suffix: String, impl: Config) extends Config(
  * The default is 720p60: 1080p60 needs more frame-fetch bandwidth than the coherent DMA
  * path sustains at 100 MHz (the design generation validates this and fails loudly).
  *
- * @param width  active pixels per line
- * @param height active lines per frame
- * @param fps    frames per second
+ * @param width      active pixels per line
+ * @param height     active lines per frame
+ * @param fps        frames per second
+ * @param incoherent whether the frame-fetch DMA bypasses the SoC's coherent fabric and reads
+ *                   DRAM through its own memory-controller port (see [[WithIncoherentVideoStream]])
  */
-case class VideoStreamParams(width: Int = 1280, height: Int = 720, fps: Int = 60)
+case class VideoStreamParams(width: Int = 1280, height: Int = 720, fps: Int = 60,
+                             incoherent: Boolean = false)
 
 /**
  * Field enabling the DisplayPort video pipeline: an AXI VDMA reads frames from DRAM and
@@ -220,6 +210,55 @@ case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
 class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, here, up) => {
   case HasVideoStream => Some(VideoStreamParams())
 }))
+
+/**
+ * The video pipeline with an INCOHERENT frame fetch: the VDMA masters the memory-side
+ * SmartConnect directly (`VDMA -> mem_smc -> DDR4`) instead of reaching DRAM through the
+ * coherent fabric (`dma_smc -> l2_frontend_bus -> fbus -> sbus -> coherence manager -> mbus`).
+ *
+ * Why: the coherent DMA port is a control-plane path - its AXI-to-TileLink conversion is
+ * FIFO-ordered and caps transactions in flight, so its throughput is latency-bound rather than
+ * bandwidth-bound. Measured on the ZCU104 (2026-07-22) with an L2 in that path, the frame fetch
+ * fell from 165 MB/s to 82 MB/s under only ~50 MB/s of concurrent CPU traffic - below the
+ * 166 MB/s a 720p60 stream needs - so the video out lost lock and the display went black. On the
+ * private port the fetch meets other masters only at the memory controller, where the combined
+ * demand is a few percent of capacity: a structural guarantee instead of a statistical one. It
+ * also stops a streaming master from continuously evicting the cores' working sets from the L2.
+ *
+ * The cost is that DRAM is no longer coherent with the CPU's caches for the framebuffer:
+ * software must make freshly rendered pixels visible before the DMA reads them - via the L2's
+ * `Flush64` control register when an L2 is present ([[WithL2Cache]], which flushes the L1 too
+ * because the cache is inclusive), or by evicting the L1 otherwise. The generated device tree
+ * marks the pipeline `soct,incoherent` so software can tell which contract applies.
+ *
+ * Select via `--with-config soct.WithIncoherentVideoStream`; outputs land in a `-video-nc`
+ * suffixed workspace, so coherent and incoherent designs never overwrite each other. Note that
+ * without an L2 the coherent pipeline ([[WithVideoStream]]) already sustains 720p60 under load -
+ * this fragment earns its keep when combining video WITH an L2, or at timings whose bandwidth
+ * the coherent path cannot guarantee.
+ */
+@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
+class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc", new Config((site, here, up) => {
+  case HasVideoStream => Some(VideoStreamParams(incoherent = true))
+}))
+
+/**
+ * Adds a banked inclusive L2 (SiFive InclusiveCache) as the coherence manager in place of the
+ * default broadcast hub, which has no data array: without it every L1 miss pays the full DDR4
+ * round trip (SmartConnect CDC + DDRMC, 100+ core cycles), so an L2 hit is a large latency win
+ * for CPU-bound work on FPGA.
+ *
+ * Select via `--with-config soct.WithL2Cache`; the design's outputs land in an `-l2`-suffixed
+ * workspace (see [[SOCTFeatureConfig]]), so L2 and non-L2 builds never overwrite each other.
+ * The fragment must compose above [[RocketBaseConfig]]'s `WithCoherentBusTopology`, whose
+ * `SubsystemBankedCoherenceKey` the InclusiveCache reads - which `--with-config` guarantees.
+ * Simulation gains nothing from it: the Verilator target has a single coherent master (no DMA)
+ * and models memory as a fast in-RTL SRAM, so the L2 neither exercises its coherence role nor
+ * hides any latency there.
+ */
+@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
+class WithL2Cache() extends SOCTFeatureConfig("l2", new WithInclusiveCache())
+
 
 case object HasUART extends Field[Boolean](false)
 

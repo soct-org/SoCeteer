@@ -295,7 +295,8 @@ trait SOCTVivadoSystemWiring {
    * @throws VivadoDesignException if the video mode has no known pixel clock, or if the
    *                               memory path cannot sustain the mode's frame-fetch bandwidth
    */
-  protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign): Unit = {
+  protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign,
+                                memPaths: Seq[MemPath]): Unit = {
     val vs = p(HasVideoStream).getOrElse(return)
     val ps = bd.fpgaInstance() match {
       case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
@@ -303,23 +304,58 @@ trait SOCTVivadoSystemWiring {
     }
     val dts = videoDTSOpt.get
 
+    // Incoherent frame fetch: the VDMA masters the memory-side SmartConnect directly, so it
+    // reaches DRAM without crossing the coherent fabric (see [[soct.WithIncoherentVideoStream]]).
+    // Only meaningful with exactly one memory channel: with several, memSMC sits behind the
+    // address deinterleaver and sees one channel's dense address space, so a framebuffer would
+    // have to be pinned to that channel - fail instead of mapping frames to the wrong DRAM.
+    val memPathOpt = if (!vs.incoherent) None else Some(memPaths match {
+      case Seq(single) => single
+      case several => throw VivadoDesignException(
+        s"Incoherent video needs exactly one memory channel, but the design has ${several.length}: " +
+          "the memory SmartConnect is behind the address deinterleaver and exposes only its own " +
+          "channel, so frames would be fetched from the wrong DRAM. Use the coherent video " +
+          "pipeline (soct.WithVideoStream) or a single-channel memory layout.")
+    })
+
     // The frame fetch must sustain width x height x fps x 3 B/s through the coherent DMA
     // path (SmartConnect -> L2 frontend, 8 B/cycle on the periphery clock). Measured on the
     // ZCU104 at 100 MHz, that path delivers ~25% of its theoretical rate; demand beyond it
     // starves the video out mid-line and the stream never locks (1080p60 delivered 30 of
     // 60 frames/s). Fail at generation time instead of on the monitor.
+    // The incoherent path masters the memory SmartConnect directly, so it is not subject to
+    // the coherent port's ordering/in-flight limits - budget it on the core clock instead.
     val streamBytesPerSec = BigInt(vs.width) * vs.height * vs.fps * 3
-    val pathBytesPerSec = BigInt((c.peripheryDomain.freq.toHz * 8 * 0.25).toLong)
+    val dmaDomain = if (vs.incoherent) c.coreDomain else c.peripheryDomain
+    val pathBytesPerSec = BigInt((dmaDomain.freq.toHz * 8 * (if (vs.incoherent) 0.75 else 0.25)).toLong)
     if (streamBytesPerSec > pathBytesPerSec) {
       throw VivadoDesignException(
         s"Video mode ${vs.width}x${vs.height}@${vs.fps} needs $streamBytesPerSec B/s of frame-fetch " +
-          s"bandwidth, but the DMA path sustains only ~$pathBytesPerSec B/s at the current periphery " +
-          s"clock (${c.peripheryDomain.freq}). Use a smaller mode or a faster clock.")
+          s"bandwidth, but the ${if (vs.incoherent) "incoherent" else "coherent"} DMA path sustains only " +
+          s"~$pathBytesPerSec B/s at its clock (${dmaDomain.freq}). Use a smaller mode, a faster clock" +
+          s"${if (vs.incoherent) "" else ", or the incoherent pipeline (soct.WithIncoherentVideoStream)"}.")
     }
 
     // Components - the whole PL-side pipeline lives in the `video` BD hierarchy (the PS
     // and the pixel reset synchronizer stay outside: board-level and its own block).
-    val vdma = AXIVideoDMA(dts.vdma, c.axiMMIO, Seq((c.axiDMA, "reg0"))).withGroup("video")
+    // Coherent: the frame master targets the Rocket L2-frontend AXI slave. Incoherent: it has
+    // no fabric slave to target - its address space is mapped straight onto the DDR4
+    // controller's memory segment below, so the DMA never enters the SoC's interconnect.
+    val vdma = memPathOpt match {
+      case None => AXIVideoDMA(dts.vdma, c.axiMMIO, Seq((c.axiDMA, "reg0"))).withGroup("video")
+      case Some(mem) =>
+        val ddr4 = mem.ddr4Inst
+        new AXIVideoDMA(dts.vdma, c.axiMMIO, Seq.empty) {
+          override def assignAddrTcl: TCLCommands = super.assignAddrTcl ++ Seq(
+            s"""assign_bd_address -offset 0x00000000 -range 0x${dmaMasterRange.toHexString.toUpperCase} -target_address_space [get_bd_addr_spaces $bdPath/Data_MM2S] [get_bd_addr_segs ${ddr4.bdPath}/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]
+               |# Same 'register' vs 'memory' usage mismatch as the coherent path: re-include the
+               |# segment Vivado excluded as a precaution (BD 41-1051).
+               |include_bd_addr_seg [get_bd_addr_segs -excluded -of_objects [get_bd_addr_spaces $bdPath/Data_MM2S]]""".stripMargin.tcl
+          )
+          // An anonymous subclass has no class name to snake-case, so name it explicitly -
+          // otherwise the instance (and every path derived from it) degenerates to "_0".
+        }.withInstanceName("axivideo_dma").withGroup("video")
+    }
     val vtc = VideoTimingController(dts.vtc, c.axiMMIO).withGroup("video")
     val vidOut = AxisVideoOut().withGroup("video")
     val lpdWindow = new AxiAddrOffset(
@@ -344,8 +380,11 @@ trait SOCTVivadoSystemWiring {
     // VDMA's pixel stream, the video out, the timing generator and the PS live input - on
     // the pixel domain. The stream must carry one pixel per cycle at the full pixel rate;
     // on the (slower) periphery clock it starves the video out mid-line.
-    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vdma.M_AXI_MM2S_ACLK,
-      vtc.S_AXI_ACLK, ps.SAXI_LPD_ACLK, lpdWindow.ACLK)
+    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vtc.S_AXI_ACLK, ps.SAXI_LPD_ACLK, lpdWindow.ACLK)
+    // The frame-fetch master runs in the domain of the SmartConnect it drives: the periphery
+    // clock for the coherent path, the core clock for the incoherent one (memSMC's slave side
+    // already runs there, so the private port needs no extra SmartConnect clock).
+    (if (memPathOpt.isDefined) coreClock else peripheryClock) --> vdma.M_AXI_MM2S_ACLK
     pixelClock --> Seq(vdma.M_AXIS_MM2S_ACLK, vidOut.ACLK, vtc.CLK, vidOut.VID_IO_OUT_CLK,
       ps.DP_VIDEO_IN_CLK)
 
@@ -377,7 +416,10 @@ trait SOCTVivadoSystemWiring {
     c.mmioSMC.M_AXI.next() <-> vtc.S_AXI
     c.mmioSMC.M_AXI.next() <-> lpdWindow.S_AXI
     lpdWindow.M_AXI <-> ps.S_AXI_LPD
-    c.dmaSMC.S_AXI.next() <-> vdma.M_AXI
+    memPathOpt match {
+      case None => c.dmaSMC.S_AXI.next() <-> vdma.M_AXI
+      case Some(mem) => mem.memSMC.S_AXI.next() <-> vdma.M_AXI
+    }
 
     // Video pipeline status readable by software: {bit2 overflow, bit1 underflow,
     // bit0 locked} of the video out - the operational health of the stream (drivers poll

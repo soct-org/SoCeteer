@@ -167,7 +167,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
 
     wireMmioAndDma(c)
     wireSdCardPmod(peripheryClock, c)
-    wireVideoStream(coreClock, peripheryClock, c)
+    wireVideoStream(coreClock, peripheryClock, c, memPaths)
     wireDebugAndJtag(coreClock, coreClockObj, corePeriodProp, c)
     tieOffHartResets()
   }

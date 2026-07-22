@@ -38,7 +38,7 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
     // path (SmartConnect -> L2 frontend): the stream must sustain the full pixel rate
     // during active lines.
     "CONFIG.c_mm2s_max_burst_length" -> "256",
-    "CONFIG.c_mm2s_linebuffer_depth" -> "4096"
+    "CONFIG.c_mm2s_linebuffer_depth" -> "16384"
     // The stream side runs on the pixel clock while lite/memory stay on the periphery
     // clock; the IP's independent-clocks parameter (c_prmry_is_aclk_async) is read-only
     // and derived by Vivado from those clock connections.
@@ -64,7 +64,8 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
   /** Frame-transfer interrupt (PLIC) */
   object MM2S_INTROUT extends BdPinOut("mm2s_introut", AXIVideoDMA.this)
 
-  private def dmaMasterRange: Long = {
+  /** Address range the frame master decodes; `protected` so an incoherent variant can reuse it. */
+  protected def dmaMasterRange: Long = {
     val extMem = p(ExtMem).get.master
     val dramEnd = extMem.base.toLong + extMem.size.toLong
     var range = java.lang.Long.highestOneBit(dramEnd)

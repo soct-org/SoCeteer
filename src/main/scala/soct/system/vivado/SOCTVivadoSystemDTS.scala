@@ -192,7 +192,14 @@ trait SOCTVivadoSystemDTS {
         "dma-ranges" -> Seq(ResourceInt(0x80000000L), ResourceInt(0x80000000L),
           ResourceInt(0x80000000L)),
         "clock-names" -> Seq(ResourceString("s_axi_lite_aclk"))
-      )
+      ) ++ (if (!vs.incoherent) Map.empty else Map(
+        // The frame master reaches DRAM through its own memory-controller port, bypassing the
+        // coherent fabric (soct.WithIncoherentVideoStream): DRAM is NOT coherent with the CPU
+        // caches for these frames, so software must make rendered pixels visible before the
+        // DMA reads them (L2 Flush64 where an L2 exists, an L1 eviction otherwise). Marked so
+        // a driver can select that contract instead of assuming coherent DMA.
+        "soct,incoherent" -> Nil
+      ))
     )
     val vdmaDev = AxiSlaveBinder.bindSimpleDevice(devname = "dma-controller", dts = vdmaDTS,
       perms = AxiSlaveBinder.mmioPerms)

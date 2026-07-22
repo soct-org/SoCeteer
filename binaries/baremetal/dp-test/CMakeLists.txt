@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 list(APPEND CMAKE_C_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/main.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/diag.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/dp.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/render.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/video.c
         ${CMAKE_CURRENT_SOURCE_DIR}/soct_xil/soct_xil.c
         ${CMAKE_CURRENT_SOURCE_DIR}/xilinx/xdppsu.c
         ${CMAKE_CURRENT_SOURCE_DIR}/xilinx/xdppsu_spm.c

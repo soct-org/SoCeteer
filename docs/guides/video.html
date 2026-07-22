@@ -102,9 +102,11 @@
   <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTVivadoSystemBase.scala"><code>wireVideoStream</code></a>:</p>
   <ul>
     <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIVideoDMA.scala"><code>AXIVideoDMA</code></a>
-      reads frames from DRAM over the same coherent DMA path the SD card uses (through the Rocket
-      L2 frontend, so CPU writes to the framebuffer need no cache maintenance) and emits them as
-      an AXI4-Stream of 24-bit RGB pixels.</li>
+      reads frames from DRAM and emits them as an AXI4-Stream of 24-bit RGB pixels. With
+      <code>WithVideoStream</code> it fetches over the same coherent DMA path the SD card uses
+      (through the Rocket L2 frontend, so CPU writes to the framebuffer need no cache
+      maintenance); with <code>WithIncoherentVideoStream</code> it masters the memory controller
+      directly &mdash; see <em>Coherent and incoherent frame fetch</em> below.</li>
     <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxisVideoOut.scala"><code>AxisVideoOut</code></a>
       converts the stream to parallel video (data + syncs + data-enable), aligned to the timing of
       the <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/VideoTimingController.scala"><code>VideoTimingController</code></a>.
@@ -227,10 +229,58 @@
       register-level soft reset that the driver pulses when it reprograms the stream.</li>
   </ul>
 
+  <h2>Coherent and incoherent frame fetch</h2>
+  <p>The frame fetch can reach DRAM two ways, and the choice is a real trade, not a detail.</p>
+  <p><code>soct.WithVideoStream</code> routes the VDMA through the Rocket <em>L2 frontend</em>,
+  the same coherent port the SD card uses. Frames the CPU writes are visible to the DMA with no
+  cache maintenance at all. The cost is that the coherent port fragments the DMA's bursts and
+  caps its in-flight transactions, so throughput becomes <em>latency-bound</em>: at 720p60 the
+  fetch needs 166&nbsp;MB/s and idles at almost exactly that, leaving no margin. Any CPU traffic
+  queues ahead of it and pushes the round trip over the edge &mdash; measured on a ZCU104, a
+  streaming CPU load of ~50&nbsp;MB/s was enough to halve delivered frames and unlock the video
+  output essentially all the time. This is a starvation problem, not a bandwidth one: the numbers
+  involved are a small fraction of what the DDR4 can move.</p>
+  <p><code>soct.WithIncoherentVideoStream</code> gives the VDMA its own port on the memory
+  controller's SmartConnect instead, bypassing the coherent path entirely. Under the same CPU
+  ramp the fetch holds its full frame rate with the video output locked throughout. The price is
+  that DRAM is no longer coherent with the CPU's caches for framebuffer contents: rendered pixels
+  sit dirty in the write-back L1 (and L2, if present) and the DMA would fetch stale memory.
+  Software must push them out, so the design tree marks such a pipeline
+  <code>soct,incoherent</code> on the VDMA node.</p>
+  <p>Because it removes the coupling rather than merely weakening it, the incoherent variant is
+  also what makes an L2 affordable in a video design: <code>soct.WithL2Cache</code> can be added
+  for CPU performance without the frame fetch paying for it. Both variants suffix the workspace
+  directory (<code>-video</code> / <code>-video-nc</code>, plus <code>-l2</code>).</p>
+  <p>Two mechanisms cover the flush, picked from what the design has &mdash; there is no Zicbom
+  on this Rocket, so neither is a cache-block instruction:</p>
+  <ul>
+    <li>With an L2, write each line's physical address to the InclusiveCache
+      <code>Flush64</code> register. The write blocks until the line is out, and because the
+      cache is inclusive it also pulls the line from L1.</li>
+    <li>Without one, read a buffer the size of the L1 (16&nbsp;KiB): every set gets refilled, so
+      the framebuffer lines are evicted, and with no L2 behind them they land in DRAM.</li>
+  </ul>
+  <p>The <code>Flush64</code> cost is proportional to the region, and that matters more than it
+  looks: a 720p frame is 43,200 cache lines, while an animation usually redraws a small part of
+  one. Flush the <em>dirty rectangle</em>, not the frame &mdash; for <code>dp-test</code>'s
+  teapot that is a 288&times;288 box, about 4,000 lines, an order of magnitude less work per
+  frame. The whole-cache fallback is address-independent, so it is a single sweep either way.</p>
+
   <h2>The software contract</h2>
-  <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/main.c"><code>dp-test</code></a>
+  <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test"><code>dp-test</code></a>
   is the reference implementation of everything below, in the order listed. It doubles as the
-  pipeline's diagnostic tool and ends in a rotating-teapot demo.</p>
+  pipeline's diagnostic tool and ends in a rotating-teapot demo. Its
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/main.c"><code>main.c</code></a>
+  holds the program's flow &mdash; discovery, bring-up, then the demo loop &mdash; and the stages
+  it drives sit beside it:
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/video.c"><code>video.c</code></a>
+  for the whole PL side (framebuffers, VDMA, timing generator),
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/dp.c"><code>dp.c</code></a>
+  for the PS side,
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/render.c"><code>render.c</code></a>
+  for the test pattern and the teapot, and
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/diag.c"><code>diag.c</code></a>
+  for the instrumentation.</p>
 
   <h3>0. Initialize the PS (once per power-up)</h3>
   <p>The DP controller's clocks and the PS-GTR SERDES are configured by the
@@ -264,11 +314,16 @@ psu_ps_pl_reset_config</code></pre>
   sequence follows the Xilinx vtc driver's generator setup) and the VDMA runs in register-direct
   <em>park</em> mode: its frame stores point at CPU-drawn framebuffers, and retargeting the park
   pointer to another store flips the displayed buffer at the next frame boundary &mdash; that is
-  the tear-free page flip. Two caveats both live in <code>dp-test</code>'s comments:</p>
+  the tear-free page flip. Three caveats all live in
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/video.c"><code>video.c</code></a>'s
+  comments:</p>
   <ul>
     <li>Frame stores are latched when <code>VSIZE</code> is written; rewriting <code>VSIZE</code>
       on a running channel visibly glitches the frame being scanned out. Point the stores at
       their buffers once and flip only the park pointer.</li>
+    <li><code>DMACR</code>'s <code>Circular_Park</code> bit resets to 1, i.e. to circular mode, in
+      which the park pointer is ignored and every frame store is scanned out in turn. It must be
+      cleared explicitly; leaving it set shows the hidden buffer every third frame.</li>
     <li>The VDMA read master is 32-bit: framebuffers must live below 4&nbsp;GiB, i.e. in the
       first 2&nbsp;GiB of DRAM.</li>
   </ul>
