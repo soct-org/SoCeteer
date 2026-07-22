@@ -75,7 +75,14 @@
       register maps) are written alongside.</li>
     <li><strong><code>Transpiler.emitLowFirrtl</code> / <code>emitVerilog</code></strong> lower the
       FIRRTL to Verilog into <code>vsrcs/</code> (details below - the two supported Chisel lineages
-      lower differently).</li>
+      lower differently). For Vivado targets on the firtool lineage, the SRAMs are additionally
+      extracted (<code>--repl-seq-mem</code>) and re-emitted by
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTMem.scala"><code>SOCTMemGen</code></a>
+      in a shape Vivado reliably infers as Block RAM: firtool's inline byte-masked memories are
+      only extracted up to a few write lanes, and a 32-lane cache data array otherwise silently
+      becomes ~52k LUTs + 131k flip-flops <em>per core</em>. The generated implementations split
+      each memory into one array per mask lane with a registered read (same 1-cycle latency);
+      simulation and the Berkeley lineage keep the inline memories.</li>
     <li><strong>Target-specific output:</strong>
       <ul>
         <li><em>Verilator:</em> the emitted Verilog plus <code>SOCTSystem.cmake</code> are consumed

@@ -64,14 +64,33 @@ object Transpiler {
       loweringOptions +:= "locationInfoStyle=none"
     }
 
+    // Vivado targets: extract the SRAMs (ReplSeqMem) instead of emitting firtool's inline
+    // masked memories - Vivado silently fails to map those to BRAM beyond a few write lanes
+    // (the 32-lane D-cache data array becomes 131k FFs per core). SOCTMemGen regenerates
+    // each extracted memory below in a shape Vivado reliably infers. Simulation and the
+    // Berkeley/SFC path keep firtool's inline memories (the SFC splits masked memories
+    // per-lane itself, so it never had this problem).
+    val memConf = c.args.target match {
+      case _: VivadoTarget => Some(paths.systemDir.resolve(s"${c.topModuleName}.mems.conf"))
+      case _ => None
+    }
+    memConf.foreach { conf =>
+      otherArgs ++= Seq("--repl-seq-mem", s"--repl-seq-mem-file=${conf.toAbsolutePath}")
+    }
+
     if (loweringOptions.nonEmpty) {
       otherArgs +:= s"--lowering-options=${loweringOptions.mkString(",")}"
     }
 
     val args = Seq(paths.firtoolBinary.toString) ++ c.args.userFirtoolArgs ++ otherArgs ++ Seq(paths.firrtlFile.toString)
-    new ProcessBuilder(args: _*)
+    val exitCode = new ProcessBuilder(args: _*)
       .inheritIO()
       .start()
       .waitFor()
+    if (exitCode != 0) {
+      throw new RuntimeException(s"firtool failed with exit code $exitCode (command: ${args.mkString(" ")})")
+    }
+
+    memConf.foreach(conf => soct.system.vivado.SOCTMemGen.generate(conf, paths.verilogSrcDir))
   }
 }

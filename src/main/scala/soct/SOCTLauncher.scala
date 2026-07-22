@@ -4,7 +4,7 @@ import org.chipsalliance.cde.config.Parameters
 import org.json4s.{DefaultFormats, Formats}
 import soct.SOCTNames.SOCT_SYSTEM_CMAKE_KEY
 import soct.SOCTUtils.configName
-import soct.system.vivado.{SOCTVivado, hasMultiMemSupport}
+import soct.system.vivado.{SOCTMem, SOCTVivado, hasMultiMemSupport}
 
 import java.nio.file.Files
 import scala.reflect.io.Path.jfile2path
