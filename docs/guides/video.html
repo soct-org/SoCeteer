@@ -73,25 +73,30 @@
 
   <h2>Enabling the pipeline</h2>
 <pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
-  --with-config soct.WithVideoStream"</code></pre>
-  <p>The config adds the video mode's parameters
+  --with-config soct.WithIncoherentVideoStream --with-config soct.WithL2Cache"</code></pre>
+  <p>This is the preferred video design (workspace suffix <code>-l2-video-nc</code>): the frame
+  fetch bypasses the coherent fabric, so no amount of CPU traffic can starve the display, and
+  the L2 both serves CPU performance and provides the <code>Flush64</code> register that makes
+  rendered pixels visible to the scanout. The alternative,
+  <code>--with-config soct.WithVideoStream</code> alone (suffix <code>-video</code>), fetches
+  frames coherently: framebuffer writes need no cache maintenance at all, but the display then
+  shares one latency-bound path with the CPU, and bursts of CPU traffic visibly blank the
+  monitor &mdash; the measured trade is in <em>Coherent and incoherent frame fetch</em>
+  below.</p>
+  <p>Either fragment adds the video mode's parameters
   (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>VideoStreamParams</code></a>,
   default 1280&times;720@60) and one fabric interrupt for the VDMA (cascaded, like every
   peripheral interrupt, through the AXI interrupt controller into the PLIC; the device tree
   carries it on the VDMA's channel child node, following the mainline binding). The ZCU104 is the reference
   board throughout this guide; <code>--board</code> takes any registered MPSoC board (see
   <a href="boards.html">Adding an FPGA Board</a>).</p>
-  <p>Generation validates that the mode is drivable: the frame fetch must sustain
-  <em>width &times; height &times; fps &times; 3</em> bytes per second through the coherent DMA
-  path. That path moves 8&nbsp;bytes per periphery-clock cycle in theory and roughly a quarter
-  of that in practice (measured on the reference ZCU104 at the default 100&nbsp;MHz:
-  ~187&nbsp;MB/s, where 1080p60 needs 373&nbsp;MB/s and delivered 30 of 60 frames per second).
-  The check scales with the configured periphery clock
-  (<code>--periphery-freq-mhz</code>) &mdash; a faster clock admits larger modes. An undrivable
-  mode fails the build with the numbers instead of failing on the monitor. Independently, each
-  mode needs a known pixel clock: the supported modes are enumerated in
+  <p>Each mode needs a known pixel clock: the supported modes are enumerated in
   <code>SOCTVivadoSystemBase.pixelClockFor</code> (1280&times;720@60 and 1920&times;1080@60);
-  a new mode is added by giving it its CTA-861 pixel clock there.</p>
+  a new mode is added by giving it its CTA-861 pixel clock there. Whether a mode is
+  <em>dependable</em> is a separate, fetch-path question &mdash; the frame fetch must sustain
+  <em>width &times; height &times; fps &times; 3</em> bytes per second against whatever else
+  the system is doing, which is what <em>Coherent and incoherent frame fetch</em> below is
+  about.</p>
 
   <h2>The hardware pipeline</h2>
   <p>The pipeline targets Zynq UltraScale+ MPSoC boards. On those, the DisplayPort connector is
@@ -103,10 +108,10 @@
   <ul>
     <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIVideoDMA.scala"><code>AXIVideoDMA</code></a>
       reads frames from DRAM and emits them as an AXI4-Stream of 24-bit RGB pixels. With
-      <code>WithVideoStream</code> it fetches over the same coherent DMA path the SD card uses
-      (through the Rocket L2 frontend, so CPU writes to the framebuffer need no cache
-      maintenance); with <code>WithIncoherentVideoStream</code> it masters the memory controller
-      directly &mdash; see <em>Coherent and incoherent frame fetch</em> below.</li>
+      <code>WithIncoherentVideoStream</code> (preferred) it masters the memory controller
+      directly; with <code>WithVideoStream</code> it fetches over the same coherent DMA path
+      the SD card uses (through the Rocket L2 frontend, so CPU writes to the framebuffer need
+      no cache maintenance) &mdash; see <em>Coherent and incoherent frame fetch</em> below.</li>
     <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxisVideoOut.scala"><code>AxisVideoOut</code></a>
       converts the stream to parallel video (data + syncs + data-enable), aligned to the timing of
       the <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/VideoTimingController.scala"><code>VideoTimingController</code></a>.
@@ -237,7 +242,9 @@
   </ul>
 
   <h2>Coherent and incoherent frame fetch</h2>
-  <p>The frame fetch can reach DRAM two ways, and the choice is a real trade, not a detail.</p>
+  <p>The frame fetch can reach DRAM two ways. The incoherent way, with an L2, is the preferred
+  one &mdash; every number below is measured on a ZCU104 &mdash; but the choice is a real trade,
+  not a detail, and driver code must honor whichever contract the design tree declares.</p>
   <p><code>soct.WithVideoStream</code> routes the VDMA through the Rocket <em>L2 frontend</em>,
   the same coherent port the SD card uses. Frames the CPU writes are visible to the DMA with no
   cache maintenance at all. The cost is that the coherent port fragments the DMA's bursts and
@@ -368,6 +375,63 @@ psu_ps_pl_reset_config</code></pre>
   transmitted stream. <code>dp-test</code> checks all of these and prints a verdict for each
   stage, so a failure is localized to one link of the pipeline instead of presenting as a black
   screen.</p>
+
+  <h2>The Linux console</h2>
+  <p>Under Linux the monitor is a console. The
+  <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/linux/drivers/dp"><code>soct-dp</code></a>
+  out-of-tree module runs the whole bring-up above from a kernel worker &mdash; discovery from
+  the device tree, VDMA, timing generator, AV buffer routing, link training &mdash; and leaves
+  the pipeline scanning the reserved framebuffer carve-out. The kernel's framebuffer console
+  renders into it: boot messages appear on the monitor (<code>console=tty0</code> is first in
+  the generated boot arguments, so the serial console stays <code>/dev/console</code> and the
+  monitor mirrors it), and the shell image runs a login shell on <code>tty1</code>, so a USB
+  keyboard and the monitor make a self-contained terminal.</p>
+  <p>Who serves the carve-out as the framebuffer <em>device</em> follows the frame-fetch
+  variant:</p>
+  <ul>
+    <li>On a <strong>coherent</strong> design the device tree describes it under
+      <code>/chosen</code> as a <code>simple-framebuffer</code> node and the kernel's
+      <code>simplefb</code> adopts it: every write is visible to the scanout as-is. The coupling
+      measured above applies in the other direction too &mdash; a burst of CPU traffic (any
+      sizable command, not just rendering) can unlock the video output for a few frames, which
+      the monitor shows as a short blink of black.</li>
+    <li>On an <strong>incoherent</strong> design there is no <code>/chosen</code> node &mdash;
+      <code>simplefb</code> writes through the CPU caches and flushes nothing, so it would put
+      stale memory on screen. Instead <code>soct-dp</code> registers its own framebuffer device:
+      its drawing operations record a dirty rectangle, and a deferred worker (one frame time,
+      so bursts coalesce) pushes the dirty lines out through the L2's <code>Flush64</code>
+      register. This requires the L2: on an incoherent design without
+      <code>soct.WithL2Cache</code> the module refuses, loudly. <code>mmap</code> of the device
+      is refused too &mdash; this core has no page attributes that could uncache a user mapping,
+      so mapped stores would sit in the cache with nothing tracking them.</li>
+  </ul>
+  <p>The incoherent variant is the one to pick for a console design: the frame fetch cannot be
+  starved by CPU traffic, so the display stays locked no matter what the shell does, and the L2
+  stays available for CPU performance.</p>
+
+  <h3>Troubleshooting: the kernel must match the bitstream</h3>
+  <p>A kernel image is design-specific. Its device tree is embedded at build time from the
+  workspace named by <code>SOCT_SYSTEM</code>, while the bitstream is flashed separately &mdash;
+  nothing checks that the two describe the same design. Drivers act on the device tree's
+  promises, so a mismatch surfaces as an access-fault oops on the first touch of hardware the
+  running fabric does not have: an <code>-l2-video-nc</code> kernel booted on a bitstream
+  without an L2, for example, dies in <code>soct_dp_fb_prepare</code> on the first
+  <code>Flush64</code> write (a store access fault &mdash; the interconnect's error device
+  answers for the missing register block).</p>
+  <p>What the running fabric actually has can be probed over JTAG. <code>mrd</code> through a
+  halted hart translates through that hart's live page tables &mdash; a "Page fault" error is
+  the kernel's MMU talking, not the bus. Clear <code>satp</code> for a physical read and
+  restore it afterwards:</p>
+<pre><code>targets -set -filter {name =~ {Hart #0*}}
+stop
+set s [rrd csr satp]
+rwr csr satp 0
+mrd -force 0x2010000    ;# L2 Config block: reads on an -l2 design, bus-errors without one
+rwr csr satp [expr 0x[lindex $s 1]]
+con</code></pre>
+  <p>A bus error on an address the device tree lists means the running bitstream does not
+  implement it: flash the bitstream built from the same workspace the kernel was built
+  against.</p>
 
   <footer>SoCeteer &mdash; local documentation.</footer>
 </main>

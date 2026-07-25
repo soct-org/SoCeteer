@@ -121,14 +121,14 @@ trait SOCTVivadoSystemDTS {
   // Boot arguments: the console selection and the early console describe THIS design's UART,
   // so they belong in the device tree the design emits - not baked into a kernel binary, which
   // would tie the kernel image to one hardware generation. Only bound when the design has a
-  // UART to talk through. On a design with a framebuffer console (coherent video, see
+  // UART to talk through. On a design with a framebuffer console (any video variant, see
   // [[videoDTSOpt]]), `console=tty0` comes FIRST: every console= entry receives kernel
   // messages, but the LAST one becomes /dev/console - the serial shell must stay primary,
   // with the monitor as a mirror (its own shell runs on tty1, see the shell image's init).
   uartDTSOpt.foreach { _ =>
     ResourceBinding {
       Resource(chosenDev, "bootargs").bind(ResourceString(
-        (if (p(HasVideoStream).exists(!_.incoherent)) "console=tty0 " else "") +
+        (if (p(HasVideoStream).isDefined) "console=tty0 " else "") +
           s"console=ttyUL0,$uartBaud earlycon=uartlite,mmio,0x${uartBase.toHexString}"))
     }
   }
@@ -276,11 +276,9 @@ trait SOCTVivadoSystemDTS {
 
     // The console framebuffer: a fixed carve-out the soct-dp kernel module parks the scanout
     // on, plus its kernel-facing description. The reservation keeps the kernel's allocator
-    // away; `no-map` keeps it out of the linear map so the framebuffer driver's ioremap is
-    // the one mapping. Only coherent-fetch designs get the console node - on an incoherent
-    // design the CPU's rendering sits in cache where the scanout never sees it - but the
-    // reservation is emitted either way, keeping the memory layout identical across the
-    // video variants.
+    // away; `no-map` keeps it out of the linear map so the framebuffer driver's mapping is
+    // the one mapping. It is emitted for every video variant - who serves it as a
+    // framebuffer device differs (see the /chosen node below).
     val fbReserved = new SimpleDevice("framebuffer", Nil) {
       override def parent: Some[Device] = Some(reservedMemoryDev)
       override def describe(resources: ResourceBindings): Description = {
@@ -299,6 +297,9 @@ trait SOCTVivadoSystemDTS {
     // driver adopts the buffer as-is and fbcon renders the console into it; the soct-dp
     // module starts the scanout that puts it on the monitor.
     // `r8g8b8` is the byte order the fabric fixes: blue, green, red from the low address up.
+    // Coherent-fetch designs only: simplefb writes through the CPU caches and flushes
+    // nothing, which an incoherent scanout would never see. There the soct-dp module
+    // serves the carve-out itself, through a framebuffer device that flushes what it draws.
     if (!vs.incoherent) {
       val fbDev = new SimpleDevice("framebuffer", Seq("simple-framebuffer")) {
         override def parent: Some[Device] = Some(chosenDev)

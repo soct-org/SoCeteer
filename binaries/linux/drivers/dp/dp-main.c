@@ -5,11 +5,14 @@
  *
  * The pipeline is framebuffer (DRAM) -> AXI VDMA -> AXI4-Stream video out (+ VTC
  * timing) -> PS DP live video input -> DP main link -> monitor, and every stage is
- * discovered from the device tree. The framebuffer is the fixed reservation the
- * /chosen/framebuffer node describes: simplefb registers it and fbcon renders the
- * console into it independently of this module - this module only starts the hardware
- * that puts it on the monitor. The two meet at that node, so they cannot disagree on
- * the address.
+ * discovered from the device tree. The framebuffer is the fixed reserved-memory
+ * carve-out; who serves it as a framebuffer device depends on how the VDMA reaches
+ * DRAM. On a coherent design the /chosen/framebuffer node describes it: simplefb
+ * registers it and fbcon renders into it independently of this module, which only
+ * starts the hardware that puts it on the monitor. On an incoherent design
+ * (`soct,incoherent` on the VDMA node) there is no /chosen node - CPU writes sit in
+ * the caches where the scanout never sees them, so this module registers its own
+ * cache-flushing framebuffer device instead (fb.c).
  *
  * The VDMA node is status-disabled precisely so the dmaengine driver keeps its hands
  * off (it resets every channel at probe); this module programs the engine's register
@@ -29,6 +32,7 @@
 #include <linux/of_address.h>
 #include <linux/workqueue.h>
 
+#include "fb.h"
 #include "xavbuf.h"
 #include "xdppsu.h"
 #include "xil_io.h"
@@ -233,6 +237,7 @@ static void soct_dp_work(struct work_struct *work)
 	XVidC_VideoMode mode = XVIDC_VM_NUM_SUPPORTED;
 	XDpPsu_Config cfg = { 0 };
 	struct resource win_res;
+	bool incoherent;
 	int m;
 
 	s.vdma = iomap_compatible("xlnx,axi-vdma-1.00.a", &vdma_np);
@@ -240,17 +245,26 @@ static void soct_dp_work(struct work_struct *work)
 		pr_info("soct-dp: no video pipeline in this design's device tree - nothing to do\n");
 		return;
 	}
-	if (of_property_present(vdma_np, "soct,incoherent")) {
-		pr_err("soct-dp: this design's frame fetch is incoherent; a console framebuffer is written through the CPU caches and would never be seen. Use the coherent video design.\n");
-		return;
-	}
+	incoherent = of_property_present(vdma_np, "soct,incoherent");
 
-	/* The console framebuffer, from the same node simplefb reads. */
-	chosen = of_find_node_by_path("/chosen");
-	fb_np = chosen ? of_get_compatible_child(chosen, "simple-framebuffer") : NULL;
-	if (!fb_np || of_address_to_resource(fb_np, 0, &fb_res)) {
-		pr_err("soct-dp: no /chosen framebuffer node - the device tree is older than this module\n");
-		return;
+	if (incoherent) {
+		/* No /chosen node here (simplefb must not adopt an incoherent buffer);
+		 * the raw carve-out is the framebuffer, served by this module's fbdev. */
+		struct device_node *resv = of_find_node_by_path("/reserved-memory");
+
+		fb_np = resv ? of_get_child_by_name(resv, "framebuffer") : NULL;
+		if (!fb_np || of_address_to_resource(fb_np, 0, &fb_res)) {
+			pr_err("soct-dp: no reserved framebuffer carve-out - the device tree is older than this module\n");
+			return;
+		}
+	} else {
+		/* The console framebuffer, from the same node simplefb reads. */
+		chosen = of_find_node_by_path("/chosen");
+		fb_np = chosen ? of_get_compatible_child(chosen, "simple-framebuffer") : NULL;
+		if (!fb_np || of_address_to_resource(fb_np, 0, &fb_res)) {
+			pr_err("soct-dp: no /chosen framebuffer node - the device tree is older than this module\n");
+			return;
+		}
 	}
 
 	s.vtc = iomap_compatible("xlnx,v-tc-6.2", &vtc_np);
@@ -275,10 +289,11 @@ static void soct_dp_work(struct work_struct *work)
 		pr_err("soct-dp: the vtc node does not carry the video mode\n");
 		return;
 	}
-	if (of_property_read_u32(fb_np, "width", &fb_w) ||
-	    of_property_read_u32(fb_np, "height", &fb_h) ||
-	    of_property_read_u32(fb_np, "stride", &fb_stride) ||
-	    fb_w != width || fb_h != height || fb_stride != width * 3) {
+	if (!incoherent &&
+	    (of_property_read_u32(fb_np, "width", &fb_w) ||
+	     of_property_read_u32(fb_np, "height", &fb_h) ||
+	     of_property_read_u32(fb_np, "stride", &fb_stride) ||
+	     fb_w != width || fb_h != height || fb_stride != width * 3)) {
 		pr_err("soct-dp: framebuffer node and video mode disagree - inconsistent device tree\n");
 		return;
 	}
@@ -294,8 +309,14 @@ static void soct_dp_work(struct work_struct *work)
 		return;
 	}
 
-	pr_info("soct-dp: scanout %ux%u@%u from the console framebuffer at %pa\n",
-		width, height, fps, &fb_res.start);
+	pr_info("soct-dp: scanout %ux%u@%u from the console framebuffer at %pa%s\n",
+		width, height, fps, &fb_res.start,
+		incoherent ? " (incoherent fetch, cache-flushing fbdev)" : "");
+
+	/* Before the first fetch: the frame must be cleared and pushed out of the caches. */
+	if (incoherent &&
+	    soct_dp_fb_prepare(fb_res.start, resource_size(&fb_res), width, height))
+		return;
 
 	if (vdma_start(fb_res.start, width, height))
 		return;
@@ -317,6 +338,9 @@ static void soct_dp_work(struct work_struct *work)
 		flags & 1u, (flags >> 1) & 1u);
 	if (!(flags & 1u))
 		pr_warn("soct-dp: the video out is NOT locked - no video is leaving the PL\n");
+
+	if (incoherent)
+		soct_dp_fb_register();
 }
 
 static DECLARE_WORK(soct_dp_bringup, soct_dp_work);
@@ -330,6 +354,7 @@ static int __init soct_dp_init(void)
 static void __exit soct_dp_exit(void)
 {
 	cancel_work_sync(&soct_dp_bringup);
+	soct_dp_fb_teardown();
 	/* Stop the scanout cleanly; the monitor loses its signal, the framebuffer stays. */
 	if (s.vdma)
 		writel(VDMA_DMACR_RESET, s.vdma + VDMA_MM2S_DMACR);

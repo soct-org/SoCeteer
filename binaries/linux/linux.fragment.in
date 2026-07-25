@@ -41,7 +41,9 @@ CONFIG_HID_GENERIC=y
 # The console on the DisplayPort monitor. The soct-dp module (an out-of-tree module in this
 # project) brings the video pipeline up and leaves it scanning a reserved framebuffer; the
 # device tree's /chosen/framebuffer node hands that buffer to simplefb, and fbcon (already
-# in the defconfig, with VT) renders tty1 into it.
+# in the defconfig, with VT) renders tty1 into it. Incoherent-fetch designs have no /chosen
+# node - there soct-dp registers the framebuffer device itself, against the fbdev helper
+# library (FB_IOMEM_HELPERS) this option selects.
 CONFIG_FB_SIMPLE=y
 CONFIG_HZ_250=y
 CONFIG_BLK_DEV_INITRD=y

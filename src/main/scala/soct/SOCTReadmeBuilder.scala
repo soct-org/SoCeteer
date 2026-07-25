@@ -91,25 +91,18 @@ object SOCTReadmeBuilder {
        |
        |### Features
        |
-       |* Included generators contain: **[RocketChip](https://github.com/chipsalliance/rocket-chip)**,
-       | **[BOOM](https://github.com/riscv-boom/riscv-boom)**,
-       | **[Gemmini](https://github.com/ucb-bar/gemmini)** and more!
-       |* Emit designs for Simulation using [Verilator](https://www.veripool.org/wiki/verilator) or
-       | FPGA synthesis using [Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html)
-       |* Built-in Vivado Block Design DSL: components, ports, connections, clock domains, timing constraints and TCL generation - all in Scala, without hand-writing TCL
-       |* Custom DIMM support: select the inserted memory module with `--ext-mem-part`; capacities, device tree and address decode follow automatically
-       |* **Boots Linux on your design**: OpenSBI, the kernel and a BusyBox initramfs are packed into a single
-       | `BOOT.ELF` that the stock boot ROM loads from the SD card - device tree, memory map and console
-       | configuration are generated from the design, and `reboot` round-trips through the SoC's reset network (SBI SRST)
-       |* Out-of-tree kernel driver workflow: modules build with kbuild against the shared kernel tree in one
-       | CMake target, are packed into the initramfs and loaded at boot, and index in clangd/CLion for
-       | comfortable driver development; an SD-card block driver ships in-tree (`/dev/mmcblk0`)
-       |* Optional DisplayPort video output (`--with-config soct.WithVideoStream`): a VDMA-driven framebuffer
-       | in DRAM streamed into the PS DisplayPort live input ([guide](docs/guides/video.html))
-       |* Support for edu.berkeley.cs.chisel (${chisel3s.mkString(", ")}) and org.chipsalliance.chisel (${otherChisels.mkString(", ")})
-       |* CMake projects for bootroms and bare-metal programs (simulation and FPGA), plus a separate
-       | LLVM/musl CMake project for everything Linux: kernel, firmware, userspace and drivers
-       |* Docker images for x86_64 and ARM64 hosts; runs natively on Linux, macOS and Windows
+       || | |
+       ||----|----|
+       || **Cores** | [RocketChip](https://github.com/chipsalliance/rocket-chip), [BOOM](https://github.com/riscv-boom/riscv-boom), [Gemmini](https://github.com/ucb-bar/gemmini) and more, emitted for [Verilator](https://www.veripool.org/wiki/verilator) simulation or [Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html) FPGA synthesis |
+       || **Block-design DSL** | Components, connections, clock domains and timing constraints written in Scala - every line of Vivado TCL is generated |
+       || **Memory** | `--ext-mem-part` names the DIMM you inserted; capacity, device tree and address decode follow |
+       || **Linux** | OpenSBI, kernel and BusyBox initramfs in one `BOOT.ELF`, loaded from SD by the stock boot ROM; device tree, memory map and console come from the design; `reboot` works (SBI SRST through the reset network) |
+       || **Display** | The Linux console on a DisplayPort monitor ([guide](docs/guides/video.html)); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
+       || **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal |
+       || **Drivers** | Out-of-tree modules build with kbuild in one CMake target, land in the initramfs and index in clangd/CLion; an SD block driver ships in-tree (`/dev/mmcblk0`) |
+       || **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux |
+       || **Chisel** | edu.berkeley.cs ${chisel3s.mkString(", ")} and org.chipsalliance ${otherChisels.mkString(", ")} |
+       || **Runs anywhere** | Docker images for x86_64 and ARM64; native on Linux, macOS and Windows |
        |
        |### Documentation
        |

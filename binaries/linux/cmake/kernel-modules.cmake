@@ -20,7 +20,7 @@ foreach (_drv ${_driver_dirs})
     set(_drv_bld "${CMAKE_CURRENT_BINARY_DIR}/modules/${_drv}")
     # Optional extra sources, copied beside the module's own before kbuild runs: one path per
     # line in extra-sources.txt, relative to this project directory. Lets a module compile
-    # sources vendored elsewhere in the repo (the DP module reuses dp-test's Xilinx drivers)
+    # sources vendored elsewhere in the repo (the DP module compiles shared/vendor/xilinx-dp)
     # without a second in-tree copy of them.
     set(_drv_copy_cmds "")
     if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt")

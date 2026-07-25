@@ -369,8 +369,7 @@ trait SOCTVivadoSystemWiring {
    * @param coreClock      the core domain clock pin
    * @param peripheryClock the periphery domain clock pin
    * @param c              the common design
-   * @throws VivadoDesignException if the video mode has no known pixel clock, or if the
-   *                               memory path cannot sustain the mode's frame-fetch bandwidth
+   * @throws VivadoDesignException if the video mode has no known pixel clock
    */
   protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign,
                                 memPaths: Seq[MemPath]): Unit = {
@@ -394,24 +393,6 @@ trait SOCTVivadoSystemWiring {
           "channel, so frames would be fetched from the wrong DRAM. Use the coherent video " +
           "pipeline (soct.WithVideoStream) or a single-channel memory layout.")
     })
-
-    // The frame fetch must sustain width x height x fps x 3 B/s through the coherent DMA
-    // path (SmartConnect -> L2 frontend, 8 B/cycle on the periphery clock). Measured on the
-    // ZCU104 at 100 MHz, that path delivers ~25% of its theoretical rate; demand beyond it
-    // starves the video out mid-line and the stream never locks (1080p60 delivered 30 of
-    // 60 frames/s). Fail at generation time instead of on the monitor.
-    // The incoherent path masters the memory SmartConnect directly, so it is not subject to
-    // the coherent port's ordering/in-flight limits - budget it on the core clock instead.
-    val streamBytesPerSec = BigInt(vs.width) * vs.height * vs.fps * 3
-    val dmaDomain = if (vs.incoherent) c.coreDomain else c.peripheryDomain
-    val pathBytesPerSec = BigInt((dmaDomain.freq.toHz * 8 * (if (vs.incoherent) 0.75 else 0.25)).toLong)
-    if (streamBytesPerSec > pathBytesPerSec) {
-      throw VivadoDesignException(
-        s"Video mode ${vs.width}x${vs.height}@${vs.fps} needs $streamBytesPerSec B/s of frame-fetch " +
-          s"bandwidth, but the ${if (vs.incoherent) "incoherent" else "coherent"} DMA path sustains only " +
-          s"~$pathBytesPerSec B/s at its clock (${dmaDomain.freq}). Use a smaller mode, a faster clock" +
-          s"${if (vs.incoherent) "" else ", or the incoherent pipeline (soct.WithIncoherentVideoStream)"}.")
-    }
 
     // Components - the whole PL-side pipeline lives in the `video` BD hierarchy (the PS
     // and the pixel reset synchronizer stay outside: board-level and its own block).

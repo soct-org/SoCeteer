@@ -3,7 +3,7 @@
 # bare-metal dp-test) - copied beside this module at build time (extra-sources.txt).
 # The headers in this directory are their kernel shims.
 obj-m := soct-dp.o
-soct-dp-objs := dp-main.o shim.o xdppsu.o xdppsu_spm.o xdppsu_serdes.o \
+soct-dp-objs := dp-main.o fb.o shim.o xdppsu.o xdppsu_spm.o xdppsu_serdes.o \
                 xavbuf.o xavbuf_videoformats.o
 
 ccflags-y := -I$(src)

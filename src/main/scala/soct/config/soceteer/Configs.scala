@@ -183,8 +183,9 @@ abstract class SOCTFeatureConfig(suffix: String, impl: Config) extends Config(
 
 /**
  * Parameters of the DisplayPort video stream (PL framebuffer -> PS DP live video).
- * The default is 720p60: 1080p60 needs more frame-fetch bandwidth than the coherent DMA
- * path sustains at 100 MHz (the design generation validates this and fails loudly).
+ * The default is 720p60. Whether a larger mode is dependable is a fetch-path question
+ * (measured on a ZCU104: the coherent path at 100 MHz delivered 30 of 1080p60's 60
+ * frames per second) - the incoherent pipeline is the variant that carries large modes.
  *
  * @param width      active pixels per line
  * @param height     active lines per frame
