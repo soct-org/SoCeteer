@@ -491,7 +491,49 @@ class SOCTBdBuilder extends SOCTBd {
        |  error "Vivado run $run did not complete (status: $$run_status, progress: $$run_progress)."
        |}
        |puts "Vivado run $run completed successfully (status: $$run_status)."
-       |""".stripMargin
+       |${timingGateTcl(stage, run)}""".stripMargin
+  }
+
+  /**
+   * Refuse a bitstream whose timing was not met.
+   *
+   * Vivado writes one regardless: a failing implementation still reaches 100%, so a run that only
+   * checks progress reports success and hands over a device that misbehaves in ways which look
+   * like software bugs. Setup, hold, pulse width and unrouted nets are all checked - hold
+   * violations in particular survive any clock-frequency change and are silent until they
+   * corrupt data. (Vivado exposes worst slack for setup/hold only; pulse width has just the
+   * total, STATS.TPWS.)
+   *
+   * These figures only cover paths that are CONSTRAINED. A path with no timing constraint is not
+   * analyzed, so it cannot violate anything and never appears in the slack numbers - a design can
+   * report positive slack everywhere while an unanalyzed interface fails. Vivado reports those
+   * separately, in the `check_timing` section of the timing summary; read it rather than trusting
+   * a positive WNS on its own.
+   */
+  private def timingGateTcl(stage: BuildStage, run: String): String = stage match {
+    case BuildStage.Synthesis => "" // No routed timing to judge yet.
+    case BuildStage.Bitstream =>
+      s"""
+         |# Timing gate: a bitstream is only usable if its timing was actually met AND actually checked.
+         |set wns [get_property STATS.WNS [get_runs $run]]
+         |set whs [get_property STATS.WHS [get_runs $run]]
+         |set tns [get_property STATS.TNS [get_runs $run]]
+         |set ths [get_property STATS.THS [get_runs $run]]
+         |set tpws [get_property STATS.TPWS [get_runs $run]]
+         |set failed_nets [get_property STATS.FAILED_NETS [get_runs $run]]
+         |puts "Timing: WNS=$$wns ns, WHS=$$whs ns (TNS=$$tns, THS=$$ths, TPWS=$$tpws, failed nets=$$failed_nets)"
+         |set timing_failed {}
+         |foreach {name slack} [list setup $$wns hold $$whs] {
+         |  if {$$slack ne "" && $$slack < 0} { lappend timing_failed "$$name (worst slack $$slack ns)" }
+         |}
+         |foreach {name total} [list setup $$tns hold $$ths "pulse width" $$tpws] {
+         |  if {$$total ne "" && $$total < 0} { lappend timing_failed "$$name (total negative slack $$total ns)" }
+         |}
+         |if {$$failed_nets ne "" && $$failed_nets > 0} { lappend timing_failed "$$failed_nets unrouted net(s)" }
+         |if {[llength $$timing_failed] > 0} {
+         |  error "Timing not met for $run: [join $$timing_failed {, }]. The bitstream Vivado wrote is not usable; fix the constraints or the design before flashing it."
+         |}
+         |""".stripMargin
   }
 
 

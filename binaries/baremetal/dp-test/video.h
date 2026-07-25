@@ -24,12 +24,14 @@
  * Framebuffers
  * ------------------------------------------------------------------------- */
 
-/* Byte order of a framebuffer pixel. The VDMA stream carries UG934-ordered
- * RGB (tdata[7:0]=G, [15:8]=B, [23:16]=R, little-endian in memory), which the
- * design pads into the PS live-video pixel. If colors come out permuted on
- * the monitor, only these three indices need to change. */
-#define FB_BYTE_G 0
-#define FB_BYTE_B 1
+/* Byte order of a framebuffer pixel: blue, green, red from the low address up.
+ * That is `r8g8b8` as Linux and DRM name it - the one 24-bit layout they define -
+ * so a framebuffer built here can be handed to a generic driver unchanged. The
+ * order is set by how the design routes the stream's bytes into the PS
+ * live-video pixel, not chosen here; if colors come out permuted on the
+ * monitor, the fabric and these indices disagree. */
+#define FB_BYTE_B 0
+#define FB_BYTE_G 1
 #define FB_BYTE_R 2
 
 /* Video size, from the design's vtc0 node (see main). */

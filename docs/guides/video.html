@@ -159,10 +159,17 @@
   <h3><code>dp_live_video_in_pixel1[35:0]</code> &mdash; pixel data</h3>
   <p>The live pixel bus, 12 bits per component. The video out emits 24-bit RGB (8 bits per
   component, UG934 ordering); three slices and a concat pad each component with four zero LSBs,
-  so the data sits MSB-aligned in the PS's 12-bit lanes. This mapping is fixed wiring &mdash;
-  but its <em>interpretation</em> is software: the AV buffer manager's live-input format
-  register must be set to RGB, 8 bits per component, or the PS scales and swizzles the values
-  incorrectly.</p>
+  so the data sits MSB-aligned in the PS's 12-bit lanes.</p>
+  <p>This wiring is what <em>defines the framebuffer's byte order</em>, because the frame DMA
+  reads the 24-bit word little-endian: the stream's low byte is the byte at the lower address.
+  The bytes are routed so a pixel reads <strong>blue, green, red</strong> from the low address
+  up &mdash; <code>r8g8b8</code> as Linux and DRM name it, and the only 24-bit layout either
+  defines. A framebuffer drawn on this design can therefore be handed to a generic driver, a
+  <code>simple-framebuffer</code> node among them, with no translation and no private format.
+  Getting it wrong is visible rather than subtle: green and blue trade places.</p>
+  <p>The mapping is fixed wiring, but its <em>interpretation</em> is software: the AV buffer
+  manager's live-input format register must be set to RGB, 8 bits per component, or the PS
+  scales and swizzles the values incorrectly.</p>
 
   <h3><code>dp_live_video_in_hsync</code> / <code>vsync</code> / <code>de</code> &mdash; timing</h3>
   <p>The video out's sync outputs and its <code>vid_active_video</code> (as data enable) drive

@@ -90,6 +90,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     // --------------------------------------------------------------------------
     // Timing constraints
     // --------------------------------------------------------------------------
+    addAsyncPortConstraints(c)
     val (coreClockObj, corePeriodProp) = registerCoreClockCapture(coreClock.ref)
     memPaths.map(_.ddr4Inst).foreach(addDdr4TimingConstraints(_, coreClockObj, corePeriodProp))
 
@@ -167,6 +168,10 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
 
     wireMmioAndDma(c)
     wireSdCardPmod(peripheryClock, c)
+    // The PS register window serves every PS peripheral the RISC-V programs, so it is wired
+    // once, ahead of its users.
+    wirePsWindow(peripheryClock, c)
+    wireUsbHost(peripheryClock, c)
     wireVideoStream(coreClock, peripheryClock, c, memPaths)
     wireDebugAndJtag(coreClock, coreClockObj, corePeriodProp, c)
     tieOffHartResets()

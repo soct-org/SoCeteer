@@ -52,6 +52,40 @@ trait SOCTVivadoSystemConstraints {
   }
 
   /**
+   * Declare the design's asynchronous top-level ports as false paths.
+   *
+   * These signals have no timing relationship to any clock in the design: a pushbutton reset
+   * that reaches every domain through a synchronizer, and a UART whose 115200-baud bit period is
+   * some three orders of magnitude longer than a clock cycle, sampled by an oversampling
+   * receiver. Constraining them to a clock would be a fiction.
+   *
+   * Saying so explicitly is not cosmetic. An unconstrained port is not analyzed, so it can never
+   * violate anything and never appears in a slack figure - a design reports timing met while the
+   * tool has quietly said nothing at all about those paths. Declaring them false says "analyzed,
+   * and deliberately exempt", which is a claim someone can disagree with, and it keeps the
+   * `check_timing` report empty enough that a genuinely unconstrained path stands out.
+   *
+   * @param c the common design
+   */
+  protected def addAsyncPortConstraints(c: CommonDesign): Unit = {
+    val uartPorts = c.fpga.uartPorts.headOption.toSeq.flatMap { u =>
+      Seq(s"${u.portName}_rxd", s"${u.portName}_txd")
+    }
+    // -quiet throughout: a board without a UART, or a design built without one, simply has no
+    // such port, and that is not an error here.
+    val inputs = Seq("reset") ++ uartPorts.filter(_.endsWith("_rxd"))
+    val outputs = Seq("ddr4_sdram_reset_n") ++ uartPorts.filter(_.endsWith("_txd"))
+    bd.addTimingConstraints(() => Seq(
+      s"""# Asynchronous top-level ports: no clock relationship exists, so none is asserted.
+         |# Declared rather than left unconstrained, so that check_timing reports only paths
+         |# nobody has thought about (see SOCTVivadoSystemConstraints.addAsyncPortConstraints).
+         |${inputs.map(p => s"set_false_path -quiet -from [get_ports -quiet $p]").mkString("\n")}
+         |${outputs.map(p => s"set_false_path -quiet -to [get_ports -quiet $p]").mkString("\n")}
+         |""".stripMargin.tcl
+    ))
+  }
+
+  /**
    * Register the timing constraints of one DDR4 controller: false paths on its reset and
    * calibration pins and a bounded CDC between its UI clock and the core clock.
    *

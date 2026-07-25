@@ -17,5 +17,7 @@ add_dependencies(shell-boot-elf sdc-driver)
 
 # shell-flash: JTAG-boot straight into the shell, no SD card involved (see initram.cmake
 # for how the flash handoff works). Only created when the SOCT_FLASH_* variables are set.
+# The PS is initialized first, for the reasons initram.cmake gives.
+include(SoctPsuInit)
 include(SoctXsdbFlash)
 soct_xsdb_flash_target(shell "${SOCT_ELFS_DIR}/shell.BOOT.ELF" shell-boot-elf)

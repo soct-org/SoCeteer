@@ -19,5 +19,10 @@ soct_linux_add_boot_image(${SOCT_PROGRAM})
 # this boots Linux (with this program as /init) without touching the SD card. The a1
 # handoff carries the ROM DTB address as always; OpenSBI ignores it in favor of the
 # embedded, fixed-up device tree. Only created when the SOCT_FLASH_* variables are set.
+#
+# The PS is initialized first: nothing boots it on this path (the boot ROM is skipped
+# entirely), and the kernel drives PS peripherals - the USB host controller among them -
+# and shares fabric with a PS master. See SoctPsuInit for the once-per-power-cycle caveat.
+include(SoctPsuInit)
 include(SoctXsdbFlash)
 soct_xsdb_flash_target(${SOCT_PROGRAM} "${SOCT_ELFS_DIR}/${SOCT_PROGRAM}.BOOT.ELF" ${SOCT_PROGRAM}-boot-elf)

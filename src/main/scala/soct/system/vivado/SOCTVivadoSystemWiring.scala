@@ -269,6 +269,83 @@ trait SOCTVivadoSystemWiring {
   }
 
   /**
+   * Instantiate and wire the window through which the RISC-V reaches the PS register space
+   * ([[soct.system.vivado.components.AxiAddrOffset]]). The PS peripherals this design programs
+   * - the DisplayPort controller, the USB host controller - live at fixed addresses that the
+   * Rocket MMIO port cannot decode directly without overlapping DRAM, so a window of the MMIO
+   * space is offset onto them. One window serves all of them: `S_AXI_LPD` is the only way in.
+   *
+   * @param peripheryClock the periphery domain clock pin
+   * @param c              the common design
+   * @return the window, or None on a board whose FPGA has no processing system
+   */
+  protected def wirePsWindow(peripheryClock: BdPinOut, c: CommonDesign): Option[AxiAddrOffset] = {
+    val ps = bd.fpgaInstance() match {
+      case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
+      case _ => return None
+    }
+    val window = new AxiAddrOffset(
+      getAxiMasterPin = c.axiMMIO,
+      windowBase = ZynqUltraPS.PsWindowBase,
+      windowSize = ZynqUltraPS.PsWindowSize,
+      targetBase = ZynqUltraPS.PsWindowTargetBase
+    ) {
+      override def assignAddrTcl: TCLCommands = {
+        // The PS slave segments carry fixed PS addresses; assign them as-is into our master space.
+        super.assignAddrTcl ++ Seq(
+          s"assign_bd_address -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${ps.bdPath}/SAXIGP6/*]".tcl
+        )
+      }
+    }.withInstanceName("ps_window")
+
+    peripheryClock --> Seq(ps.SAXI_LPD_ACLK, window.ACLK)
+    c.mmioSMC.M_AXI.next() <-> window.S_AXI
+    window.M_AXI <-> ps.S_AXI_LPD
+    Some(window)
+  }
+
+  /**
+   * Wire the PS USB host controller into the design: its DMA master onto the coherent DMA path,
+   * and its interrupt into the PL interrupt controller.
+   *
+   * The controller, its ULPI PHY and its MIO pins all come from the board preset and are brought
+   * up by psu_init, so nothing is built in the fabric - this costs one AXI port and one wire.
+   *
+   * The DMA lands on the coherent path ([[CommonDesign.dmaSMC]]) rather than on the memory
+   * controller directly: the RISC-V has no cache-maintenance instructions, so software could not
+   * make an incoherent master's writes visible to itself. USB 2.0 high speed peaks at 60 MB/s,
+   * well inside what that path sustains.
+   *
+   * @param peripheryClock the periphery domain clock pin
+   * @param c              the common design
+   */
+  protected def wireUsbHost(peripheryClock: BdPinOut, c: CommonDesign): Unit = {
+    val ps = bd.fpgaInstance() match {
+      case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
+      case _ => return
+    }
+    peripheryClock --> ps.MAXI_HPM0_LPD_ACLK
+    c.dmaSMC.S_AXI.next() <-> ps.M_AXI_HPM0_LPD
+
+    // The PS masters through its own address map, in which the window out to the PL begins at
+    // HpmLpdBase. DRAM begins at the same address, so the mapping is an identity and a PS
+    // address and a RISC-V address name the same byte.
+    bd.addConfigTcl(() => Seq(
+      ("assign_bd_address" +
+        s" -offset 0x${ZynqUltraPS.HpmLpdBase.toString(16).toUpperCase}" +
+        s" -range 0x${ZynqUltraPS.HpmLpdSize.toString(16).toUpperCase}" +
+        s" -target_address_space [get_bd_addr_spaces ${ps.bdPath}/Data]" +
+        s" [get_bd_addr_segs ${c.axiDMA.ref}/reg0]").tcl
+    ))
+
+    usbDTSOpt.foreach { dts =>
+      dts.irqs.foreach { irq =>
+        ps.PS_PL_IRQ_USB3_0_HOST --> c.interruptConcat.IN(irq.index)
+      }
+    }
+  }
+
+  /**
    * The pixel clock for a video mode. Only modes with standard (CEA-861) pixel clocks are
    * supported; anything else needs its own entry here.
    *
@@ -358,16 +435,6 @@ trait SOCTVivadoSystemWiring {
     }
     val vtc = VideoTimingController(dts.vtc, c.axiMMIO).withGroup("video")
     val vidOut = AxisVideoOut().withGroup("video")
-    val lpdWindow = new AxiAddrOffset(
-      getAxiMasterPin = c.axiMMIO, windowBase = 0x7D000000L, windowSize = 0x1000000L, targetBase = 0xFD000000L
-    ) {
-      override def assignAddrTcl: TCLCommands = {
-        // The PS slave segments carry fixed PS addresses; assign them as-is into our master space.
-        super.assignAddrTcl ++ Seq(
-          s"assign_bd_address -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${ps.bdPath}/SAXIGP6/*]".tcl
-        )
-      }
-    }.withInstanceName("dp_lpd_window").withGroup("video")
 
     // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
     val pixelDomain = new ClockDomain(pixelClockFor(vs))
@@ -380,7 +447,7 @@ trait SOCTVivadoSystemWiring {
     // VDMA's pixel stream, the video out, the timing generator and the PS live input - on
     // the pixel domain. The stream must carry one pixel per cycle at the full pixel rate;
     // on the (slower) periphery clock it starves the video out mid-line.
-    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vtc.S_AXI_ACLK, ps.SAXI_LPD_ACLK, lpdWindow.ACLK)
+    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vtc.S_AXI_ACLK)
     // The frame-fetch master runs in the domain of the SmartConnect it drives: the periphery
     // clock for the coherent path, the core clock for the incoherent one (memSMC's slave side
     // already runs there, so the private port needs no extra SmartConnect clock).
@@ -411,11 +478,10 @@ trait SOCTVivadoSystemWiring {
     vtc.VTIMING_OUT <-> vidOut.VTIMING_IN
     vidOut.VTG_CE --> vtc.GEN_CLKEN
 
-    // AXI: control registers + PS register window on the MMIO path, frame reads on the DMA path
+    // AXI: control registers on the MMIO path, frame reads on the DMA path. The DP controller's
+    // own registers are reached through the shared PS window (see wirePsWindow).
     c.mmioSMC.M_AXI.next() <-> vdma.S_AXI
     c.mmioSMC.M_AXI.next() <-> vtc.S_AXI
-    c.mmioSMC.M_AXI.next() <-> lpdWindow.S_AXI
-    lpdWindow.M_AXI <-> ps.S_AXI_LPD
     memPathOpt match {
       case None => c.dmaSMC.S_AXI.next() <-> vdma.M_AXI
       case Some(mem) => mem.memSMC.S_AXI.next() <-> vdma.M_AXI
@@ -441,19 +507,28 @@ trait SOCTVivadoSystemWiring {
 
     // Parallel video into the PS live input. The PS wants 12 bit per component (36-bit
     // pixel); the stream carries 8 bit per component (24-bit), so each component is padded
-    // with 4 zero LSBs. Component order inside the 24-bit word is a software concern (the
-    // framebuffer format), not normalized here.
-    val padR = InlineSlice(24, 23, 16, 8).withInstanceName("vid_slice_c2").withGroup("video")
-    val padG = InlineSlice(24, 15, 8, 8).withInstanceName("vid_slice_c1").withGroup("video")
-    val padB = InlineSlice(24, 7, 0, 8).withInstanceName("vid_slice_c0").withGroup("video")
+    // with 4 zero LSBs.
+    //
+    // This mapping DEFINES the framebuffer's byte order, because the VDMA reads the 24-bit
+    // word little-endian: stream bits [7:0] are the byte at the lower address. The bytes are
+    // routed so that a pixel reads blue, green, red from the low address up - `r8g8b8` in the
+    // Linux and DRM naming, and the only 24-bit layout either of them defines. A framebuffer
+    // built here can therefore be handed to a generic driver (a `simple-framebuffer` node, for
+    // one) without a translation step or a private format.
+    val byte2 = InlineSlice(24, 23, 16, 8).withInstanceName("vid_slice_byte2").withGroup("video")
+    val byte1 = InlineSlice(24, 15, 8, 8).withInstanceName("vid_slice_byte1").withGroup("video")
+    val byte0 = InlineSlice(24, 7, 0, 8).withInstanceName("vid_slice_byte0").withGroup("video")
     val zero4 = InlineConstant(0, 4).withInstanceName("vid_pad_zero4").withGroup("video")
     val pixel = InlineConcat(6).withInstanceName("vid_pixel_concat").withGroup("video")
 
-    Seq(padR, padG, padB).foreach(s => vidOut.VID_DATA --> s.DIN)
-    padR.DOUT --> pixel.IN(5)
+    // Which concat position drives which colour is fixed by the PS: position 1 is the
+    // component the DisplayPort shows as green, 3 as blue, 5 as red. Feeding byte1 to green
+    // and byte0 to blue is what puts blue at the lowest address.
+    Seq(byte2, byte1, byte0).foreach(s => vidOut.VID_DATA --> s.DIN)
     zero4.DOUT --> Seq(pixel.IN(4), pixel.IN(2), pixel.IN(0))
-    padG.DOUT --> pixel.IN(3)
-    padB.DOUT --> pixel.IN(1)
+    byte2.DOUT --> pixel.IN(5) // red
+    byte1.DOUT --> pixel.IN(1) // green
+    byte0.DOUT --> pixel.IN(3) // blue
 
     pixel --> ps.DP_LIVE_VIDEO_IN_PIXEL1
     vidOut.VID_ACTIVE_VIDEO --> ps.DP_LIVE_VIDEO_IN_DE

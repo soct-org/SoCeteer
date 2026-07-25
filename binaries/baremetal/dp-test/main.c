@@ -79,7 +79,7 @@ unsigned long dt_require_u32(dtb_node *node, const char *name) {
 /* Map the window through which the vendored Xilinx sources reach the PS
  * registers (see xil_io.h), then prove the path actually responds. */
 static void open_ps_window(void) {
-    dtb_node *win = dt_require_compatible("soct,zynqmp-dp-window");
+    dtb_node *win = dt_require_compatible("soct,zynqmp-ps-window");
     uintptr_t win_base, win_size;
     dt_require_reg(win, &win_base, &win_size);
     const uintptr_t ps_base = (uintptr_t) dt_require_u32(win, "soct,ps-base");

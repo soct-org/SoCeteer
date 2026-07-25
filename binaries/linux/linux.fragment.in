@@ -19,6 +19,25 @@ CONFIG_SERIAL_UARTLITE_CONSOLE=y
 CONFIG_XILINX_INTC=y
 # The VDMA of video-stream designs (dmaengine driver; probes via the device tree).
 CONFIG_XILINX_DMA=y
+# The USB host controller in the processing system. Its Synopsys core binds the plain
+# `snps,dwc3` node the generator emits, with no vendor glue: the Xilinx wrapper driver
+# configures clocks, resets and the PHY through the ZynqMP firmware interface, an APU-side
+# service this SoC does not run, and psu_init has done all of it already. Host only - the
+# board's ULPI transceiver supports no other role, and the device tree pins dr_mode to match.
+# xHCI, mass storage, SCSI and evdev already come from the riscv defconfig.
+CONFIG_USB_DWC3=y
+CONFIG_USB_DWC3_HOST=y
+# The USB controller's DMA reaches only DRAM's first 512 MB; the device tree reserves a
+# `restricted-dma-pool` inside that window and this makes the kernel bounce the controller's
+# transfers through it. Without it, buffers beyond the window bounce through the DEFAULT
+# swiotlb pool, which on a large-memory board itself sits beyond the window - every USB
+# transfer then fails ("swiotlb buffer is full ... used 0 slots").
+CONFIG_DMA_RESTRICTED_POOL=y
+# Keyboards and mice. The defconfig enables these today; they are named here because input is
+# the point of having USB at all, and a default is not a guarantee.
+CONFIG_HID=y
+CONFIG_USB_HID=y
+CONFIG_HID_GENERIC=y
 CONFIG_HZ_250=y
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_INITRAMFS_SOURCE="@KBUILD_DESC@"

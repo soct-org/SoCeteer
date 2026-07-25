@@ -2,7 +2,8 @@ package soct.system.vivado
 
 import freechips.rocketchip.resources.{Description, Device, DeviceSnippet, FixedClockResource, Resource, ResourceAddress, ResourceBinding, ResourceBindings, ResourceInt, ResourceReference, ResourceString, SimpleDevice}
 import soct._
-import soct.system.vivado.components.AXIVideoDMA
+import soct.system.vivado.components.{AXIVideoDMA, ZynqUltraPS}
+import soct.system.vivado.fpga.HasZynqUltraPS
 import soct.system.vivado.misc.{AddressSets, AxiSlaveBinder, DTSInfo, Irq}
 
 /**
@@ -155,7 +156,7 @@ trait SOCTVivadoSystemDTS {
    *                (in the DTS it lives on the VDMA's channel CHILD node, not in
    *                `vdma.irqs`, following the mainline binding)
    */
-  protected case class VideoStreamDTS(vdma: DTSInfo, vtc: DTSInfo, dpWindow: DTSInfo,
+  protected case class VideoStreamDTS(vdma: DTSInfo, vtc: DTSInfo,
                                       vidStatus: DTSInfo, vdmaIrq: Irq)
 
   /**
@@ -233,17 +234,6 @@ trait SOCTVivadoSystemDTS {
     )
     AxiSlaveBinder.bindSimpleDevice(devname = "vtc0", dts = vtcDTS, perms = AxiSlaveBinder.mmioPerms)
 
-    // The DP/DPDMA/SERDES registers of the PS, visible through the address-offset window.
-    // soct,ps-base carries the fixed PS base the window maps to, so the driver can translate
-    // documented PS addresses without magic numbers.
-    val dpWindowDTS = DTSInfo(
-      parent = mmioBusDevice.get,
-      regs = Seq(("reg", 0x7D000000L, 0x1000000L)),
-      compatibles = Seq("soct,zynqmp-dp-window"),
-      extraProps = Map("soct,ps-base" -> Seq(ResourceInt(0xFD000000L)))
-    )
-    AxiSlaveBinder.bindSimpleDevice(devname = "dpwin0", dts = dpWindowDTS, perms = AxiSlaveBinder.mmioPerms)
-
     // Read-only status of the video-out core, which has no register interface of its own:
     // {bit2 overflow, bit1 underflow, bit0 locked} at offset 0x0. Drivers poll locked and
     // underflow to detect a starving or unlocked stream.
@@ -254,7 +244,108 @@ trait SOCTVivadoSystemDTS {
     )
     AxiSlaveBinder.bindSimpleDevice(devname = "vidstat0", dts = vidStatusDTS, perms = AxiSlaveBinder.mmioPerms)
 
-    VideoStreamDTS(vdmaDTS, vtcDTS, dpWindowDTS, vidStatusDTS, vdmaIrq)
+    VideoStreamDTS(vdmaDTS, vtcDTS, vidStatusDTS, vdmaIrq)
+  }
+
+  /** True when the board's FPGA carries a Zynq UltraScale+ processing system. Read from the
+   * parameters rather than the builder: this trait runs before `bd.init`. */
+  private val hasZynqPs: Boolean = p(XilinxFPGAKey).exists(_.isInstanceOf[HasZynqUltraPS])
+
+  /**
+   * Device-tree entry of the window through which PS registers are reached (see
+   * [[soct.system.vivado.components.AxiAddrOffset]]). `soct,ps-base` carries the fixed PS base
+   * the window maps to, so software can translate documented PS addresses without magic
+   * numbers. None on a board whose FPGA has no processing system.
+   */
+  protected val psWindowDTSOpt: Option[DTSInfo] = if (!hasZynqPs) None else {
+    val dts = DTSInfo(
+      parent = mmioBusDevice.get,
+      regs = Seq(("reg", ZynqUltraPS.PsWindowBase.toLong, ZynqUltraPS.PsWindowSize.toLong)),
+      compatibles = Seq("soct,zynqmp-ps-window"),
+      extraProps = Map("soct,ps-base" -> Seq(ResourceInt(ZynqUltraPS.PsWindowTargetBase)))
+    )
+    AxiSlaveBinder.bindSimpleDevice(devname = "pswin0", dts = dts, perms = AxiSlaveBinder.mmioPerms)
+    Some(dts)
+  }
+
+  /**
+   * Device-tree entry of the PS USB host controller, as the bare Synopsys core rather than
+   * Xilinx's `xlnx,zynqmp-dwc3` wrapper: that glue driver configures clocks, resets and the PHY
+   * through the ZynqMP firmware interface, which is an APU-side service this design does not run.
+   * Everything it would do is already done by psu_init, so the core driver can bind directly.
+   *
+   * `maximum-speed` holds the controller to USB 2.0, which keeps it on the ULPI PHY and off the
+   * PS-GTR SERDES; high speed is 480 Mb/s, far above what the DMA path or the devices need.
+   *
+   * The registers are named at their address in the PS window, and `dma-ranges` describes the
+   * window the controller's DMA reaches DRAM through - an identity map over DRAM's first
+   * [[ZynqUltraPS.HpmLpdSize]], so software must keep DMA buffers inside it.
+   */
+  protected val usbDTSOpt: Option[DTSInfo] = if (!hasZynqPs) None else {
+    // A bus node interposed purely to carry `dma-ranges`. The controller reaches only the part
+    // of DRAM behind its window, and that limit has to be stated where the kernel looks for it:
+    // of_dma_configure() starts its search at the device's PARENT, so a `dma-ranges` on the
+    // device itself is never read. It cannot go on the shared MMIO bus either - the SD card and
+    // the frame DMA sit there too and reach further, and one limit written there would bind all
+    // of them to the narrowest.
+    val usbBus = new SimpleDevice("bus", Seq("simple-bus")) {
+      override def parent: Some[Device] = Some(mmioBusDevice.get)
+      override def describe(resources: ResourceBindings): Description = {
+        val Description(name, mapping) = super.describe(resources)
+        Description(name, mapping ++ Map(
+          "#address-cells" -> Seq(ResourceInt(1)),
+          "#size-cells" -> Seq(ResourceInt(1)),
+          // Empty `ranges`: the child's registers need no translation, only its DMA does.
+          "ranges" -> Nil,
+          "dma-ranges" -> Seq(ResourceInt(ZynqUltraPS.HpmLpdBase),
+            ResourceInt(ZynqUltraPS.HpmLpdBase), ResourceInt(ZynqUltraPS.HpmLpdSize))
+        ))
+      }
+    }
+
+    // The controller's private bounce pool. Its DMA reaches only DRAM's first HpmLpdSize, and
+    // on this much memory both the buffers handed to it and the kernel's own default bounce
+    // pool (placed high) usually lie beyond that - bouncing then fails with every slot free
+    // ("swiotlb buffer is full ... used 0"). A `restricted-dma-pool` reserved inside the
+    // window, named by the usb node's `memory-region`, is the mainline mechanism for exactly
+    // this: the device gets a bounce pool guaranteed to be where it can reach.
+    val usbDmaReserve = new Device {
+      override def describe(resources: ResourceBindings): Description =
+        Description("reserved-memory", Map(
+          "#address-cells" -> Seq(ResourceInt(2)),
+          "#size-cells" -> Seq(ResourceInt(2)),
+          "ranges" -> Nil
+        ))
+    }
+    val usbDmaPool = new SimpleDevice("restricted-dma-pool", Seq("restricted-dma-pool")) {
+      override def parent: Some[Device] = Some(usbDmaReserve)
+    }
+    ResourceBinding {
+      Resource(usbDmaPool, "reg").bind(ResourceAddress(
+        AddressSets.fromOffsetRange(ZynqUltraPS.UsbDmaPoolBase.toLong, ZynqUltraPS.UsbDmaPoolSize.toLong),
+        AxiSlaveBinder.mmioPerms))
+    }
+
+    val windowOffset = ZynqUltraPS.PsWindowBase - ZynqUltraPS.PsWindowTargetBase
+    val dts = DTSInfo(
+      parent = usbBus,
+      regs = Seq(("reg", (ZynqUltraPS.UsbCoreBase + windowOffset).toLong, ZynqUltraPS.UsbCoreSize.toLong)),
+      irqs = Seq(Irq(intcDev, irqIdx)),
+      compatibles = Seq("snps,dwc3"),
+      extraProps = Map(
+        "dr_mode" -> Seq(ResourceString("host")),
+        "maximum-speed" -> Seq(ResourceString("high-speed")),
+        "snps,hsphy_interface" -> Seq(ResourceString("ulpi")),
+        // Named rather than left to position: the driver asks for "host" first and only falls
+        // back to the first interrupt, so naming it states which line this is instead of
+        // relying on there being exactly one.
+        "interrupt-names" -> Seq(ResourceString("host")),
+        "memory-region" -> Seq(ResourceReference(usbDmaPool.label))
+      )
+    )
+    irqIdx += 1
+    AxiSlaveBinder.bindSimpleDevice(devname = "usb", dts = dts, perms = AxiSlaveBinder.mmioPerms)
+    Some(dts)
   }
 
   /**
