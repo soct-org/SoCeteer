@@ -6,6 +6,7 @@
 set(INIT_SH "${CMAKE_CURRENT_SOURCE_DIR}/init.sh")
 set(PROFILE_SH "${CMAKE_CURRENT_SOURCE_DIR}/profile.sh")
 set(SDC_KO "${CMAKE_BINARY_DIR}/modules/sdc/fpga-axi-sdc.ko")
+set(DP_KO "${CMAKE_BINARY_DIR}/modules/dp/soct-dp.ko")
 configure_file(initramfs.desc.in "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc" @ONLY)
 
 soct_linux_add_boot_image(shell
@@ -13,7 +14,7 @@ soct_linux_add_boot_image(shell
         DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}" "${PROFILE_SH}")
 # The initramfs packs the SD-controller module; the kernel's initramfs rules track the
 # packed files themselves, so the always-run chain just needs the build order.
-add_dependencies(shell-boot-elf sdc-driver)
+add_dependencies(shell-boot-elf sdc-driver dp-driver)
 
 # shell-flash: JTAG-boot straight into the shell, no SD card involved (see initram.cmake
 # for how the flash handoff works). Only created when the SOCT_FLASH_* variables are set.

@@ -99,19 +99,52 @@ trait SOCTVivadoSystemDTS {
     )
   }
 
-  // The /chosen node: boot arguments for an operating system. The console selection and
-  // the early console describe THIS design's UART, so they belong in the device tree the
-  // design emits - not baked into a kernel binary, which would tie the kernel image to
-  // one hardware generation. Only emitted when the design has a UART to talk through.
-  uartDTSOpt.foreach { _ =>
-    val chosenDev = new Device {
-      def describe(resources: ResourceBindings): Description =
-        Description("chosen", Map("bootargs" -> resources("bootargs").map(_.value)))
+  /**
+   * The /chosen node: what the boot environment tells an operating system, as opposed to what
+   * the hardware is. Boot arguments bind to it below (UART designs), and video designs hang
+   * their `framebuffer` node under it (see [[videoDTSOpt]]) - under /chosen because a
+   * boot-stage-initialized framebuffer is exactly that, environment rather than hardware.
+   * A device with no bound resources and no children is not emitted at all.
+   */
+  protected val chosenDev: Device = new Device {
+    def describe(resources: ResourceBindings): Description = {
+      val bootargs = resources("bootargs").map(_.value)
+      Description("chosen", Map(
+        // Cells + ranges for the framebuffer child's reg; harmless when only bootargs bind.
+        "#address-cells" -> Seq(ResourceInt(2)),
+        "#size-cells" -> Seq(ResourceInt(2)),
+        "ranges" -> Nil
+      ) ++ (if (bootargs.nonEmpty) Map("bootargs" -> bootargs) else Map.empty))
     }
+  }
+
+  // Boot arguments: the console selection and the early console describe THIS design's UART,
+  // so they belong in the device tree the design emits - not baked into a kernel binary, which
+  // would tie the kernel image to one hardware generation. Only bound when the design has a
+  // UART to talk through. On a design with a framebuffer console (coherent video, see
+  // [[videoDTSOpt]]), `console=tty0` comes FIRST: every console= entry receives kernel
+  // messages, but the LAST one becomes /dev/console - the serial shell must stay primary,
+  // with the monitor as a mirror (its own shell runs on tty1, see the shell image's init).
+  uartDTSOpt.foreach { _ =>
     ResourceBinding {
       Resource(chosenDev, "bootargs").bind(ResourceString(
-        s"console=ttyUL0,$uartBaud earlycon=uartlite,mmio,0x${uartBase.toHexString}"))
+        (if (p(HasVideoStream).exists(!_.incoherent)) "console=tty0 " else "") +
+          s"console=ttyUL0,$uartBaud earlycon=uartlite,mmio,0x${uartBase.toHexString}"))
     }
+  }
+
+  /**
+   * The /reserved-memory container: regions of DRAM the kernel must not allocate. A device
+   * tree has exactly one such node, so every carve-out below (the USB DMA pool, the scanout
+   * framebuffer) names this device as its parent. Not emitted while no child binds anything.
+   */
+  protected val reservedMemoryDev: Device = new Device {
+    def describe(resources: ResourceBindings): Description =
+      Description("reserved-memory", Map(
+        "#address-cells" -> Seq(ResourceInt(2)),
+        "#size-cells" -> Seq(ResourceInt(2)),
+        "ranges" -> Nil
+      ))
   }
 
   /** Device-tree entry of the SD-card controller, if the design has one ([[HasSDCardPMOD]]). */
@@ -193,6 +226,13 @@ trait SOCTVivadoSystemDTS {
         "dma-ranges" -> Seq(ResourceInt(0x80000000L), ResourceInt(0x80000000L),
           ResourceInt(0x80000000L)),
         "clock-names" -> Seq(ResourceString("s_axi_lite_aclk"))
+      ) ++ Map(
+        // Disabled: the engine belongs to the boot-stage display bring-up, which leaves it
+        // scanning the console framebuffer - and the dmaengine driver RESETS every channel at
+        // probe (xilinx_dma_chan_probe), which would halt that scanout mid-frame. The node
+        // stays fully described so flipping this to "okay" is all a future memory-to-memory
+        // use needs - at the price of the display.
+        "status" -> Seq(ResourceString("disabled"))
       ) ++ (if (!vs.incoherent) Map.empty else Map(
         // The frame master reaches DRAM through its own memory-controller port, bypassing the
         // coherent fabric (soct.WithIncoherentVideoStream): DRAM is NOT coherent with the CPU
@@ -233,6 +273,51 @@ trait SOCTVivadoSystemDTS {
       )
     )
     AxiSlaveBinder.bindSimpleDevice(devname = "vtc0", dts = vtcDTS, perms = AxiSlaveBinder.mmioPerms)
+
+    // The console framebuffer: a fixed carve-out the soct-dp kernel module parks the scanout
+    // on, plus its kernel-facing description. The reservation keeps the kernel's allocator
+    // away; `no-map` keeps it out of the linear map so the framebuffer driver's ioremap is
+    // the one mapping. Only coherent-fetch designs get the console node - on an incoherent
+    // design the CPU's rendering sits in cache where the scanout never sees it - but the
+    // reservation is emitted either way, keeping the memory layout identical across the
+    // video variants.
+    val fbReserved = new SimpleDevice("framebuffer", Nil) {
+      override def parent: Some[Device] = Some(reservedMemoryDev)
+      override def describe(resources: ResourceBindings): Description = {
+        val Description(name, mapping) = super.describe(resources)
+        Description(name, mapping ++ Map("no-map" -> Nil))
+      }
+    }
+    ResourceBinding {
+      Resource(fbReserved, "reg").bind(ResourceAddress(
+        AddressSets.fromOffsetRange(ZynqUltraPS.VideoFbBase.toLong, ZynqUltraPS.VideoFbSize.toLong),
+        AxiSlaveBinder.mmioPerms))
+    }
+
+    // The `simple-framebuffer` node (under /chosen - the one place the kernel looks for a
+    // pre-described framebuffer, see of_platform_default_populate). The kernel's simplefb
+    // driver adopts the buffer as-is and fbcon renders the console into it; the soct-dp
+    // module starts the scanout that puts it on the monitor.
+    // `r8g8b8` is the byte order the fabric fixes: blue, green, red from the low address up.
+    if (!vs.incoherent) {
+      val fbDev = new SimpleDevice("framebuffer", Seq("simple-framebuffer")) {
+        override def parent: Some[Device] = Some(chosenDev)
+        override def describe(resources: ResourceBindings): Description = {
+          val Description(name, mapping) = super.describe(resources)
+          Description(name, mapping ++ Map(
+            "width" -> Seq(ResourceInt(vs.width)),
+            "height" -> Seq(ResourceInt(vs.height)),
+            "stride" -> Seq(ResourceInt(vs.width * 3)),
+            "format" -> Seq(ResourceString("r8g8b8"))
+          ))
+        }
+      }
+      ResourceBinding {
+        Resource(fbDev, "reg").bind(ResourceAddress(
+          AddressSets.fromOffsetRange(ZynqUltraPS.VideoFbBase.toLong, ZynqUltraPS.VideoFbSize.toLong),
+          AxiSlaveBinder.mmioPerms))
+      }
+    }
 
     // Read-only status of the video-out core, which has no register interface of its own:
     // {bit2 overflow, bit1 underflow, bit0 locked} at offset 0x0. Drivers poll locked and
@@ -309,16 +394,8 @@ trait SOCTVivadoSystemDTS {
     // ("swiotlb buffer is full ... used 0"). A `restricted-dma-pool` reserved inside the
     // window, named by the usb node's `memory-region`, is the mainline mechanism for exactly
     // this: the device gets a bounce pool guaranteed to be where it can reach.
-    val usbDmaReserve = new Device {
-      override def describe(resources: ResourceBindings): Description =
-        Description("reserved-memory", Map(
-          "#address-cells" -> Seq(ResourceInt(2)),
-          "#size-cells" -> Seq(ResourceInt(2)),
-          "ranges" -> Nil
-        ))
-    }
     val usbDmaPool = new SimpleDevice("restricted-dma-pool", Seq("restricted-dma-pool")) {
-      override def parent: Some[Device] = Some(usbDmaReserve)
+      override def parent: Some[Device] = Some(reservedMemoryDev)
     }
     ResourceBinding {
       Resource(usbDmaPool, "reg").bind(ResourceAddress(

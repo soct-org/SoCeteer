@@ -1,6 +1,6 @@
 /*
  * Implementation of the shim layer that lets the vendored Xilinx sources in
- * ../xilinx compile unmodified on the SoCeteer RISC-V toolchain. The header
+ * shared/vendor/xilinx-dp compile unmodified on the SoCeteer RISC-V toolchain. The header
  * FILE NAMES in this directory are fixed - the vendored code includes them by
  * name (xil_io.h, sleep.h, xvidc.h, ...) - but the implementations are small,
  * so they all live here.

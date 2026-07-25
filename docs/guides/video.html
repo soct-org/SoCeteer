@@ -337,7 +337,7 @@ psu_ps_pl_reset_config</code></pre>
 
   <h3>3. Program the PS: routing and the DP link</h3>
   <p>The PS side is driven by the vendored Xilinx drivers in
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/xilinx">dp-test/xilinx</a>
+  <a href="https://github.com/soct-org/SoCeteer/tree/main/shared/vendor/xilinx-dp">shared/vendor/xilinx-dp</a>
   (dppsu for the DP controller, avbuf for the AV buffer manager), kept byte-for-byte unmodified.
   The shim layer in
   <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/soct_xil">dp-test/soct_xil</a>
@@ -347,6 +347,19 @@ psu_ps_pl_reset_config</code></pre>
   clock in the AV buffer manager, initialize the DP TX, wait for a monitor (HPD), train the link
   at the maximum common capabilities, write the main stream attributes for the advertised mode,
   and enable the main stream.</p>
+
+  <h3>Troubleshooting: dead DisplayPort or USB</h3>
+  <p><code>psu_init</code> is not idempotent: a re-run in one power cycle takes the DisplayPort
+  down and kills the USB host controller on its first transfer (device detection still works,
+  descriptor reads time out, "HC died") - and USB only recovers with a <em>power cycle</em>,
+  since the controller and its ULPI PHY are in the PS, which the board's reset button never
+  touches. The flash targets therefore run the sequence <em>once per power cycle</em>: the
+  first flash after power-on initializes the PS and writes a marker to a PS scratch register
+  that only power-on reset clears; every later flash sees the marker and skips the sequence.
+  Re-flashing freely is safe.</p>
+  <p>If USB or the display nevertheless dies in this pattern, something re-ran
+  <code>psu_init</code> by hand (e.g. <code>xsdb</code> outside the flash targets): power-cycle
+  and flash once. The board's reset button alone restores the DisplayPort but not USB.</p>
 
   <h3>4. Verification </h3>
   <p>The status GPIO tells the truth about the PL side: <code>locked</code> means video is

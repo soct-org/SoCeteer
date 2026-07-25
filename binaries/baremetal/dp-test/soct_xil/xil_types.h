@@ -1,6 +1,6 @@
 /*
  * Minimal replacement for the Xilinx BSP's xil_types.h, so the vendored dppsu/avbuf
- * sources in ../xilinx compile unmodified on the SoCeteer RISC-V toolchain.
+ * sources in shared/vendor/xilinx-dp compile unmodified on the SoCeteer RISC-V toolchain.
  */
 #ifndef XIL_TYPES_H
 #define XIL_TYPES_H

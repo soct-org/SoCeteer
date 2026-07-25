@@ -33,6 +33,14 @@ trap 'echo "init: no power control on this SoC - use reboot"' USR1 USR2
 # child are deferred until it exits (POSIX), while the wait builtin is interruptible.
 # The inner loop re-waits when a trap (e.g. the USR message) interrupted `wait` while
 # the shell is still alive - only a real exit respawns it.
+# The local console, when the kernel has one: on a display design the framebuffer console
+# renders tty1 on the monitor and the USB keyboard types into it - a second, independent
+# shell beside the serial one. Spawned whenever the VT exists (without a display it is
+# merely invisible, not harmful).
+if [ -c /dev/tty1 ]; then
+    (while :; do setsid sh -l </dev/tty1 >/dev/tty1 2>&1; done) &
+fi
+
 while :; do
     setsid cttyhack sh -l &
     child=$!

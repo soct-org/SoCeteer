@@ -38,6 +38,11 @@ CONFIG_DMA_RESTRICTED_POOL=y
 CONFIG_HID=y
 CONFIG_USB_HID=y
 CONFIG_HID_GENERIC=y
+# The console on the DisplayPort monitor. The soct-dp module (an out-of-tree module in this
+# project) brings the video pipeline up and leaves it scanning a reserved framebuffer; the
+# device tree's /chosen/framebuffer node hands that buffer to simplefb, and fbcon (already
+# in the defconfig, with VT) renders tty1 into it.
+CONFIG_FB_SIMPLE=y
 CONFIG_HZ_250=y
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_INITRAMFS_SOURCE="@KBUILD_DESC@"

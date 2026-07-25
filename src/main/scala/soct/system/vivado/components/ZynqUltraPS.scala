@@ -145,4 +145,16 @@ object ZynqUltraPS {
   val UsbDmaPoolSize: BigInt = 0x1000000L
 
   val UsbDmaPoolBase: BigInt = HpmLpdBase + HpmLpdSize - UsbDmaPoolSize
+
+  /**
+   * The operating-system console's scanout framebuffer, reserved directly below the USB DMA
+   * pool. The `soct-dp` kernel module (`binaries/linux/drivers/dp`) parks the VDMA on this
+   * fixed address; the kernel renders its console into the same memory through a
+   * `simple-framebuffer` node, with no video driver involved. It must lie in DRAM's
+   * 32-bit-addressable first 2 GiB (the VDMA's read master is 32-bit); 8 MiB holds a
+   * 1920x1080 24-bit frame (6.2 MiB) with room to spare.
+   */
+  val VideoFbSize: BigInt = 0x800000L
+
+  val VideoFbBase: BigInt = UsbDmaPoolBase - VideoFbSize
 }

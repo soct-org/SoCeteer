@@ -1,0 +1,18 @@
+# soct-dp: DisplayPort pipeline bring-up (see dp-main.c). The Xilinx dppsu/avbuf sources
+# are the repo's one vendored copy (shared/vendor/xilinx-dp, also compiled by the
+# bare-metal dp-test) - copied beside this module at build time (extra-sources.txt).
+# The headers in this directory are their kernel shims.
+obj-m := soct-dp.o
+soct-dp-objs := dp-main.o shim.o xdppsu.o xdppsu_spm.o xdppsu_serdes.o \
+                xavbuf.o xavbuf_videoformats.o
+
+ccflags-y := -I$(src)
+
+# Vendored verbatim; silence the warning classes they trip.
+_vendored_cflags := -Wno-unused-parameter -Wno-sign-compare -Wno-missing-prototypes \
+                    -Wno-missing-declarations
+CFLAGS_xdppsu.o := $(_vendored_cflags)
+CFLAGS_xdppsu_spm.o := $(_vendored_cflags)
+CFLAGS_xdppsu_serdes.o := $(_vendored_cflags)
+CFLAGS_xavbuf.o := $(_vendored_cflags)
+CFLAGS_xavbuf_videoformats.o := $(_vendored_cflags)

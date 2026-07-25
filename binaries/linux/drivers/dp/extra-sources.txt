@@ -1,0 +1,13 @@
+# Sources copied beside this module before kbuild runs (paths relative to binaries/linux;
+# see kernel-modules.cmake). The vendored Xilinx DisplayPort drivers are shared with the
+# bare-metal dp-test and compiled here against the kernel shims in this directory.
+../../shared/vendor/xilinx-dp/xdppsu.c
+../../shared/vendor/xilinx-dp/xdppsu.h
+../../shared/vendor/xilinx-dp/xdppsu_hw.h
+../../shared/vendor/xilinx-dp/xdppsu_spm.c
+../../shared/vendor/xilinx-dp/xdppsu_serdes.c
+../../shared/vendor/xilinx-dp/xdppsu_serdes.h
+../../shared/vendor/xilinx-dp/xavbuf.c
+../../shared/vendor/xilinx-dp/xavbuf.h
+../../shared/vendor/xilinx-dp/xavbuf_hw.h
+../../shared/vendor/xilinx-dp/xavbuf_videoformats.c

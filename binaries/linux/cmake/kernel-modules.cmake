@@ -18,9 +18,29 @@ foreach (_drv ${_driver_dirs})
         continue ()
     endif ()
     set(_drv_bld "${CMAKE_CURRENT_BINARY_DIR}/modules/${_drv}")
+    # Optional extra sources, copied beside the module's own before kbuild runs: one path per
+    # line in extra-sources.txt, relative to this project directory. Lets a module compile
+    # sources vendored elsewhere in the repo (the DP module reuses dp-test's Xilinx drivers)
+    # without a second in-tree copy of them.
+    set(_drv_copy_cmds "")
+    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt")
+        file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt" _drv_extra)
+        foreach (_src ${_drv_extra})
+            string(STRIP "${_src}" _src)
+            if (_src STREQUAL "" OR _src MATCHES "^#")
+                continue ()
+            endif ()
+            get_filename_component(_abs "${CMAKE_CURRENT_SOURCE_DIR}/${_src}" ABSOLUTE)
+            if (NOT EXISTS "${_abs}")
+                message(FATAL_ERROR "linux: drivers/${_drv}/extra-sources.txt names a missing file: ${_src}")
+            endif ()
+            list(APPEND _drv_copy_cmds COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_abs}" "${_drv_bld}/")
+        endforeach ()
+    endif ()
     add_custom_target(${_drv}-driver
             COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}" "${_drv_bld}"
+            ${_drv_copy_cmds}
             # `modules` (not just Image) because it emits the kernel's Module.symvers,
             # without which the external modpost resolves no kernel symbol at all.
             COMMAND ${_kenv} ${_boot_make} -C "${SOCT_BOOT_LINUX_DIR}" ARCH=riscv
