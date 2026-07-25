@@ -2,13 +2,40 @@ package soct.system.vivado
 
 import chisel3._
 import soct._
+import soct.vivado._
 import soct.SOCTFreq._
-import soct.system.vivado.abstracts.BdPinPort.portToBdPin
-import soct.system.vivado.abstracts._
-import soct.system.vivado.components._
-import soct.system.vivado.fpga.{FPGA, FPGAResetPortSource, HasZynqUltraPS, UARTPortParams}
-import soct.system.vivado.intf.JTAGIntf
-import soct.system.vivado.misc.{AXI4BusInfo, ClkDesc}
+import soct.vivado.abstracts.BdPinPort.portToBdPin
+import soct.vivado.abstracts._
+import soct.vivado.components._
+import soct.system.vivado.features.FeatureWireContext
+import soct.vivado.fpga.{FPGA, FPGAResetPortSource, HasZynqUltraPS}
+import soct.vivado.intf.JTAGIntf
+import soct.vivado.misc.{AXI4BusInfo, ClkDesc}
+
+/**
+ * Everything the Vivado systems share, built once by [[SOCTVivadoSystemWiring.initCommonDesign]]:
+ * the board and top instance, the exported AXI4 buses, the clock/reset pins and domains, the
+ * shared infrastructure components (reset synchronizers, MMIO/DMA SmartConnects, interrupt
+ * concat). Top-level so feature modules can take it as a parameter.
+ */
+case class CommonDesign(
+                         fpga: FPGA,
+                         top: SOCTVivadoSystemTop,
+                         axiMems: Seq[AXI4BusInfo],
+                         axiMMIO: BdIntfPin,
+                         axiDMA: BdIntfPin,
+                         clockPins: Seq[BdChiselPin],
+                         resetPins: Seq[BdChiselPin],
+                         peripheryDomain: ClockDomain,
+                         coreDomain: ClockDomain,
+                         periphPsr: ProcSysReset,
+                         corePsr: ProcSysReset,
+                         mmioSMC: AXISmartConnect,
+                         dmaSMC: AXISmartConnect,
+                         interruptConcat: InlineConcat,
+                         intcOpt: Option[AXIIntc],
+                         sysResetGpio: AxiGpio,
+                       )
 
 /**
  * The component-and-wiring half of [[SOCTVivadoSystemBase]] (one file per concern:
@@ -20,36 +47,10 @@ trait SOCTVivadoSystemWiring {
   this: SOCTVivadoSystemBase =>
 
   /**
-   * Everything the Vivado systems share, built once by [[initCommonDesign]]: the board and
-   * top instance, the exported AXI4 buses, the clock/reset pins and domains, the shared
-   * infrastructure components (reset synchronizers, MMIO/DMA SmartConnects, interrupt concat)
-   * and the optional UART.
-   */
-  protected case class CommonDesign(
-                                     fpga: FPGA,
-                                     top: SOCTVivadoSystemTop,
-                                     axiMems: Seq[AXI4BusInfo],
-                                     axiMMIO: BdIntfPin,
-                                     axiDMA: BdIntfPin,
-                                     clockPins: Seq[BdChiselPin],
-                                     resetPins: Seq[BdChiselPin],
-                                     peripheryDomain: ClockDomain,
-                                     coreDomain: ClockDomain,
-                                     periphPsr: ProcSysReset,
-                                     corePsr: ProcSysReset,
-                                     mmioSMC: AXISmartConnect,
-                                     dmaSMC: AXISmartConnect,
-                                     interruptConcat: InlineConcat,
-                                     uartOpt: Option[AXIUartLite],
-                                     intcOpt: Option[AXIIntc],
-                                     sysResetGpio: AxiGpio,
-                                   )
-
-  /**
    * Build the topology-independent parts of a Vivado system: look up the board, create and register the top
    * instance, discover the exported AXI4 buses, derive the periphery and core clock domains,
    * and create the shared components (reset synchronizers, MMIO/DMA SmartConnects, interrupt
-   * concat, optional UART). Must be called first inside the concrete system's `InModuleBody`.
+   * concat, feature components). Must be called first inside the concrete system's `InModuleBody`.
    *
    * @return the assembled [[CommonDesign]]
    * @throws VivadoDesignException if no board is set ([[XilinxFPGAKey]]), the top does not
@@ -86,15 +87,6 @@ trait SOCTVivadoSystemWiring {
       freq = freqs.head,
     )
 
-    val uartParamOpt: Option[UARTPortParams] = {
-      if (p(HasUART)) {
-        if (fpga.uartPorts.isEmpty) {
-          throw new VivadoDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasUART is set to true in parameters.")
-        }
-        Some(fpga.uartPorts.head)
-      } else None
-    }
-
     // Every reset synchronizer gets its own BD hierarchy: the PSR plus its auto-generated
     // fan-out slices are one reset domain's plumbing, collapsed into one block.
     val periphPsr = ProcSysReset().withInstanceName("periph_psr").withGroup("periph_reset")
@@ -104,15 +96,14 @@ trait SOCTVivadoSystemWiring {
     // Sized by the devices that claimed an INTC input, not by NExtTopInterrupts: the core
     // sees a single external interrupt (the INTC's), no matter how many devices exist.
     // Floor of 1 keeps the (then dangling) component constructible in device-less designs.
-    val interruptConcat = InlineConcat(math.max(irqIdx, 1))
+    val interruptConcat = InlineConcat(math.max(irqs.count, 1))
 
-    val uartOpt = uartParamOpt.map { uartParams =>
-      val port = uartParams.initPort
-      AXIUartLite(uartDTSOpt.get, axiMMIO, port, uartParams)
-    }
+    // Feature components, at this fixed point in the creation sequence: same-class
+    // instance names and SmartConnect hookups depend on creation order.
+    features.foreach(_.createComponents(fpga, axiMMIO))
 
     val intcOpt = intcDTSOpt.map { dts =>
-      AXIIntc(dts, axiMMIO, nInputs = irqIdx, edgeMask = intcEdgeMask)
+      AXIIntc(dts, axiMMIO, nInputs = irqs.count, edgeMask = irqs.edgeMask)
         .withInstanceName("fabric_intc")
     }
 
@@ -121,7 +112,7 @@ trait SOCTVivadoSystemWiring {
 
     CommonDesign(fpga, top, axiMems, axiMMIO, axiDMA, clockPins, resetPins,
       peripheryDomain, coreDomain, periphPsr, corePsr, mmioSMC, dmaSMC, interruptConcat,
-      uartOpt, intcOpt, sysResetGpio)
+      intcOpt, sysResetGpio)
   }
 
   /**
@@ -144,7 +135,7 @@ trait SOCTVivadoSystemWiring {
   }
 
   /**
-   * Fan out the periphery clock (periphery reset sync, MMIO/DMA SmartConnects, UART) and
+   * Fan out the periphery clock (periphery reset sync, MMIO/DMA SmartConnects, features) and
    * distribute the periphery active-low resets.
    *
    * @param peripheryClock the periphery domain clock pin
@@ -156,12 +147,13 @@ trait SOCTVivadoSystemWiring {
       c.mmioSMC.ACLK.next(),
       c.dmaSMC.ACLK.next()
     )
-    c.uartOpt.foreach(uart => peripheryClock --> uart.S_AXI_ACLK)
     c.intcOpt.foreach(intc => peripheryClock --> intc.S_AXI_ACLK)
     peripheryClock --> c.sysResetGpio.S_AXI_ACLK
 
     c.periphPsr.PeripheralAResetN --> Seq(c.mmioSMC.ARESETN, c.dmaSMC.ARESETN)
-    c.uartOpt.foreach(uart => c.periphPsr.PeripheralAResetN --> uart.S_AXI_ARESETN)
+    // Feature clock/reset fan-out at this fixed point: reset edges added here define
+    // the reset synchronizer's fan-out slice numbering.
+    features.foreach(_.wirePeripheryFabric(peripheryClock, c))
     c.intcOpt.foreach(intc => c.periphPsr.PeripheralAResetN --> intc.S_AXI_ARESETN)
     // Also the self-clearing path of the reboot bit: the reset it raises resets it.
     c.periphPsr.PeripheralAResetN --> c.sysResetGpio.S_AXI_ARESETN
@@ -188,7 +180,7 @@ trait SOCTVivadoSystemWiring {
    * Wire the interrupt cascade: the concatenated peripheral interrupts feed the AXI INTC,
    * whose single level output is the core's one external interrupt (or a tie-off when no
    * device raises interrupts); then connect the UART interrupt to its INTC input.
-   * See [[soct.system.vivado.components.AXIIntc]] for why the PLIC never takes the
+   * See [[soct.vivado.components.AXIIntc]] for why the PLIC never takes the
    * peripherals directly.
    *
    * @param c the common design
@@ -202,320 +194,37 @@ trait SOCTVivadoSystemWiring {
         TieOff() --> c.top.INTERRUPTS
     }
 
-    uartDTSOpt.foreach { dts =>
-      dts.irqs.foreach { irq =>
-        c.uartOpt.get.INTERRUPT --> c.interruptConcat.IN(irq.index)
-      }
-    }
+    features.foreach(_.wireIrq(c))
   }
 
   /**
-   * Wire the MMIO path (Rocket MMIO -> mmioSMC -> UART) and the DMA path
+   * Wire the MMIO path (Rocket MMIO -> mmioSMC -> peripherals) and the DMA path
    * (dmaSMC -> Rocket L2 frontend).
    *
    * @param c the common design
    */
   protected def wireMmioAndDma(c: CommonDesign): Unit = {
     c.mmioSMC.S_AXI.next() <-> c.axiMMIO
-    c.uartOpt.foreach(uart => c.mmioSMC.M_AXI.next() <-> uart.S_AXI)
+    // Feature MMIO hookups first: M_AXI.next() allocates master ports in call order,
+    // and the UART has always been M00.
+    features.foreach(_.wireMmio(c))
     c.intcOpt.foreach(intc => c.mmioSMC.M_AXI.next() <-> intc.S_AXI)
     c.mmioSMC.M_AXI.next() <-> c.sysResetGpio.S_AXI
     c.dmaSMC.M_AXI.next() <-> c.axiDMA
   }
 
   /**
-   * Instantiate and wire the optional SD-card PMOD controller ([[HasSDCardPMOD]]): PMOD ports,
-   * clock/reset, AXI control and DMA paths, interrupt, and its timing constraints.
-   * No-op when the design has no SD card.
+   * Wire the features' main hookups from the concrete system's `InModuleBody`.
+   * ORDER CONTRACT: the wiring order here differs from the [[features]] declaration
+   * order on purpose - SmartConnect port numbers, reset-synchronizer fan-out slices and
+   * timing-constraint slots are allocated in call order, and this sequence reproduces
+   * the historical output (the PS window is wired before the features that use the PS).
    *
-   * @param peripheryClock the periphery domain clock pin
-   * @param c              the common design
+   * @param ctx the wiring context
    */
-  protected def wireSdCardPmod(peripheryClock: BdPinOut, c: CommonDesign): Unit = {
-    if (p(HasSDCardPMOD).isEmpty) return
-    val sdPMODPort = p(HasSDCardPMOD).get
-    val sdPmod = SDCardPMOD(dtsInfo = sdDTSOpt.get, getAxiMasterPin = c.axiMMIO,
-      getAxiSlavePins = Seq((c.axiDMA, "reg0")))
+  protected def wireFeatureMains(ctx: FeatureWireContext): Unit =
+    Seq(sdFeature, psWindowFeature, usbFeature, videoFeature).flatten.foreach(_.wireMain(ctx))
 
-    val (sdioCd, sdioClk, sdioCmd, sdioData) = (SDIOCDPort(sdPMODPort), SDIOClkPort(sdPMODPort), SDIOCmdPort(sdPMODPort), SDIODataPort(sdPMODPort))
-    val ports = Seq(sdioCd, sdioClk, sdioCmd, sdioData)
-
-    peripheryClock --> sdPmod.CLOCK
-    c.periphPsr.PeripheralAResetN --> sdPmod.ASYNC_RESETN
-
-    sdPmod <-> ports
-
-    c.dmaSMC.S_AXI.next() <-> sdPmod.M_AXI
-    c.mmioSMC.M_AXI.next() <-> sdPmod.S_AXI
-
-    sdDTSOpt.foreach { sdDTS =>
-      sdDTS.irqs.foreach { irq =>
-        sdPmod.INTERRUPT --> c.interruptConcat.IN(irq.index)
-      }
-    }
-
-    bd.addTimingConstraints(() => Seq(
-      s"""# Timing constraints for SDCardPMOD (${sdPmod.bdPath})
-         |set sdio_clock [get_clocks -of_objects [get_pins -hier -filter {NAME =~ *${sdPmod.CLOCK.ref}}]]
-         |
-         |set_max_delay -from $$sdio_clock -to [get_ports {${sdioClk.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -datapath_only 8.0
-         |set_max_delay -from [get_ports {${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock -datapath_only 8.0
-         |set_min_delay -from [get_ports {${sdioCd.portName} ${sdioCmd.portName} ${sdioData.portName}*}] -to $$sdio_clock 0.0
-         |
-         |set_max_delay -from [get_ports ${sdioCd.portName}] -to $$sdio_clock -datapath_only 100.0
-         |set_max_delay -from $$sdio_clock -through [get_pins -hier -filter {NAME =~ *${sdPmod.INTERRUPT.ref}}] -datapath_only 10.0
-         |""".stripMargin.tcl
-    ))
-  }
-
-  /**
-   * Instantiate and wire the window through which the RISC-V reaches the PS register space
-   * ([[soct.system.vivado.components.AxiAddrOffset]]). The PS peripherals this design programs
-   * - the DisplayPort controller, the USB host controller - live at fixed addresses that the
-   * Rocket MMIO port cannot decode directly without overlapping DRAM, so a window of the MMIO
-   * space is offset onto them. One window serves all of them: `S_AXI_LPD` is the only way in.
-   *
-   * @param peripheryClock the periphery domain clock pin
-   * @param c              the common design
-   * @return the window, or None on a board whose FPGA has no processing system
-   */
-  protected def wirePsWindow(peripheryClock: BdPinOut, c: CommonDesign): Option[AxiAddrOffset] = {
-    val ps = bd.fpgaInstance() match {
-      case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
-      case _ => return None
-    }
-    val window = new AxiAddrOffset(
-      getAxiMasterPin = c.axiMMIO,
-      windowBase = ZynqUltraPS.PsWindowBase,
-      windowSize = ZynqUltraPS.PsWindowSize,
-      targetBase = ZynqUltraPS.PsWindowTargetBase
-    ) {
-      override def assignAddrTcl: TCLCommands = {
-        // The PS slave segments carry fixed PS addresses; assign them as-is into our master space.
-        super.assignAddrTcl ++ Seq(
-          s"assign_bd_address -target_address_space [get_bd_addr_spaces ${M_AXI.ref}] [get_bd_addr_segs ${ps.bdPath}/SAXIGP6/*]".tcl
-        )
-      }
-    }.withInstanceName("ps_window")
-
-    peripheryClock --> Seq(ps.SAXI_LPD_ACLK, window.ACLK)
-    c.mmioSMC.M_AXI.next() <-> window.S_AXI
-    window.M_AXI <-> ps.S_AXI_LPD
-    Some(window)
-  }
-
-  /**
-   * Wire the PS USB host controller into the design: its DMA master onto the coherent DMA path,
-   * and its interrupt into the PL interrupt controller.
-   *
-   * The controller, its ULPI PHY and its MIO pins all come from the board preset and are brought
-   * up by psu_init, so nothing is built in the fabric - this costs one AXI port and one wire.
-   *
-   * The DMA lands on the coherent path ([[CommonDesign.dmaSMC]]) rather than on the memory
-   * controller directly: the RISC-V has no cache-maintenance instructions, so software could not
-   * make an incoherent master's writes visible to itself. USB 2.0 high speed peaks at 60 MB/s,
-   * well inside what that path sustains.
-   *
-   * @param peripheryClock the periphery domain clock pin
-   * @param c              the common design
-   */
-  protected def wireUsbHost(peripheryClock: BdPinOut, c: CommonDesign): Unit = {
-    val ps = bd.fpgaInstance() match {
-      case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
-      case _ => return
-    }
-    peripheryClock --> ps.MAXI_HPM0_LPD_ACLK
-    c.dmaSMC.S_AXI.next() <-> ps.M_AXI_HPM0_LPD
-
-    // The PS masters through its own address map, in which the window out to the PL begins at
-    // HpmLpdBase. DRAM begins at the same address, so the mapping is an identity and a PS
-    // address and a RISC-V address name the same byte.
-    bd.addConfigTcl(() => Seq(
-      ("assign_bd_address" +
-        s" -offset 0x${ZynqUltraPS.HpmLpdBase.toString(16).toUpperCase}" +
-        s" -range 0x${ZynqUltraPS.HpmLpdSize.toString(16).toUpperCase}" +
-        s" -target_address_space [get_bd_addr_spaces ${ps.bdPath}/Data]" +
-        s" [get_bd_addr_segs ${c.axiDMA.ref}/reg0]").tcl
-    ))
-
-    usbDTSOpt.foreach { dts =>
-      dts.irqs.foreach { irq =>
-        ps.PS_PL_IRQ_USB3_0_HOST --> c.interruptConcat.IN(irq.index)
-      }
-    }
-  }
-
-  /**
-   * The pixel clock for a video mode. Only modes with standard (CEA-861) pixel clocks are
-   * supported; anything else needs its own entry here.
-   *
-   * @param vs the video parameters
-   * @return the pixel clock frequency
-   * @throws VivadoDesignException if the mode has no known pixel clock
-   */
-  private def pixelClockFor(vs: VideoStreamParams): Freq = (vs.width, vs.height, vs.fps) match {
-    case (1920, 1080, 60) => 148.5.MHz
-    case (1280, 720, 60) => 74.25.MHz
-    case _ => throw VivadoDesignException(s"No known pixel clock for video mode ${vs.width}x${vs.height}@${vs.fps}. Add it to SOCTVivadoSystemBase.pixelClockFor.")
-  }
-
-  /**
-   * Instantiate and wire the DisplayPort video pipeline for Zynq UltraScale+ MPSoC if [[HasVideoStream]] is defined:
-   * VDMA (frames from DRAM via the DMA path) -> AXI4-Stream video out (+ timing controller)
-   * -> the PS DP controller's live video input. The PS `S_AXI_LPD` port is reachable from the
-   * MMIO path through an [[soct.system.vivado.components.AxiAddrOffset]] window, so the
-   * RISC-V can program the DP controller. No-op when the design has no video stream.
-   *
-   * @param coreClock      the core domain clock pin
-   * @param peripheryClock the periphery domain clock pin
-   * @param c              the common design
-   * @throws VivadoDesignException if the video mode has no known pixel clock
-   */
-  protected def wireVideoStream(coreClock: BdPinOut, peripheryClock: BdPinOut, c: CommonDesign,
-                                memPaths: Seq[MemPath]): Unit = {
-    val vs = p(HasVideoStream).getOrElse(return)
-    val ps = bd.fpgaInstance() match {
-      case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
-      case _ => return
-    }
-    val dts = videoDTSOpt.get
-
-    // Incoherent frame fetch: the VDMA masters the memory-side SmartConnect directly, so it
-    // reaches DRAM without crossing the coherent fabric (see [[soct.WithIncoherentVideoStream]]).
-    // Only meaningful with exactly one memory channel: with several, memSMC sits behind the
-    // address deinterleaver and sees one channel's dense address space, so a framebuffer would
-    // have to be pinned to that channel - fail instead of mapping frames to the wrong DRAM.
-    val memPathOpt = if (!vs.incoherent) None else Some(memPaths match {
-      case Seq(single) => single
-      case several => throw VivadoDesignException(
-        s"Incoherent video needs exactly one memory channel, but the design has ${several.length}: " +
-          "the memory SmartConnect is behind the address deinterleaver and exposes only its own " +
-          "channel, so frames would be fetched from the wrong DRAM. Use the coherent video " +
-          "pipeline (soct.WithVideoStream) or a single-channel memory layout.")
-    })
-
-    // Components - the whole PL-side pipeline lives in the `video` BD hierarchy (the PS
-    // and the pixel reset synchronizer stay outside: board-level and its own block).
-    // Coherent: the frame master targets the Rocket L2-frontend AXI slave. Incoherent: it has
-    // no fabric slave to target - its address space is mapped straight onto the DDR4
-    // controller's memory segment below, so the DMA never enters the SoC's interconnect.
-    val vdma = memPathOpt match {
-      case None => AXIVideoDMA(dts.vdma, c.axiMMIO, Seq((c.axiDMA, "reg0"))).withGroup("video")
-      case Some(mem) =>
-        val ddr4 = mem.ddr4Inst
-        new AXIVideoDMA(dts.vdma, c.axiMMIO, Seq.empty) {
-          override def assignAddrTcl: TCLCommands = super.assignAddrTcl ++ Seq(
-            s"""assign_bd_address -offset 0x00000000 -range 0x${dmaMasterRange.toHexString.toUpperCase} -target_address_space [get_bd_addr_spaces $bdPath/Data_MM2S] [get_bd_addr_segs ${ddr4.bdPath}/C0_DDR4_MEMORY_MAP/C0_DDR4_ADDRESS_BLOCK]
-               |# Same 'register' vs 'memory' usage mismatch as the coherent path: re-include the
-               |# segment Vivado excluded as a precaution (BD 41-1051).
-               |include_bd_addr_seg [get_bd_addr_segs -excluded -of_objects [get_bd_addr_spaces $bdPath/Data_MM2S]]""".stripMargin.tcl
-          )
-          // An anonymous subclass has no class name to snake-case, so name it explicitly -
-          // otherwise the instance (and every path derived from it) degenerates to "_0".
-        }.withInstanceName("axivideo_dma").withGroup("video")
-    }
-    val vtc = VideoTimingController(dts.vtc, c.axiMMIO).withGroup("video")
-    val vidOut = AxisVideoOut().withGroup("video")
-
-    // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
-    val pixelDomain = new ClockDomain(pixelClockFor(vs))
-    val pixClkWiz = ClkWiz(inputFreq = Some(c.peripheryDomain.freq)).withInstanceName("pixel_clk_wiz").withGroup("video")
-    peripheryClock --> pixClkWiz.CLK_IN.next()
-    c.periphPsr.PeripheralReset --> pixClkWiz.RESET
-    val pixelClock = pixClkWiz.CLK_OUT(1, pixelDomain)
-
-    // Clocks: control and memory sides on the periphery domain; the whole video path - the
-    // VDMA's pixel stream, the video out, the timing generator and the PS live input - on
-    // the pixel domain. The stream must carry one pixel per cycle at the full pixel rate;
-    // on the (slower) periphery clock it starves the video out mid-line.
-    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vtc.S_AXI_ACLK)
-    // The frame-fetch master runs in the domain of the SmartConnect it drives: the periphery
-    // clock for the coherent path, the core clock for the incoherent one (memSMC's slave side
-    // already runs there, so the private port needs no extra SmartConnect clock).
-    (if (memPathOpt.isDefined) coreClock else peripheryClock) --> vdma.M_AXI_MM2S_ACLK
-    pixelClock --> Seq(vdma.M_AXIS_MM2S_ACLK, vidOut.ACLK, vtc.CLK, vidOut.VID_IO_OUT_CLK,
-      ps.DP_VIDEO_IN_CLK)
-
-    // Pixel-domain reset: held while the periphery resets or the pixel MMCM is unlocked.
-    // The external reset input MUST be fed active-low here: it arrives through a
-    // polarity-stripping slice and Vivado then infers the (read-only) pin polarity as
-    // ACTIVE_LOW regardless of the source - feeding the active-high PeripheralReset held
-    // this domain in permanent reset (verified on hardware and by C_EXT_RESET_HIGH
-    // readback; see the warning on [[soct.system.vivado.components.ProcSysReset]]).
-    val pixelPsr = ProcSysReset().withInstanceName("pixel_psr").withGroup("pixel_reset")
-    pixelClock --> pixelPsr.SLOWEST_SYNC_CLK
-    pixClkWiz.LOCKED --> pixelPsr.DCM_LOCKED
-    c.periphPsr.PeripheralAResetN --> pixelPsr.EXT_RESET_IN
-
-    // Resets and enables. The video cores are held out of reset permanently after that:
-    // they only produce garbage until the driver programs VDMA/VTC, which is harmless.
-    c.periphPsr.PeripheralAResetN --> Seq(vdma.AXI_RESETN, vtc.S_AXI_ARESETN)
-    pixelPsr.PeripheralAResetN --> vidOut.ARESETN
-    TieHigh().withInstanceName("video_enables_high").withGroup("video") --> Seq(vtc.CLKEN, vtc.RESETN, vidOut.ACLKEN, vidOut.VID_IO_OUT_CE)
-    TieOff().withInstanceName("video_ties_low").withGroup("video") --> Seq(vidOut.VID_IO_OUT_RESET, vtc.FSYNC_IN)
-
-    // Stream and timing path
-    vdma.M_AXIS_MM2S <-> vidOut.VIDEO_IN
-    vtc.VTIMING_OUT <-> vidOut.VTIMING_IN
-    vidOut.VTG_CE --> vtc.GEN_CLKEN
-
-    // AXI: control registers on the MMIO path, frame reads on the DMA path. The DP controller's
-    // own registers are reached through the shared PS window (see wirePsWindow).
-    c.mmioSMC.M_AXI.next() <-> vdma.S_AXI
-    c.mmioSMC.M_AXI.next() <-> vtc.S_AXI
-    memPathOpt match {
-      case None => c.dmaSMC.S_AXI.next() <-> vdma.M_AXI
-      case Some(mem) => mem.memSMC.S_AXI.next() <-> vdma.M_AXI
-    }
-
-    // Video pipeline status readable by software: {bit2 overflow, bit1 underflow,
-    // bit0 locked} of the video out - the operational health of the stream (drivers poll
-    // locked/underflow to detect starvation).
-    val vidStatus = AxiGpio(dts.vidStatus, c.axiMMIO, ch1Width = 3)
-      .withInstanceName("video_status_gpio").withGroup("video")
-    c.mmioSMC.M_AXI.next() <-> vidStatus.S_AXI
-    peripheryClock --> vidStatus.S_AXI_ACLK
-    c.periphPsr.PeripheralAResetN --> vidStatus.S_AXI_ARESETN
-    val statusBits = InlineConcat(3).withInstanceName("vid_status_concat").withGroup("video")
-    vidOut.LOCKED --> statusBits.IN(0)
-    vidOut.UNDERFLOW --> statusBits.IN(1)
-    vidOut.OVERFLOW --> statusBits.IN(2)
-    statusBits --> vidStatus.GPIO_IO_I
-
-    // Interrupt (a level, held until the driver clears DMASR - INTC input configured as
-    // level accordingly; the DTS carries it on the VDMA's channel child node)
-    vdma.MM2S_INTROUT --> c.interruptConcat.IN(dts.vdmaIrq.index)
-
-    // Parallel video into the PS live input. The PS wants 12 bit per component (36-bit
-    // pixel); the stream carries 8 bit per component (24-bit), so each component is padded
-    // with 4 zero LSBs.
-    //
-    // This mapping DEFINES the framebuffer's byte order, because the VDMA reads the 24-bit
-    // word little-endian: stream bits [7:0] are the byte at the lower address. The bytes are
-    // routed so that a pixel reads blue, green, red from the low address up - `r8g8b8` in the
-    // Linux and DRM naming, and the only 24-bit layout either of them defines. A framebuffer
-    // built here can therefore be handed to a generic driver (a `simple-framebuffer` node, for
-    // one) without a translation step or a private format.
-    val byte2 = InlineSlice(24, 23, 16, 8).withInstanceName("vid_slice_byte2").withGroup("video")
-    val byte1 = InlineSlice(24, 15, 8, 8).withInstanceName("vid_slice_byte1").withGroup("video")
-    val byte0 = InlineSlice(24, 7, 0, 8).withInstanceName("vid_slice_byte0").withGroup("video")
-    val zero4 = InlineConstant(0, 4).withInstanceName("vid_pad_zero4").withGroup("video")
-    val pixel = InlineConcat(6).withInstanceName("vid_pixel_concat").withGroup("video")
-
-    // Which concat position drives which colour is fixed by the PS: position 1 is the
-    // component the DisplayPort shows as green, 3 as blue, 5 as red. Feeding byte1 to green
-    // and byte0 to blue is what puts blue at the lowest address.
-    Seq(byte2, byte1, byte0).foreach(s => vidOut.VID_DATA --> s.DIN)
-    zero4.DOUT --> Seq(pixel.IN(4), pixel.IN(2), pixel.IN(0))
-    byte2.DOUT --> pixel.IN(5) // red
-    byte1.DOUT --> pixel.IN(1) // green
-    byte0.DOUT --> pixel.IN(3) // blue
-
-    pixel --> ps.DP_LIVE_VIDEO_IN_PIXEL1
-    vidOut.VID_ACTIVE_VIDEO --> ps.DP_LIVE_VIDEO_IN_DE
-    vidOut.VID_HSYNC --> ps.DP_LIVE_VIDEO_IN_HSYNC
-    vidOut.VID_VSYNC --> ps.DP_LIVE_VIDEO_IN_VSYNC
-  }
 
   /**
    * Wire the debug module and its SystemJTAG interface: debug clock/reset, dmactive feedback,

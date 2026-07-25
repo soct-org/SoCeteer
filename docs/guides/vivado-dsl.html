@@ -53,7 +53,7 @@
 
   <h2>The builder and the graph</h2>
   <p>Everything registers itself with an implicit
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTBdBuilder.scala"><code>SOCTBdBuilder</code></a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/SOCTBdBuilder.scala"><code>SOCTBdBuilder</code></a>
   (injected via <code>BdBuilderKey</code> in the config). The builder is a directed multigraph:
   nodes are components, edges connect pins. Creating a component adds a node; the connect
   operators add edges. Nothing is emitted until the design is finalized and the
@@ -64,14 +64,14 @@
 
   <h2>Components</h2>
   <p>A component extends <code>BdComp</code> plus a kind marker
-  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/abstracts/Markers.scala"><code>Markers.scala</code></a>):</p>
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/abstracts/Markers.scala"><code>Markers.scala</code></a>):</p>
   <ul>
     <li><code>Xip</code> &mdash; a Xilinx IP from the catalog; <code>partName</code> is the VLNV
       (e.g. <code>xilinx.com:ip:smartconnect:1.0</code>). The generated TCL verifies required IPs
       are installed before building.</li>
     <li><code>IsModule</code> &mdash; a module reference backed by your own HDL; the source files
       are shipped via <code>dumpCollaterals</code> (see the
-      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIAddrDeinterleaver.scala">deinterleaver</a>
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AXIAddrDeinterleaver.scala">deinterleaver</a>
       for the pattern: Verilog lives in the classpath resources and is copied next to the design
       sources at generation time).</li>
     <li><code>XInlineHDL</code> &mdash; Vivado's inline primitives (constants, slices, logic gates).</li>
@@ -80,8 +80,8 @@
   <code>defaultProperties</code>, which is evaluated at TCL-generation time and may inspect the
   graph (e.g. count connected pins). For the smallest complete example &mdash; a part name, three
   pin objects and two config properties &mdash; see
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/RAMShiftReg.scala"><code>RAMShiftReg</code></a>;
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXISmartConnect.scala"><code>AXISmartConnect</code></a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/RAMShiftReg.scala"><code>RAMShiftReg</code></a>;
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AXISmartConnect.scala"><code>AXISmartConnect</code></a>
   adds indexed pins and graph-dependent properties on top.</p>
   <p>Instance names default to snake-cased class names with an index; use
   <code>.withInstanceName("...")</code> whenever a stable, readable name matters (timing
@@ -116,7 +116,7 @@
   the lowest free index when the position carries no meaning (the common case for interconnect
   ports) &mdash; reserve explicit indices for pins whose number <em>is</em> semantic, like concat
   inputs or interrupt slots.</p>
-  <p>Three operators (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/abstracts/Connect.scala"><code>Connect.scala</code></a>)
+  <p>Three operators (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/abstracts/Connect.scala"><code>Connect.scala</code></a>)
   add the edges, and the type system rejects impossible pairings at <em>compile</em> time with a
   detailed error message:</p>
   <ul>

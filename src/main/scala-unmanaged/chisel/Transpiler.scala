@@ -91,6 +91,6 @@ object Transpiler {
       throw new RuntimeException(s"firtool failed with exit code $exitCode (command: ${args.mkString(" ")})")
     }
 
-    memConf.foreach(conf => soct.system.vivado.SOCTMemGen.generate(conf, paths.verilogSrcDir))
+    memConf.foreach(conf => soct.vivado.SOCTMemGen.generate(conf, paths.verilogSrcDir))
   }
 }

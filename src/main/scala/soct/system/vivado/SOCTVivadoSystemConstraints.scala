@@ -1,6 +1,7 @@
 package soct.system.vivado
 
-import soct.system.vivado.components.DDR4
+import soct.vivado._
+import soct.vivado.components.DDR4
 
 /**
  * The TCL timing-constraint helpers of [[SOCTVivadoSystemBase]] (one file per concern:

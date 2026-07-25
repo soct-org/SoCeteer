@@ -3,10 +3,12 @@ package soct.system.vivado
 import org.chipsalliance.cde.config.Parameters
 import org.chipsalliance.diplomacy.lazymodule.InModuleBody
 import soct._
+import soct.vivado._
 import soct.SOCTFreq._
-import soct.system.vivado.abstracts._
-import soct.system.vivado.components._
-import soct.system.vivado.fpga.FPGAClockDomain
+import soct.vivado.abstracts._
+import soct.vivado.components._
+import soct.system.vivado.features.FeatureWireContext
+import soct.vivado.fpga.FPGAClockDomain
 
 
 /**
@@ -167,12 +169,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     }
 
     wireMmioAndDma(c)
-    wireSdCardPmod(peripheryClock, c)
-    // The PS register window serves every PS peripheral the RISC-V programs, so it is wired
-    // once, ahead of its users.
-    wirePsWindow(peripheryClock, c)
-    wireUsbHost(peripheryClock, c)
-    wireVideoStream(coreClock, peripheryClock, c, memPaths)
+    wireFeatureMains(FeatureWireContext(c, coreClock, peripheryClock, memPaths))
     wireDebugAndJtag(coreClock, coreClockObj, corePeriodProp, c)
     tieOffHartResets()
   }

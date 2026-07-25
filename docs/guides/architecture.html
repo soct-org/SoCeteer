@@ -77,7 +77,7 @@
       FIRRTL to Verilog into <code>vsrcs/</code> (details below - the two supported Chisel lineages
       lower differently). For Vivado targets on the firtool lineage, the SRAMs are additionally
       extracted (<code>--repl-seq-mem</code>) and re-emitted by
-      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTMem.scala"><code>SOCTMemGen</code></a>
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/SOCTMem.scala"><code>SOCTMemGen</code></a>
       in a shape Vivado reliably infers as Block RAM: firtool's inline byte-masked memories are
       only extracted up to a few write lanes, and a 32-lane cache data array otherwise silently
       becomes ~52k LUTs + 131k flip-flops <em>per core</em>. The generated implementations split
@@ -88,7 +88,7 @@
         <li><em>Verilator:</em> the emitted Verilog plus <code>SOCTSystem.cmake</code> are consumed
           by the <code>sim/</code> CMake project, which verilates the design into a native
           simulator binary.</li>
-        <li><em>Vivado:</em> <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTVivado.scala"><code>SOCTVivado.prepareForVivado</code></a> finalizes the block-design
+        <li><em>Vivado:</em> <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/SOCTVivado.scala"><code>SOCTVivado.prepareForVivado</code></a> finalizes the block-design
           graph, patches Vivado interface annotations into the top-level Verilog ports, and emits
           <code>init.tcl</code>, the block-design TCL, timing constraints and per-component XDC
           files; optionally Vivado is launched (locally or remotely) to create the project.</li>
@@ -136,7 +136,7 @@
   define the memory channels; <code>BootROMLocated</code> binds the SOCT boot ROM described next.</p>
   <p>Peripheral interrupts share one topology across every Vivado design: the fabric devices'
   interrupt lines are concatenated into a Xilinx AXI interrupt controller
-  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIIntc.scala"><code>AXIIntc</code></a>),
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AXIIntc.scala"><code>AXIIntc</code></a>),
   whose single level output is the core's only external interrupt (PLIC source&nbsp;1). The
   INTC is an impedance matcher: the PLIC's per-source gateways assume <em>level</em> sources
   &mdash; a source is masked between claim and completion, on the contract that a still-pending

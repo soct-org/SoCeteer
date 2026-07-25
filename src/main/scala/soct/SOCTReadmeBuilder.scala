@@ -3,7 +3,7 @@ package soct
 import soct.SOCTLauncher.SOCTConfig
 import soct.SOCTNames.{DEFAULT_EXAMPLE_BINARY, SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.build.{BuildInfo => info}
-import soct.system.vivado.fpga.{FPGARegistry, PartRegistry}
+import soct.vivado.fpga.{FPGARegistry, PartRegistry}
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}

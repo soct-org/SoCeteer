@@ -1,0 +1,130 @@
+package soct.vivado.components
+
+import org.chipsalliance.cde.config.Parameters
+import soct.vivado.{SOCTBdBuilder, TCLCommands}
+import soct.vivado.abstracts.{Finalizable, _}
+
+import scala.collection.mutable
+
+/**
+ * Proc Sys Reset IP core from Xilinx.
+ * Documentation: https://docs.amd.com/v/u/en-US/pg164-proc-sys-reset
+ *
+ * WARNING: the polarity of [[EXT_RESET_IN]] (C_EXT_RESET_HIGH) is read-only and derived by
+ * Vivado from the connected net. When the reset arrives through polarity-stripping fabric
+ * (slices, gates), the inference lands on ACTIVE_LOW - so such sources must be active-low
+ * (e.g. a peripheral_aresetn), or the domain ends up in permanent reset (verified on
+ * hardware).
+ */
+case class ProcSysReset(autoSlice: Boolean = true)(implicit bd: SOCTBdBuilder, p: Parameters)
+  extends BdComp with Xip with Finalizable {
+
+  override def partName: String = "xilinx.com:ip:proc_sys_reset:5.0"
+
+  trait ProcSysResetPort {
+    self: BdPinOut =>
+
+    val maxOutputs: Int
+
+    lazy val sinks: Seq[BdPinPort] = {
+      bd.successors(self)
+    }
+
+    def dinWidth: Int = sinks.size min maxOutputs max 1
+
+    def createSlices(): Unit = {
+      val idxToSlice = mutable.Map.empty[Int, InlineSlice]
+      if (dinWidth < 2) {
+        soct.log.debug(s"No slicing needed for $this of ${ProcSysReset.this.instanceName} with dinWidth=$dinWidth")
+        return // No slicing needed
+      } else {
+        // Remove existing connections from bd as we will rewire after slicing
+        bd.disconnect(this)
+      }
+
+      soct.log.debug(s"Slicing $this of ${ProcSysReset.this.instanceName} into $dinWidth slices for ${sinks.size} sinks")
+      // Go through each io and calc which slice it goes to (idx % maxOutputs) to have even distribution
+      sinks.zipWithIndex.foreach {
+        case (sink, i) =>
+          val sliceIdx = i % maxOutputs
+          val slice = idxToSlice.getOrElseUpdate(sliceIdx, {
+            val s = InlineSlice(dinWidth, sliceIdx, sliceIdx, 1)
+              .withInstanceName(s"${ProcSysReset.this.instanceName}_${pin}_slice_$sliceIdx")
+            // The fan-out slices belong wherever their reset synchronizer lives.
+            ProcSysReset.this.group.foreach(s.withGroup)
+            s
+          })
+          soct.log.debug(s"Connecting sink $sink to slice $slice")
+          bd.addEdge(slice.DOUT, sink)
+      }
+
+      // Now connect the slices to this port
+      idxToSlice.values.foreach { slice =>
+        soct.log.debug(s"Connecting slice ${slice.instanceName} to $this")
+        bd.addEdge(this, slice.DIN)
+      }
+    }
+  }
+
+  /**
+   * Use this reset to connect to peripherals needing an active-low / negative polarity reset.
+   * Deassertion is synchronized to the slowestSyncClk.
+   */
+  object PeripheralAResetN extends BdPinOut("peripheral_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
+    override val maxOutputs: Int = 16
+  }
+
+  /**
+   * Use this reset to connect to peripherals needing an active-high / positive polarity reset.
+   * Deassertion is synchronized to the slowestSyncClk.
+   */
+  object PeripheralReset extends BdPinOut("peripheral_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
+    override val maxOutputs: Int = 16
+  }
+
+  /**
+   * Bus Structures reset - for example, arbiters for bridges. Active-High
+   */
+  object BusStructReset extends BdPinOut("bus_struct_reset", ProcSysReset.this) with ProcSysResetPort with Reset {
+    override val maxOutputs: Int = 8
+  }
+
+  /**
+   * Interconnect reset, for example, interconnects with active-Low reset inputs.
+   */
+  object InterconnectResetN extends BdPinOut("interconnect_aresetn", ProcSysReset.this) with ProcSysResetPort with ResetN {
+    override val maxOutputs: Int = 8
+  }
+
+  /**
+   * DCM Locked input - connect to the DCM or PLL lock output driving the slowestSyncClk
+   */
+  object DCM_LOCKED extends BdPinIn("dcm_locked", ProcSysReset.this)
+
+  object SLOWEST_SYNC_CLK extends BdPinIn("slowest_sync_clk", ProcSysReset.this)
+
+  object EXT_RESET_IN extends BdPinIn("ext_reset_in", ProcSysReset.this)
+
+  override def defaultProperties: Map[String, String] = {
+    if (!autoSlice) {
+      return Map.empty
+    }
+    Map(
+      "CONFIG.C_NUM_PERP_ARESETN" -> PeripheralAResetN.dinWidth.toString,
+      "CONFIG.C_NUM_PERP_RST" -> PeripheralReset.dinWidth.toString,
+      "CONFIG.C_NUM_BUS_RST" -> BusStructReset.dinWidth.toString,
+      "CONFIG.C_NUM_INTERCONNECT_ARESETN" -> InterconnectResetN.dinWidth.toString
+    )
+  }
+
+  override protected def finalizeBdImpl(): Unit = {
+    if (!autoSlice) {
+      return // skip slicing if autoSlice is disabled
+    }
+    // Ensure slicing is done for all output ports
+    PeripheralAResetN.createSlices()
+    PeripheralReset.createSlices()
+    BusStructReset.createSlices()
+    InterconnectResetN.createSlices()
+  }
+}

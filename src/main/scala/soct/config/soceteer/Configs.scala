@@ -9,8 +9,8 @@ import freechips.rocketchip.tile.MaxHartIdBits
 import org.chipsalliance.cde.config.{Config, Field}
 import soct.SOCTFreq._
 import soct.SOCTLauncher.SOCTConfig
-import soct.system.vivado.SOCTBdBuilder
-import soct.system.vivado.fpga.{DDR4PortParams, FPGA}
+import soct.vivado.SOCTBdBuilder
+import soct.vivado.fpga.{DDR4PortParams, FPGA}
 
 import scala.annotation.unused
 

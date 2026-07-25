@@ -91,7 +91,7 @@
   board throughout this guide; <code>--board</code> takes any registered MPSoC board (see
   <a href="boards.html">Adding an FPGA Board</a>).</p>
   <p>Each mode needs a known pixel clock: the supported modes are enumerated in
-  <code>SOCTVivadoSystemBase.pixelClockFor</code> (1280&times;720@60 and 1920&times;1080@60);
+  <code>VideoStreamFeature.pixelClockFor</code> (1280&times;720@60 and 1920&times;1080@60);
   a new mode is added by giving it its CTA-861 pixel clock there. Whether a mode is
   <em>dependable</em> is a separate, fetch-path question &mdash; the frame fetch must sustain
   <em>width &times; height &times; fps &times; 3</em> bytes per second against whatever else
@@ -104,28 +104,28 @@
   PS and reaches the connector over the PS-GTR serial lanes. The PL therefore streams pixels
   into that controller's <em>live video input</em>, and the RISC-V programs it through an
   address window. Everything is instantiated by
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/SOCTVivadoSystemBase.scala"><code>wireVideoStream</code></a>:</p>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/features/VideoStreamFeature.scala"><code>VideoStreamFeature</code></a>:</p>
   <ul>
-    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIVideoDMA.scala"><code>AXIVideoDMA</code></a>
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AXIVideoDMA.scala"><code>AXIVideoDMA</code></a>
       reads frames from DRAM and emits them as an AXI4-Stream of 24-bit RGB pixels. With
       <code>WithIncoherentVideoStream</code> (preferred) it masters the memory controller
       directly; with <code>WithVideoStream</code> it fetches over the same coherent DMA path
       the SD card uses (through the Rocket L2 frontend, so CPU writes to the framebuffer need
       no cache maintenance) &mdash; see <em>Coherent and incoherent frame fetch</em> below.</li>
-    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxisVideoOut.scala"><code>AxisVideoOut</code></a>
+    <li><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AxisVideoOut.scala"><code>AxisVideoOut</code></a>
       converts the stream to parallel video (data + syncs + data-enable), aligned to the timing of
-      the <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/VideoTimingController.scala"><code>VideoTimingController</code></a>.
+      the <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/VideoTimingController.scala"><code>VideoTimingController</code></a>.
       It runs in <em>master</em> timing mode: it gates the timing generator until its FIFO is
       primed and releases it at a frame boundary, which is what guarantees output lock.</li>
     <li>The parallel video feeds the
-      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ZynqUltraPS.scala"><code>ZynqUltraPS</code></a>
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/ZynqUltraPS.scala"><code>ZynqUltraPS</code></a>
       live video pins &mdash; detailed port by port below.</li>
-    <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxiAddrOffset.scala"><code>AxiAddrOffset</code></a>
+    <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AxiAddrOffset.scala"><code>AxiAddrOffset</code></a>
       window makes the PS register space reachable from the MMIO port: a 16&nbsp;MiB window maps
       onto the PS-fixed addresses of the DP controller, its SERDES and the AV buffer manager.
       Rocket's MMIO decode cannot cover those addresses directly without colliding with the DRAM
       decode.</li>
-    <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AxiGpio.scala"><code>AxiGpio</code></a>
+    <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AxiGpio.scala"><code>AxiGpio</code></a>
       exposes the video out's <code>locked</code>/<code>underflow</code>/<code>overflow</code>
       pins as a readable register &mdash; the pipeline's health, since those signals otherwise
       never leave the fabric.</li>
@@ -229,7 +229,7 @@
       polarity-stripping fabric, and Vivado then infers the (read-only) pin polarity as
       active-low &mdash; feeding the active-high reset holds the domain in permanent reset. See
       the warning on
-      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/ProcSysReset.scala"><code>ProcSysReset</code></a>.</li>
+      <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/ProcSysReset.scala"><code>ProcSysReset</code></a>.</li>
     <li><strong>Never reset</strong>: the timing controller's pixel side and the video out's
       video-IO side have their resets tied inactive and their enables tied high. They free-run
       from the moment the pixel clock exists and merely produce garbage until the driver

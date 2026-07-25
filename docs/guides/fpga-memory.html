@@ -79,7 +79,7 @@
   </ul>
 
   <h3>The part registry</h3>
-  <p>Capacity resolution (see <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/PartRegistry.scala"><code>PartRegistry</code></a>) works in two steps:</p>
+  <p>Capacity resolution (see <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/PartRegistry.scala"><code>PartRegistry</code></a>) works in two steps:</p>
   <ol>
     <li><strong>Exact match</strong> against the registry (base part name without the speed grade).</li>
     <li><strong>Micron pattern fallback</strong>: <code>MTA&lt;n&gt;ATF&lt;depth&gt;&lt;width&gt;&hellip;</code>
@@ -116,13 +116,13 @@
   <h3>What a board definition needs to support custom DDR4</h3>
   <table>
     <tr><th>Board data</th><th>Where</th><th>Example (ZCU104)</th></tr>
-    <tr><td><code>defaultMemoryPart</code></td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/DDR4PortParams.scala"><code>DDR4PortParams</code></a></td><td><code>MTA8ATF51264HZ-2G1</code></td></tr>
+    <tr><td><code>defaultMemoryPart</code></td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/DDR4PortParams.scala"><code>DDR4PortParams</code></a></td><td><code>MTA8ATF51264HZ-2G1</code></td></tr>
     <tr><td><code>ddr4PinMap</code></td><td><code>DDR4PortParams</code></td><td>121 pins from <code>part0_pins.xml</code></td></tr>
     <tr><td><code>ddr4TimePeriodPs</code> / <code>ddr4InputClockPeriodPs</code></td><td><code>DDR4PortParams</code></td><td>938 / 3335</td></tr>
-    <tr><td>Clock pin pair (<code>pinLocs</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ClocksAndResets.scala"><code>FPGADiffClockPort</code></a></td><td>AH18/AH17, DIFF_SSTL12</td></tr>
-    <tr><td>Reset pin (<code>pinLoc</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ClocksAndResets.scala"><code>FPGAResetPort</code></a></td><td>M11, LVCMOS33</td></tr>
+    <tr><td>Clock pin pair (<code>pinLocs</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/ClocksAndResets.scala"><code>FPGADiffClockPort</code></a></td><td>AH18/AH17, DIFF_SSTL12</td></tr>
+    <tr><td>Reset pin (<code>pinLoc</code>)</td><td><a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/ClocksAndResets.scala"><code>FPGAResetPort</code></a></td><td>M11, LVCMOS33</td></tr>
   </table>
-  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a> declares all of this, so any DIMM in the Vivado DDR4 catalog works there.
+  <p>The <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a> declares all of this, so any DIMM in the Vivado DDR4 catalog works there.
   For a new board, copy the data out of the Vivado board files
   (<code>&lt;vivado&gt;/data/xhub/boards/&hellip;/part0_pins.xml</code> and <code>preset.xml</code>).</p>
 
@@ -131,7 +131,7 @@
   channels: each channel's exported address sets pin the channel-select bits, so the addresses
   arriving at one channel are sparse &mdash; every other cache line is a hole. A DDR controller fed
   these raw addresses would waste 1&minus;1/N of its capacity.</p>
-  <p>SoCeteer inserts an <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/components/AXIAddrDeinterleaver.scala"><code>AXIAddrDeinterleaver</code></a> per channel (a purely combinational
+  <p>SoCeteer inserts an <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AXIAddrDeinterleaver.scala"><code>AXIAddrDeinterleaver</code></a> per channel (a purely combinational
   <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/resources/deinterleaver/axi_addr_deinterleaver.v"><code>AXI4 pass-through module</code></a>) that drops the constant channel-select bits and compacts the sparse
   view onto the dense range <code>[base, base + capacity)</code>. The interleave geometry is
   derived automatically from the diplomacy address sets; contiguous (single-channel) designs get no

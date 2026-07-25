@@ -1,12 +1,13 @@
 package soct.system.vivado
 
+import soct.vivado._
 import freechips.rocketchip.amba.axi4.AXI4SlaveParameters
 import org.chipsalliance.cde.config.Parameters
 import soct.system.soceteer.SOCTSystem
-import soct.system.vivado.abstracts._
-import soct.system.vivado.components._
-import soct.system.vivado.fpga.DDR4PortParams
-import soct.system.vivado.misc.AXI4BusInfo
+import soct.vivado.abstracts._
+import soct.vivado.components._
+import soct.vivado.fpga.DDR4PortParams
+import soct.vivado.misc.AXI4BusInfo
 
 import scala.annotation.unused
 
@@ -72,12 +73,14 @@ trait SupportsMultiMem
 
 /**
  * Shared base of Vivado top-level systems, assembled from one trait per concern:
- *   - [[SOCTVivadoSystemDTS]] binds the common MMIO devices into the device tree (runs at
- *     construction time, in a fixed order - it is mixed in first so the builder gate and
- *     the resource bindings initialize exactly as they always have)
+ *   - [[SOCTVivadoSystemDTS]] binds the shared device-tree infrastructure and constructs
+ *     the optional [[soct.system.vivado.features.VivadoFeature]]s (runs at construction
+ *     time, in a fixed order - it is mixed in first so the builder gate and the resource
+ *     bindings initialize before anything else)
  *   - [[SOCTVivadoSystemConstraints]] provides the TCL timing-constraint helpers
  *   - [[SOCTVivadoSystemWiring]] builds the topology-independent components and wiring
- *     ([[SOCTVivadoSystemWiring.initCommonDesign]] and the `wire*` helpers)
+ *     ([[SOCTVivadoSystemWiring.initCommonDesign]] and the `wire*` helpers, which call
+ *     into each feature's hooks at fixed, order-bearing sites)
  *
  * A concrete system ([[SOCTVivadoSystem]] being the standard one) only adds its memory
  * topology and clock synthesis.

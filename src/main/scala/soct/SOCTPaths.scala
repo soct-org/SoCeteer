@@ -3,7 +3,7 @@ package soct
 import soct.SOCTLauncher.SOCTConfig
 import soct.SOCTNames._
 import soct.SOCTPaths.paths
-import soct.system.vivado.fpga.FPGARegistry
+import soct.vivado.fpga.FPGARegistry
 
 import java.nio.file.{Files, Path, Paths}
 

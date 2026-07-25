@@ -44,13 +44,13 @@
   standard together, taken verbatim from the board files.</p>
 
   <h2>The shape of a board definition</h2>
-  <p>Extend <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/FPGA.scala"><code>FPGA</code></a>
+  <p>Extend <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/FPGA.scala"><code>FPGA</code></a>
   and register the object in
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/PartRegistry.scala"><code>FPGARegistry</code></a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/PartRegistry.scala"><code>FPGARegistry</code></a>
   so <code>--board</code> can find it. A board declares four kinds of things: its identity (the
   FPGA part number and the Vivado board part), its clock and reset inputs, its memory sockets and
   UART interfaces, and its PMOD pin mapping. The
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/system/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/fpga/ZCU104.scala"><code>ZCU104</code></a>
   is the reference implementation.</p>
 
   <h2>Where the data comes from</h2>

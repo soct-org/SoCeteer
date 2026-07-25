@@ -5,8 +5,8 @@ import org.chipsalliance.cde.config.{Config, Parameters}
 import org.json4s.{CustomSerializer, JNull, JString}
 import soct.SOCTBytes.{ByteUnitOpsInt, Bytes}
 import soct.SOCTUtils.MAX_MEM_SIZE_32_BIT
-import soct.system.vivado.VivadoDesignException
-import soct.system.vivado.fpga.{PartRegistry, DDR4PortParams}
+import soct.vivado.VivadoDesignException
+import soct.vivado.fpga.{PartRegistry, DDR4PortParams}
 
 import java.nio.file.{Path, Paths}
 import scala.util.Try

@@ -8,7 +8,7 @@ import org.chipsalliance.cde.config
 import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import soct.system.sim.SOCTSimSystem
 import soct.system.vivado.SOCTVivadoSystem
-import soct.system.vivado.fpga.{PartRegistry, FPGA, FPGARegistry}
+import soct.vivado.fpga.{PartRegistry, FPGA, FPGARegistry}
 import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
 import soct.SOCTFreq._
