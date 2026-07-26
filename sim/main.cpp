@@ -2,6 +2,7 @@
 #define TOSTRING(x) STRINGIFY(x)
 
 #include <disasm.h>
+#include <platform.h> // spike constants (DEFAULT_PRIV)
 #include <fstream>
 #include <memory>
 #include "verilated.h"

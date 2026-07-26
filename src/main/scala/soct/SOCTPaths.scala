@@ -241,6 +241,11 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPathsBa
   def dtsFile: Path = systemDir.resolve(s"${config.topModuleName}.dts")
 
   /**
+   * Path to the generated C mirror of the device tree (see [[SOCTDtsHeader]])
+   */
+  def dtsHeaderFile: Path = systemDir.resolve("soct-dts.h")
+
+  /**
    * Path to the generated device tree blob file
    */
   def dtbFile: Path = systemDir.resolve(s"${config.topModuleName}.dtb")

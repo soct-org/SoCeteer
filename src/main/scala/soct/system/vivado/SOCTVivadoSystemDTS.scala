@@ -141,15 +141,18 @@ trait SOCTVivadoSystemDTS {
       s"features order no longer matches INTC input order: ${irqs.claims}")
   }
 
-  // Boot arguments: the console selection and the early console describe THIS design's UART,
-  // so they belong in the device tree the design emits - not baked into a kernel binary, which
-  // would tie the kernel image to one hardware generation. Only bound when the design has a
-  // UART to talk through. On a design with a framebuffer console (any video variant, see
-  // [[VideoStreamFeature]]), `console=tty0` comes FIRST: every console= entry receives kernel
-  // messages, but the LAST one becomes /dev/console - the serial shell must stay primary,
-  // with the monitor as a mirror (its own shell runs on tty1, see the shell image's init).
-  // Bound after the features: it constructs no device-tree node, only a property value,
-  // so its position carries no ordering weight.
+  // Boot arguments: the kernel command line. It is assembled here, in the device tree,
+  // because every piece of it describes THIS design (which UART, at what address and
+  // baud) - baking it into the kernel image would tie that image to one hardware
+  // generation. Bound only when the design has a UART to talk through.
+  //
+  // On a design with video the line reads
+  //     console=tty0 console=ttyUL0,<baud> earlycon=...
+  // and the ordering is deliberate: Linux sends kernel messages to EVERY console= entry,
+  // but only the LAST one becomes /dev/console (what init and its shell attach to).
+  // Listing tty0 (the monitor) FIRST therefore makes it a mirror of kernel output while
+  // the serial UART stays the primary console. The monitor gets its own login shell on
+  // tty1 instead, started by the shell image's init.
   uartFeature.foreach { u =>
     ResourceBinding {
       Resource(chosenDev, "bootargs").bind(ResourceString(

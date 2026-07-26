@@ -162,12 +162,12 @@ object SOCTSystemGenerator {
       CMakeVar("SOCT_ARCH", march, "The RISC-V architecture string extracted from the DTS", compileDef = true, quoted = true),
       CMakeVar("SOCT_ABI", config.mabi, "The RISC-V ABI to use for compiling binaries for this system", compileDef = true, quoted = true),
       CMakeVar("SOCT_XLEN", config.args.xlen.toString, "The XLEN of the system", compileDef = true),
-      CMakeVar("SOCT_NCPUS", DTSExtractor.countCPUs(dtsContent).toString, "The number of CPU cores in the system, extracted from the DTS", compileDef = true),
       CMakeVar("SOCT_BOOTROM_BASE_ADDR", s"0x${bootromParams.address.toLong.toHexString}", "Base address of the boot ROM; the shared bootrom linker script and the image objcopy derive from it", compileDef = true, ldDef = true),
       CMakeVar("SOCT_BOOTROM_HANG_ADDR", s"0x${bootromParams.hang.toLong.toHexString}", "The hart reset vector inside the boot ROM (.text.hang sits exactly here)", compileDef = true, ldDef = true),
       CMakeVar("SOCT_DTB_ADDR", s"0x${dtbAddr.toLong.toHexString}", "The address of the DTB embedded in the boot ROM (pinned by the shared bootrom linker script; JTAG flashing passes it in a1)", compileDef = true, ldDef = true),
       CMakeVar("SOCT_VSRCS", rel(paths.verilogSrcDir), "The Verilog source files for this system"),
       CMakeVar("SOCT_DTS", rel(paths.dtsFile), "The device tree file for this system"),
+      CMakeVar("SOCT_DTS_HEADER", rel(paths.dtsHeaderFile), "The generated C mirror of the device tree (soct-dts.h); C code takes design addresses from it, cmake and linker scripts from the variables here"),
       CMakeVar("SOCT_DTB", rel(paths.dtbFile), "The compiled device tree blob for this system"),
       CMakeVar("SOCT_BOOTROM_IMG", rel(paths.bootromImgFile), "The bootrom image for this system"),
       CMakeVar("SOCT_ELFS_DIR", rel(paths.elfsDir), "The directory where compiled ELF files for this system are stored"),
@@ -204,15 +204,6 @@ object SOCTSystemGenerator {
         "SOCT_NEEDS_FATFS", "ON",
         "This system has a block device that requires the FatFS library for filesystem support (e.g. SD card)",
         compileDef = true
-      )
-    }
-
-    if (config.params(CLINTKey).isDefined) {
-      optionalVars :+= CMakeVar(
-        "SOCT_CLINT_BASE",
-        s"0x${config.params(CLINTKey).get.baseAddress.toLong.toHexString}",
-        "Base address of the CLINT (Core Local Interruptor)",
-        compileDef = true, ldDef = true
       )
     }
 

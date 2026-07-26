@@ -140,7 +140,15 @@ void _soct_start_main(int hartid, void *dtb_blob) {
 
     init_soct_ff();
 
-    if (soct_htif_present()) {
+    // HTIF (fesvr) is served by the simulation harness and described in the DTB like
+    // any other device. Probe only when the DTB names it - or when there is no DTB to
+    // consult (fesvr loads ELFs directly, without the bootrom's DTB hand-off) - since
+    // on hardware the probe burns its full timeout on every boot.
+    const bool htif_in_dtb = s_dtb_ready && dtb_find_compatible(NULL, SOCT_HTIF_NAME_DTS) != NULL;
+    if (s_dtb_ready && !htif_in_dtb) {
+        soct_add_setup_msg("HTIF not described in the DTB - not probing for fesvr");
+    }
+    if ((htif_in_dtb || !s_dtb_ready) && soct_htif_present()) {
         soct_add_setup_msg("HTIF device detected, registering handler");
         soct_register_default_handler((soct_handler_t){
             .handle = soct_handle_htif,

@@ -1,8 +1,9 @@
 // boot all cores (only hart 0) and jump to main program execution
+#include <soct-dts.h>
 .section .text.start, "ax", @progbits
 .globl _start
 _start:
-  li a1, SOCT_CLINT_BASE // base address of clint
+  li a1, SOCT_DTS_CLINT_BASE // base address of clint, from the device-tree mirror
   csrr a0, mhartid
   // boot_core lives beyond the embedded DTB, out of conditional-branch range
   // (+-4 KiB) - reach it through an unconditional jump (+-1 MiB)

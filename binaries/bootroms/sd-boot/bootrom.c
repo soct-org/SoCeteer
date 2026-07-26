@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <soct-dts.h>
+
 #include <ff.h>
 #include <diskio.h>
 
@@ -121,7 +123,7 @@ struct sdc_regs {
 
 /* Note: .data section not supported in BootROM */
 
-static struct sdc_regs * const regs __attribute__((section(".rodata"))) = (struct sdc_regs *)0x60000000;
+static struct sdc_regs * const regs __attribute__((section(".rodata"))) = (struct sdc_regs *)SOCT_DTS_MMC0_BASE;
 
 static int errno __attribute__((section(".bss")));
 static DSTATUS drv_status __attribute__((section(".bss")));

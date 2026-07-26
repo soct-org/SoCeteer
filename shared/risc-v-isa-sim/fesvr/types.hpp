@@ -7,6 +7,20 @@
 /// An address type
 using addr_t = uint64_t;
 
+/**
+ * The target's address map, supplied by the embedder at construction: the frontend
+ * itself carries no target-specific addresses. `clint_base == 0` means the target has
+ * no CLINT to wake the boot ROM through - harts are then started by writing the entry
+ * point to their program counter directly (the boot ROM is bypassed). The default
+ * tohost/fromhost slots are used only for ELFs that export no such symbols.
+ */
+struct target_map_t {
+    addr_t dram_base = 0;
+    addr_t clint_base = 0;
+    addr_t default_tohost = 0;
+    addr_t default_fromhost = 0;
+};
+
 #if SOCT_XLEN == 32
 typedef uint32_t guest_reg_t;
 #else

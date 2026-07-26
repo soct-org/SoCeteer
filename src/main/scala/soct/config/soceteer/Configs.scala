@@ -65,7 +65,8 @@ class RocketBaseConfig extends Config(
 
 /** Base config of the Verilator simulation target. */
 class RocketSimBaseConfig extends Config(
-  new WithNExtTopInterrupts(8) ++ // We don't know how many interrupts are needed, so we just use 8
+  new WithHTIF ++ // syscalls are served by fesvr through HTIF; the DTS advertises it
+    new WithNExtTopInterrupts(8) ++ // We don't know how many interrupts are needed, so we just use 8
     new WithDTS("freechips,rocketchip-unknown", Nil) ++
     new WithNoSlavePort ++
     new WithClockGateModel ++
@@ -148,6 +149,19 @@ class WithSingleMemLayout(mem: DDR4PortParams) extends Config((_, _, up) => {
  * Field to indicate whether the design should include an SDCard PMOD interface on a specified port (index).
  */
 case object HasSDCardPMOD extends Field[Option[Int]](None)
+
+/**
+ * Field to indicate that syscalls can be served over HTIF (fesvr) - true on the
+ * simulation target, where the Verilator harness runs fesvr. The system then describes
+ * an `htif` node (`ucb,htif0`) in the device tree, and software probes for the device
+ * only where the tree names it - on hardware an unconditional probe burns its full
+ * timeout on every boot.
+ */
+case object HasHTIF extends Field[Boolean](false)
+
+class WithHTIF extends Config((_, _, _) => {
+  case HasHTIF => true
+})
 
 case object NeedsFatFS extends Field[Boolean](false)
 

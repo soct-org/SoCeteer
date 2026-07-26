@@ -14,11 +14,11 @@ import scala.collection.mutable
  * For now, the ClkWiz IP can only be driven by a single clock input, but can provide multiple clock outputs.
  * Documentation: https://docs.amd.com/r/en-US/pg065-clk-wiz
  *
- * @param inputFreq frequency of the input clock when it is a BD-internal net (e.g. a DDR4
+ * @param inputDom clock domain of the input clock when it is a BD-internal net (e.g. a DDR4
  *                  additional clock output) instead of a board clock port; board clock ports
  *                  carry their own frequency and must not set this
  */
-case class ClkWiz(inputFreq: Option[Freq] = None)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class ClkWiz(inputDom: Option[ClockDomain] = None)(implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with HasIndexedPins {
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
@@ -73,13 +73,13 @@ case class ClkWiz(inputFreq: Option[Freq] = None)(implicit bd: SOCTBdBuilder, p:
         m += "CONFIG.PRIM_SOURCE" -> "Differential_clock_capable_pin"
       case (None, Some(_: FPGASingleEndedClockPort)) =>
         m += "CONFIG.PRIM_SOURCE" -> "Global_buffer"
-      case (None, Some(_)) if inputFreq.isDefined =>
+      case (None, Some(_)) if inputDom.isDefined =>
         // BD-internal clock net (e.g. a DDR4 additional clock output): no buffer, and the
         // input frequency cannot be inferred from a board file - it comes from the parameter.
         m += "CONFIG.PRIM_SOURCE" -> "No_buffer"
-        m += "CONFIG.PRIM_IN_FREQ" -> f"${inputFreq.get.toMHz}%.3f"
+        m += "CONFIG.PRIM_IN_FREQ" -> f"${inputDom.get.freq.toMHz}%.3f"
       case (None, Some(_)) =>
-        throw VivadoDesignException(s"ClkWiz $instanceName clk_in1 is driven by a BD-internal net; pass inputFreq so the input frequency is known.")
+        throw VivadoDesignException(s"ClkWiz $instanceName clk_in1 is driven by a BD-internal net; pass inputDom so the input frequency is known.")
       case _ =>
         throw VivadoDesignException(s"ClkWiz $instanceName clk_in1 must be connected to a clock source, but it is not connected to any source.")
     }

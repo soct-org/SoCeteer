@@ -18,19 +18,20 @@ void dtm_t::reset() {
     for (int hartsel = 0; hartsel < num_harts; hartsel++) {
         select_hart(hartsel);
         fence_i();
-#ifndef SOCT_CLINT_BASE
-        // No clint - just set program counter to entry point
-        write_csr(CSR_DPC, entry());
-#endif
+        if (m_target_map.clint_base == 0) {
+            // No CLINT to wake the boot ROM through - point the program counter at the
+            // entry directly (the boot ROM is bypassed, so no DTB reaches the program).
+            write_csr(CSR_DPC, entry());
+        }
     }
 
-#ifdef SOCT_CLINT_BASE
-    // Next, wake up the BootROM by writing to the MSIP registers via memory mapped CLINT
-    uint32_t msip = 1;
-    for (int hartsel = 0; hartsel < num_harts; hartsel++) {
-        write(SOCT_CLINT_BASE + hartsel * 4, sizeof(msip), reinterpret_cast<uint8_t*>(&msip));
+    if (m_target_map.clint_base != 0) {
+        // Wake the boot ROM: raise every hart's MSIP via the memory-mapped CLINT.
+        uint32_t msip = 1;
+        for (int hartsel = 0; hartsel < num_harts; hartsel++) {
+            write(m_target_map.clint_base + hartsel * 4, sizeof(msip), reinterpret_cast<uint8_t*>(&msip));
+        }
     }
-#endif
     select_hart(0);
     read_dtm(DM_DMSTATUS);
 }

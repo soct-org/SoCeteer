@@ -1,6 +1,6 @@
 #pragma once
 
-#include <platform.h>
+#include "types.hpp"
 #include <queue>
 #include <utility>
 
@@ -17,7 +17,9 @@ class htif_t {
 public:
     virtual ~htif_t() = default;
 
-    htif_t(const int argc, char** argv, std::shared_ptr<chunked_memif_t> cmemif) :
+    htif_t(const int argc, char** argv, std::shared_ptr<chunked_memif_t> cmemif,
+           const target_map_t& target_map) :
+    m_target_map(target_map),
     m_cmemif(std::move(cmemif)),
     m_syscall_proxy(std::shared_ptr<htif_t>(this), m_cmemif) {
         parse_arguments();
@@ -82,6 +84,7 @@ public:
     }
 
 protected:
+    target_map_t m_target_map;
     // Implemented in the derived class
     virtual void reset() = 0;
 
@@ -109,7 +112,7 @@ private:
         }
         addr_t entry = 0;
         m_cmemif->log_rw_progress(true);
-        const std::map<std::string, uint64_t> symbols = load_elf(m_path_to_elf, m_cmemif, entry, DRAM_BASE);
+        const std::map<std::string, uint64_t> symbols = load_elf(m_path_to_elf, m_cmemif, entry, m_target_map.dram_base);
         m_cmemif->log_rw_progress(false);
         m_entry = entry;
         if (symbols.contains("tohost") && symbols.contains("fromhost")) {
@@ -118,9 +121,10 @@ private:
             soct::logging::fesvr::debug << "tohost address: " << m_tohost_addr <<
                 ", fromhost address: " << m_fromhost_addr << '\n';
         } else {
-            soct::logging::fesvr::warn << "tohost and fromhost symbols not in ELF; using fallback addresses: tohost address: 2147498496, fromhost address: 2147498504\n";
-            m_tohost_addr = 2147498496;
-            m_fromhost_addr = 2147498504;
+            m_tohost_addr = m_target_map.default_tohost;
+            m_fromhost_addr = m_target_map.default_fromhost;
+            soct::logging::fesvr::warn << "tohost and fromhost symbols not in ELF; using fallback addresses: tohost address: "
+                << m_tohost_addr << ", fromhost address: " << m_fromhost_addr << '\n';
         }
         if (symbols.contains("begin_signature") && symbols.contains("end_signature")) {
             soct::logging::fesvr::debug << "Torture test detected\n";

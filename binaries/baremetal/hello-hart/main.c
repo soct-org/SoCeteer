@@ -5,15 +5,16 @@
 #include <stdarg.h>
 
 
+#include <soct-dts.h>
 #include "soct/defaults.h"
 #include "soct/soctglue.h"
 #include "soct/syscall-handler.h"
 #include "atomic.h"
 
-#ifdef SOCT_CLINT_BASE
-#define CLINT_MSIP(hart) ((volatile uint32_t *)(SOCT_CLINT_BASE + 4UL * (hart)))
+#ifdef SOCT_DTS_CLINT_BASE
+#define CLINT_MSIP(hart) ((volatile uint32_t *)(SOCT_DTS_CLINT_BASE + 4UL * (hart)))
 #else
-#error "SOCT_CLINT_BASE is not defined. Please define it to the base address of the CLINT in your system."
+#error "SOCT_DTS_CLINT_BASE is not defined (soct-dts.h): this design's device tree has no CLINT node."
 #endif
 
 static const char *hello_str = "Hello from hart %u\n";

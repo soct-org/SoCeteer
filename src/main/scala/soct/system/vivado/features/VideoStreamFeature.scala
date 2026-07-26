@@ -220,7 +220,7 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
 
     // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
     val pixelDomain = new ClockDomain(pixelClockFor(vs))
-    val pixClkWiz = ClkWiz(inputFreq = Some(c.peripheryDomain.freq)).withInstanceName("pixel_clk_wiz").withGroup("video")
+    val pixClkWiz = ClkWiz(inputDom = Some(c.peripheryDomain)).withInstanceName("pixel_clk_wiz").withGroup("video")
     peripheryClock --> pixClkWiz.CLK_IN.next()
     c.periphPsr.PeripheralReset --> pixClkWiz.RESET
     val pixelClock = pixClkWiz.CLK_OUT(1, pixelDomain)

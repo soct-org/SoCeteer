@@ -83,8 +83,9 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     // --------------------------------------------------------------------------
     // System clock synthesis (core + periphery domains)
     // --------------------------------------------------------------------------
-    val sysClkWiz = ClkWiz(inputFreq = Some(SOCTVivadoSystem.SysClkWizTapFreq)).withInstanceName("sys_clk_wiz")
-    memPaths.head.ddr4Inst.ADDN_UI_CLKOUT(1, new ClockDomain(SOCTVivadoSystem.SysClkWizTapFreq)) --> sysClkWiz.CLK_IN.next()
+    val sysClkDom = new ClockDomain(SOCTVivadoSystem.SysClkWizTapFreq)
+    val sysClkWiz = ClkWiz(inputDom = Some(sysClkDom)).withInstanceName("sys_clk_wiz")
+    memPaths.head.ddr4Inst.ADDN_UI_CLKOUT(1, sysClkDom) --> sysClkWiz.CLK_IN.next()
     fpgaRst --> sysClkWiz.RESET
     val coreClock = sysClkWiz.CLK_OUT(1, c.coreDomain)
     val peripheryClock = sysClkWiz.CLK_OUT(2, c.peripheryDomain)

@@ -61,7 +61,8 @@ public:
         }
     };
 
-    dtm_t(const int argc, char** argv) : htif_t(argc, argv, init_chunked_memif()) {
+    dtm_t(const int argc, char** argv, const target_map_t& target_map)
+        : htif_t(argc, argv, init_chunked_memif(), target_map) {
         m_host_thread = std::thread(&dtm_t::thread_main, this);
         m_host_thread.detach();
     }

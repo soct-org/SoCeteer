@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <soct-dts.h>
+
 #include "kprintf.h"
 
 #define SR_RX_FIFO_VALID_DATA   (1 << 0) /* data in receive FIFO */
@@ -17,7 +19,7 @@ struct uart_regs {
 };
 
 void kputc(char ch) {
-    struct uart_regs * regs = (struct uart_regs *)0x60010000;
+    struct uart_regs * regs = (struct uart_regs *)SOCT_DTS_UART0_BASE;
     while (regs->status & SR_TX_FIFO_FULL) {}
     regs->tx_fifo = ch & 0xff;
 }

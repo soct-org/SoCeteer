@@ -85,11 +85,30 @@ shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall lay
     <tr><td><code>SOCT_TARGET</code></td><td>Build target (<code>verilator</code>, <code>fpga</code>, &hellip;)</td></tr>
     <tr><td><code>SOCT_COMPILE_DEFS</code></td><td>Extra compiler definitions from the SoC config</td></tr>
     <tr><td><code>SOCT_DTS</code> / <code>SOCT_DTB</code></td><td>Path to the device-tree source/blob</td></tr>
+    <tr><td><code>SOCT_DTS_HEADER</code></td><td>Path to <code>soct-dts.h</code>, the generated C mirror of the device tree</td></tr>
     <tr><td><code>SOCT_ELFS_DIR</code></td><td>Output directory for ELF files</td></tr>
     <tr><td><code>SOCT_BOOTROM_IMG</code></td><td>Output path for the boot ROM binary image</td></tr>
-    <tr><td><code>SOCT_NCPUS</code></td><td>Number of CPU cores in the SoC</td></tr>
-    <tr><td><code>SOCT_CLINT_BASE</code></td><td>Base address of the CLINT</td></tr>
   </table>
+
+  <h3>Design addresses: <code>soct-dts.h</code></h3>
+  <p>Next to the system file, generation writes <strong><code>soct-dts.h</code></strong> &mdash; one C
+  macro per device-tree node property, with names derived mechanically from the node and property
+  names: <code>uart0@60010000</code>'s <code>reg</code> becomes <code>SOCT_DTS_UART0_BASE</code> /
+  <code>SOCT_DTS_UART0_SIZE</code>, its interrupt <code>SOCT_DTS_UART0_IRQ</code>, its
+  <code>current-speed</code> becomes <code>SOCT_DTS_UART0_CURRENT_SPEED</code>. The header's
+  directory is on every bootrom's and bare-metal program's include path, so C (and preprocessed
+  assembly) takes design addresses with <code>#include &lt;soct-dts.h&gt;</code> instead of
+  hardcoding them.</p>
+  <p>The derivation is deliberately <em>brittle</em>: rename a node in the generator and every
+  binary that relied on it fails to <em>compile</em> &mdash; a loud break at build time instead of
+  a silent disagreement with the hardware. Code that can parse the DTB at runtime should still
+  prefer that (the bare-metal programs discover their devices through it); the header is for the
+  places that need a compile-time constant &mdash; the boot ROM's console, linker-adjacent
+  constants, and fallbacks (<code>soctglue</code>'s default UART address is
+  <code>SOCT_DTS_UART0_BASE</code>, so even the fallback is design-true).</p>
+  <p>CMake- and linker-level facts stay CMake variables (<code>SOCT_MEM_BASE_ADDR</code>,
+  <code>SOCT_EXT_MEM_SIZE</code>, <code>SOCT_BOOTROM_*</code>): linker scripts cannot include C
+  headers.</p>
   <p>The top-level <code>CMakeLists.txt</code> finds this file via <a href="https://github.com/soct-org/SoCeteer/blob/main/shared/cmake/FindSOCTSystem.cmake"><code>FindSOCTSystem.cmake</code></a>.
   It looks first at the <code>SOCT_SYSTEM</code> variable (passed with <code>-DSOCT_SYSTEM=...</code>),
   then falls back to a <code>SOCTSystem-latest.cmake</code> symlink in the repository root that

@@ -4,14 +4,26 @@
 #define SOCT_DTB_MAX_SIZE 0x10000 // 64KB
 #define SOCT_UART_NAME_DTS "riscv,axi-uart-1.0"
 #define SOCT_SDC_NAME_DTS "riscv,axi-sd-card-1.0"
+#define SOCT_HTIF_NAME_DTS "ucb,htif0"
 #define SOCT_N_SYSCALL_HANDLERS 64
 #define SOCT_MAX_HARTS 64 // Maximum number of harts supported; used for static array sizing
 #define SOCT_N_SETUP_MSGS 16
 #define SOCT_ARG_MAX 128
 
-// Fallback addresses if dtb is not available
-#define SOCT_DEFAULT_UART_ADDR 0x60010000
-#define SOCT_DEFAULT_SDC_ADDR 0x60000000
+// Fallback addresses when the DTB is not available at runtime, taken from the C mirror
+// of the design's device tree (soct-dts.h, generated next to the system file) - the
+// fallback is then the address of the design actually built against, never a stale
+// literal. A design without the device leaves the macro undefined, and code that needs
+// the fallback fails to compile.
+#include <soct-dts.h>
+#ifdef SOCT_DTS_UART0_BASE
+#define SOCT_DEFAULT_UART_ADDR SOCT_DTS_UART0_BASE
+#else
+#define SOCT_DEFAULT_UART_ADDR 0 // no UART in this design; the UART backend is never selected
+#endif
+#ifdef SOCT_DTS_MMC0_BASE
+#define SOCT_DEFAULT_SDC_ADDR SOCT_DTS_MMC0_BASE
+#endif
 
 // HTIF Constants
 #define SOCT_HTIF_DEV_SHIFT      56

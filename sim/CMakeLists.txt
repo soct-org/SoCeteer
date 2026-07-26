@@ -178,6 +178,7 @@ include(${VERILATED_OUT_DIR}/${VL_PREFIX}.cmake) # Include the generated cmake f
 target_include_directories(${SOCT_SIM_EXE} PRIVATE
         ${RV_ISA_SIM_INCLUDE_DIRS}
         ${CMAKE_CURRENT_LIST_DIR}
+        ${SOCT_SYSTEM_ROOT}
 )
 
 target_compile_definitions(${SOCT_SIM_EXE} PRIVATE

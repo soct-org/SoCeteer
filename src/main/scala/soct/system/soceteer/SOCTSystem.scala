@@ -5,7 +5,7 @@ import chisel3.util.log2Ceil
 import freechips.rocketchip.devices.debug.HasPeripheryDebug
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy.AddressRange
-import freechips.rocketchip.resources.{AddressMapEntry, DTSCompat, DTSModel, DTSTimebase, Resource, ResourceAnchors, ResourceBinding, ResourceInt, ResourceString}
+import freechips.rocketchip.resources.{AddressMapEntry, DTSCompat, DTSModel, DTSTimebase, Description, DeviceSnippet, Resource, ResourceAnchors, ResourceBinding, ResourceInt, ResourceString}
 import freechips.rocketchip.subsystem._
 import freechips.rocketchip.tilelink.TLFragmenter
 import freechips.rocketchip.util.{DontTouch, ElaborationArtefacts, HasCoreMonitorBundles}
@@ -46,6 +46,13 @@ class SOCTSystem(implicit p: Parameters) extends BaseSubsystem
 {
   p(BootROMLocated(location)).foreach {
     SOCTBootROM.attach(_, this, CBUS)
+  }
+
+  // The HTIF (fesvr) channel of the simulation harness, described in the device tree
+  // like every other device (`/htif`, the fesvr convention) - software probes for it
+  // only where the tree names it (see soctglue).
+  if (p(soct.HasHTIF)) new DeviceSnippet {
+    def describe() = Description("htif", Map("compatible" -> Seq(ResourceString("ucb,htif0"))))
   }
   override lazy val module = new SOCTSystemModuleImp(this)
   LastRocketSystem.instance = Some(this)
@@ -166,6 +173,10 @@ object SOCTBootROM {
       // Write the device tree for this subsystem - create parent directories if needed
       Files.createDirectories(paths.dtsFile.getParent)
       Files.write(paths.dtsFile, subsystem.dts.getBytes())
+
+      // Its C mirror, written before the bootrom build below - the bootrom is the first
+      // consumer of the design's addresses.
+      Files.write(paths.dtsHeaderFile, soct.SOCTDtsHeader.generate(subsystem.dts).getBytes())
 
       // Write a CMake file with important information from the DTS - simplifies building binaries for the system
       val soctCmake = SOCTSystemGenerator.generate(paths, config)
