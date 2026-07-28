@@ -11,7 +11,7 @@ import soct.vivado.misc.DTSInfo
  * AXI UART Lite component for Xilinx FPGAs.
  */
 case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterPin: BdIntfPin,
-                       uartIntf: BdIntfPort, uartParams: UARTPortParams)
+                       uartIntf: BdIntfPort, uartParams: UARTPortParams, baud: Int)
                       (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with ConnectOps with HasAxiSlave with HasDTSInfo {
 
@@ -19,7 +19,9 @@ case class AXIUartLite(override val dtsInfo: DTSInfo, override val getAxiMasterP
 
   override def defaultProperties: Map[String, String] = {
     Map(
-      "CONFIG.C_BAUDRATE" -> "115200",
+      // The one source of the baud rate: the caller passes it, and the same value feeds
+      // the device tree's current-speed and the boot arguments (see UartFeature).
+      "CONFIG.C_BAUDRATE" -> baud.toString,
       "CONFIG.UARTLITE_BOARD_INTERFACE" -> uartIntf.ref,
       "CONFIG.USE_BOARD_FLOW" -> "true"
     )

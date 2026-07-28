@@ -8,9 +8,12 @@
 
 #include <linux/types.h>
 
+struct soct_dp_mode;
+
 /* Maps the carve-out and the L2 flush register, clears the frame and makes the
  * clear visible. Call before the scanout starts fetching. */
-int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size, u32 width, u32 height);
+int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size,
+		       const struct soct_dp_mode *mode);
 
 /* Registers the fbdev (the console binds to it). Call once the display is up. */
 int soct_dp_fb_register(void);

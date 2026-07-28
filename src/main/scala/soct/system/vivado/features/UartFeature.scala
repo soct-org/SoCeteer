@@ -13,10 +13,9 @@ import soct.system.vivado.CommonDesign
 
 /**
  * The AXI UART Lite console ([[HasUART]]): the design's primary console, on the MMIO
- * path at [[VivadoMmioMap.UartBase]]. The DTS `reg`, `current-speed` and the `/chosen`
- * boot arguments (bound by the system, which reads [[base]]/[[baud]]) must all agree
- * with the IP configuration ([[soct.vivado.components.AXIUartLite]] sets
- * C_BAUDRATE to the same value).
+ * path at [[VivadoMmioMap.UartBase]]. [[base]] and [[baud]] are the single source for
+ * the DTS `reg` and `current-speed`, the `/chosen` boot arguments (bound by the system)
+ * and the IP's C_BAUDRATE (passed to [[soct.vivado.components.AXIUartLite]]).
  */
 class UartFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
                  (implicit p: Parameters, bd: SOCTBdBuilder) extends VivadoFeature {
@@ -56,7 +55,7 @@ class UartFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
     }
     val uartParams = fpga.uartPorts.head
     val port = uartParams.initPort
-    uart = Some(AXIUartLite(dts, axiMMIO, port, uartParams))
+    uart = Some(AXIUartLite(dts, axiMMIO, port, uartParams, baud = baud))
   }
 
   override def wirePeripheryFabric(peripheryClock: BdPinOut, c: CommonDesign): Unit =
@@ -73,7 +72,7 @@ class UartFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
 }
 
 object UartFeature {
-  /** Fixed at synthesis; the IP's C_BAUDRATE must agree (see [[soct.vivado.components.AXIUartLite]]). */
+  /** Fixed at synthesis; flows into the IP's C_BAUDRATE, the device tree and the boot arguments. */
   val Baud: Int = 115200
 
   /** The single presence decision: `Some` iff the design has a UART ([[HasUART]]). */

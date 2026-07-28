@@ -17,15 +17,25 @@
  * mapping, so userspace stores would sit in the cache with nothing tracking them -
  * a silently stale display. Reads, writes and the console's drawing operations all
  * damage-track correctly.
+ *
+ * On designs with a retunable pixel clock the fbdev also switches resolutions:
+ * check_var accepts ANY complete timing whose pixel clock dp-main.c can solve
+ * within the design's budget - there is no mode list; whether a monitor takes a
+ * timing is the monitor's call - and set_par retunes the pipeline. Userspace
+ * reaches it through the standard fbdev ioctl (the shell image ships `fbmode`,
+ * which also confirms-and-reverts; its BusyBox has no fbset).
  */
 #include <linux/fb.h>
 #include <linux/io.h>
 #include <linux/jiffies.h>
+#include <linux/math.h>
+#include <linux/math64.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
+#include "dp.h"
 #include "fb.h"
 
 /* InclusiveCache control: write a physical address to flush that 64-byte line. */
@@ -41,6 +51,8 @@ static struct {
 	void __iomem *l2_ctrl;
 	void *virt;
 	phys_addr_t phys;
+	resource_size_t carveout_size;
+	struct soct_dp_mode mode;
 	u32 width, height, stride;
 	spinlock_t lock;
 	bool dirty;
@@ -139,6 +151,121 @@ static int soct_dp_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	return -ENODEV;
 }
 
+static void soct_dp_fb_fill_var(struct fb_var_screeninfo *var, const struct soct_dp_mode *m)
+{
+	var->xres = m->hactive;
+	var->yres = m->vactive;
+	var->xres_virtual = m->hactive;
+	var->yres_virtual = m->vactive;
+	var->xoffset = 0;
+	var->yoffset = 0;
+	var->bits_per_pixel = 24;
+	var->grayscale = 0;
+	var->red = (struct fb_bitfield){ .offset = 16, .length = 8 };
+	var->green = (struct fb_bitfield){ .offset = 8, .length = 8 };
+	var->blue = (struct fb_bitfield){ .offset = 0, .length = 8 };
+	var->transp = (struct fb_bitfield){ 0 };
+	var->nonstd = 0;
+	var->height = -1;
+	var->width = -1;
+	var->pixclock = DIV_ROUND_CLOSEST_ULL(1000000000000ULL, m->pixel_clock_hz);
+	var->left_margin = m->hback_porch;
+	var->right_margin = m->hfront_porch;
+	var->upper_margin = m->vback_porch;
+	var->lower_margin = m->vfront_porch;
+	var->hsync_len = m->hsync_len;
+	var->vsync_len = m->vsync_len;
+	var->sync = (m->hsync_active ? FB_SYNC_HOR_HIGH_ACT : 0) |
+		    (m->vsync_active ? FB_SYNC_VERT_HIGH_ACT : 0);
+	var->vmode = FB_VMODE_NONINTERLACED;
+}
+
+/* The inverse of fill_var: a complete timing from the var. The refresh and the
+ * clock both come out of the var's picosecond pixclock - the UAPI has no rate
+ * field, the timing implies it. */
+static int soct_dp_fb_var_to_mode(const struct fb_var_screeninfo *var,
+				  struct soct_dp_mode *m)
+{
+	u64 dots;
+
+	if (!var->pixclock || (var->vmode & FB_VMODE_MASK) != FB_VMODE_NONINTERLACED)
+		return -EINVAL;
+	*m = (struct soct_dp_mode){
+		.hactive = var->xres,
+		.hfront_porch = var->right_margin,
+		.hsync_len = var->hsync_len,
+		.hback_porch = var->left_margin,
+		.vactive = var->yres,
+		.vfront_porch = var->lower_margin,
+		.vsync_len = var->vsync_len,
+		.vback_porch = var->upper_margin,
+		.hsync_active = !!(var->sync & FB_SYNC_HOR_HIGH_ACT),
+		.vsync_active = !!(var->sync & FB_SYNC_VERT_HIGH_ACT),
+		.pixel_clock_hz = DIV_ROUND_CLOSEST_ULL(1000000000000ULL, var->pixclock),
+	};
+	dots = (u64)var->pixclock *
+	       (m->hactive + m->hfront_porch + m->hsync_len + m->hback_porch) *
+	       (m->vactive + m->vfront_porch + m->vsync_len + m->vback_porch);
+	/* NOT DIV_ROUND_CLOSEST_ULL: that macro truncates its divisor to 32 bits
+	 * (do_div), and a frame time in picoseconds does not fit them. */
+	m->fps = DIV64_U64_ROUND_CLOSEST(1000000000000ULL, dots);
+	return m->fps ? 0 : -EINVAL;
+}
+
+/* Any complete timing is a candidate; dp-main.c decides whether the clock is
+ * within this design's budget. The var comes back with the exactly-achieved
+ * pixel clock. */
+static int soct_dp_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
+{
+	struct soct_dp_mode m;
+
+	if (soct_dp_fb_var_to_mode(var, &m))
+		return -EINVAL;
+	if ((u64)m.hactive * m.vactive * BYTES_PER_PIXEL > fbs.carveout_size)
+		return -EINVAL;
+	if (soct_dp_validate_mode(&m))
+		return -EINVAL;
+	soct_dp_fb_fill_var(var, &m);
+	return 0;
+}
+
+static int soct_dp_fb_set_par(struct fb_info *info)
+{
+	struct soct_dp_mode m;
+	unsigned long flags;
+	size_t size;
+	int err;
+
+	if (soct_dp_fb_var_to_mode(&info->var, &m) || soct_dp_validate_mode(&m))
+		return -EINVAL;
+	if (soct_dp_mode_equal(&m, &fbs.mode))
+		return 0; /* console switches re-activate the current mode constantly */
+
+	/* Quiesce the damage machinery; the fbdev locks exclude concurrent drawing. */
+	cancel_delayed_work_sync(&fbs.flush_work);
+	spin_lock_irqsave(&fbs.lock, flags);
+	fbs.dirty = false;
+	spin_unlock_irqrestore(&fbs.lock, flags);
+
+	err = soct_dp_switch_mode(&m);
+	if (err)
+		return err;
+
+	fbs.mode = m;
+	fbs.width = m.hactive;
+	fbs.height = m.vactive;
+	fbs.stride = m.hactive * BYTES_PER_PIXEL;
+	size = (size_t)fbs.stride * fbs.height;
+	info->fix.line_length = fbs.stride;
+	info->fix.smem_len = size;
+
+	/* The old frame's bytes are garbage under the new stride: present black,
+	 * pushed out to where the scanout reads. fbcon repaints on top. */
+	memset(fbs.virt, 0, size);
+	flush_range(fbs.phys, size);
+	return 0;
+}
+
 static void soct_dp_fb_destroy(struct fb_info *info)
 {
 	cancel_delayed_work_sync(&fbs.flush_work);
@@ -151,6 +278,8 @@ static void soct_dp_fb_destroy(struct fb_info *info)
 
 static const struct fb_ops soct_dp_fb_ops = {
 	.owner = THIS_MODULE,
+	.fb_check_var = soct_dp_fb_check_var,
+	.fb_set_par = soct_dp_fb_set_par,
 	.fb_read = soct_dp_fb_defio_read,
 	.fb_write = soct_dp_fb_defio_write,
 	.fb_fillrect = soct_dp_fb_defio_fillrect,
@@ -161,10 +290,11 @@ static const struct fb_ops soct_dp_fb_ops = {
 	.fb_destroy = soct_dp_fb_destroy,
 };
 
-int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size, u32 width, u32 height)
+int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size,
+		       const struct soct_dp_mode *mode)
 {
 	struct device_node *l2 = of_find_compatible_node(NULL, NULL, "sifive,inclusivecache0");
-	size_t size = (size_t)width * BYTES_PER_PIXEL * height;
+	size_t size = (size_t)mode->hactive * BYTES_PER_PIXEL * mode->vactive;
 
 	if (!l2) {
 		pr_err("soct-dp: the frame fetch is incoherent but the design has no L2 (sifive,inclusivecache0), so nothing can flush rendered pixels to where the scanout reads. Generate the design with soct.WithL2Cache.\n");
@@ -178,20 +308,24 @@ int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size, u32 width, u32 h
 	}
 	if (size > fb_size) {
 		pr_err("soct-dp: the reserved framebuffer (%pap bytes) is smaller than one %ux%u frame\n",
-		       &fb_size, width, height);
+		       &fb_size, mode->hactive, mode->vactive);
 		goto err_unmap_l2;
 	}
 	/* Cacheable on purpose: rendering runs at cache speed, the flush worker makes
-	 * it visible. The carve-out is no-map, so this is the only kernel mapping. */
-	fbs.virt = memremap(fb, size, MEMREMAP_WB);
+	 * it visible. The carve-out is no-map, so this is the only kernel mapping.
+	 * The whole carve-out is mapped, not just this mode's frame: a mode switch
+	 * may grow the frame within it. */
+	fbs.virt = memremap(fb, fb_size, MEMREMAP_WB);
 	if (!fbs.virt) {
 		pr_err("soct-dp: cannot map the framebuffer carve-out\n");
 		goto err_unmap_l2;
 	}
 	fbs.phys = fb;
-	fbs.width = width;
-	fbs.height = height;
-	fbs.stride = width * BYTES_PER_PIXEL;
+	fbs.carveout_size = fb_size;
+	fbs.mode = *mode;
+	fbs.width = mode->hactive;
+	fbs.height = mode->vactive;
+	fbs.stride = mode->hactive * BYTES_PER_PIXEL;
 	spin_lock_init(&fbs.lock);
 	INIT_DELAYED_WORK(&fbs.flush_work, soct_dp_fb_flush_work);
 
@@ -223,20 +357,8 @@ int soct_dp_fb_register(void)
 		.accel = FB_ACCEL_NONE,
 	};
 	strscpy(info->fix.id, "soct-dp", sizeof(info->fix.id));
-	info->var = (struct fb_var_screeninfo){
-		.xres = fbs.width,
-		.yres = fbs.height,
-		.xres_virtual = fbs.width,
-		.yres_virtual = fbs.height,
-		.bits_per_pixel = 24,
-		.red = { .offset = 16, .length = 8 },
-		.green = { .offset = 8, .length = 8 },
-		.blue = { .offset = 0, .length = 8 },
-		.height = -1,
-		.width = -1,
-		.activate = FB_ACTIVATE_NOW,
-		.vmode = FB_VMODE_NONINTERLACED,
-	};
+	soct_dp_fb_fill_var(&info->var, &fbs.mode);
+	info->var.activate = FB_ACTIVATE_NOW;
 	info->fbops = &soct_dp_fb_ops;
 	info->pseudo_palette = fbs.palette;
 

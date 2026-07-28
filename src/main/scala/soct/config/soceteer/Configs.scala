@@ -197,9 +197,13 @@ abstract class SOCTFeatureConfig(suffix: String, impl: Config) extends Config(
 
 /**
  * Parameters of the DisplayPort video stream (PL framebuffer -> PS DP live video).
- * The default is 720p60. Whether a larger mode is dependable is a fetch-path question
- * (measured on a ZCU104: the coherent path at 100 MHz delivered 30 of 1080p60's 60
- * frames per second) - the incoherent pipeline is the variant that carries large modes.
+ * Any (width, height, fps) is accepted - standard modes get their exact CEA-861 timing,
+ * everything else a computed VESA CVT reduced-blanking timing (see
+ * soct.vivado.misc.VideoTiming). The config fragments pick per-variant defaults:
+ * whether a large mode is dependable is a fetch-path question (measured on a ZCU104:
+ * the coherent path at 100 MHz delivered 30 of 1080p60's 60 frames per second), so
+ * [[WithVideoStream]] defaults small (640x480@30) and [[WithIncoherentVideoStream]] -
+ * whose private port is immune - defaults to the maximum (1080p60).
  *
  * @param width      active pixels per line
  * @param height     active lines per frame
@@ -223,7 +227,10 @@ case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
  */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, here, up) => {
-  case HasVideoStream => Some(VideoStreamParams())
+  // 640x480@30 (~28 MB/s frame fetch): the coherent path is shared with the CPU and
+  // measured to starve under load (see WithIncoherentVideoStream), so the coherent
+  // variant defaults to the smallest useful console and leaves the path to the cores.
+  case HasVideoStream => Some(VideoStreamParams(width = 640, height = 480, fps = 30))
 }))
 
 /**
@@ -254,7 +261,10 @@ class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, her
  */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc", new Config((site, here, up) => {
-  case HasVideoStream => Some(VideoStreamParams(incoherent = true))
+  // 1080p60: the private memory port carries it without touching the CPU's paths, so the
+  // design synthesizes (and closes timing) at the maximum mode; the runtime-retunable
+  // pixel clock lets software scale DOWN from there (never up - see VideoStreamFeature).
+  case HasVideoStream => Some(VideoStreamParams(width = 1920, height = 1080, fps = 60, incoherent = true))
 }))
 
 /**
@@ -285,17 +295,34 @@ class WithUART extends Config((site, here, up) => {
 /*----------------- Clock Speeds ---------------*/
 
 /**
- * Field to specify the periphery clock domain frequency - for parts like the SDCard controller and UART.
+ * The physical parameters of a clock, as plain configuration data (usable before any
+ * elaboration context exists). A clock is more than its frequency - a consumer handed
+ * only a `Freq` could never grow a duty cycle or phase requirement - so clock-shaped
+ * configuration carries this instead. The block-design layer wraps it in
+ * [[soct.vivado.abstracts.ClockDomain]].
+ *
+ * @param freq      the clock frequency
+ * @param dutyCycle high fraction of the period, (0, 1); 0.5 = square
+ * @param phaseDeg  phase offset relative to the domain's source, in degrees
  */
-case object PeripheryClockDomain extends Field[Freq](100.MHz)
+case class ClockSpec(freq: Freq, dutyCycle: Double = 0.5, phaseDeg: Double = 0.0) {
+  require(dutyCycle > 0 && dutyCycle < 1, s"duty cycle must be within (0, 1): $dutyCycle")
+  require(phaseDeg >= -360 && phaseDeg <= 360, s"phase must be within +-360 degrees: $phaseDeg")
+}
 
 /**
- * Class to set the periphery clock domain frequency.
+ * Field specifying the periphery clock domain - for parts like the SDCard controller and UART.
+ */
+case object PeripheryClockDomain extends Field[ClockSpec](ClockSpec(100.MHz))
+
+/**
+ * Class to set the periphery clock domain's frequency (duty cycle and phase keep their
+ * defaults; pass a full [[ClockSpec]] via the field to change them).
  *
  * @param freq the periphery clock frequency
  */
 class WithPeripheryClockSpeed(freq: Freq) extends Config((site, here, up) => {
-  case PeripheryClockDomain => freq
+  case PeripheryClockDomain => ClockSpec(freq)
 })
 
 /**

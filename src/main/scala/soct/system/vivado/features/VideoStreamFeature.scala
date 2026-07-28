@@ -10,7 +10,7 @@ import soct.vivado.abstracts.BdPinPort.portToBdPin
 import soct.vivado.abstracts.ClockDomain
 import soct.vivado.components._
 import soct.vivado.fpga.HasZynqUltraPS
-import soct.vivado.misc.{AddressSets, AxiSlaveBinder, DTSInfo, Irq}
+import soct.vivado.misc.{AddressSets, AxiSlaveBinder, DTSInfo, Irq, MmcmSolver, VideoTiming}
 
 /**
  * The DisplayPort video pipeline ([[HasVideoStream]]): VDMA (frames from DRAM) ->
@@ -36,7 +36,7 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
                         (implicit p: Parameters, bd: SOCTBdBuilder) extends VivadoFeature {
   override def name: String = "video"
 
-  private val periphHz = p(PeripheryClockDomain).toHz.toLong
+  private val periphHz = p(PeripheryClockDomain).freq.toHz.toLong
   private val vdmaDts = DTSInfo(
     parent = mmioBus,
     regs = Seq(("reg", VivadoMmioMap.VdmaBase, VivadoMmioMap.RegionSize)),
@@ -89,8 +89,11 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     Resource(vdmaChanDev, "int").bind(intcDev, ResourceInt(vdmaIrq.index))
   }
 
-  // The video mode is baked into the design (pixel clock); advertise it so the driver
-  // programs matching timing without hardcoding a resolution.
+  // The configured mode is baked into the design (pixel clock); its COMPLETE timing is
+  // advertised here (kernel display-timings naming) so drivers program the timing
+  // generator and the DisplayPort main stream attributes from the device tree instead
+  // of carrying timing tables. The soct,* trio stays as the mode's compact identity.
+  private val staticTiming = VideoStreamFeature.timingFor(vs)
   private val vtcDts = DTSInfo(
     parent = mmioBus,
     regs = Seq(("reg", VivadoMmioMap.VtcBase, VivadoMmioMap.RegionSize)),
@@ -98,7 +101,16 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     extraProps = Map(
       "soct,hactive" -> Seq(ResourceInt(vs.width)),
       "soct,vactive" -> Seq(ResourceInt(vs.height)),
-      "soct,fps" -> Seq(ResourceInt(vs.fps))
+      "soct,fps" -> Seq(ResourceInt(vs.fps)),
+      "clock-frequency" -> Seq(ResourceInt(BigInt(staticTiming.pixelClock.toHz.toLong))),
+      "hfront-porch" -> Seq(ResourceInt(staticTiming.hFrontPorch)),
+      "hsync-len" -> Seq(ResourceInt(staticTiming.hSyncLen)),
+      "hback-porch" -> Seq(ResourceInt(staticTiming.hBackPorch)),
+      "vfront-porch" -> Seq(ResourceInt(staticTiming.vFrontPorch)),
+      "vsync-len" -> Seq(ResourceInt(staticTiming.vSyncLen)),
+      "vback-porch" -> Seq(ResourceInt(staticTiming.vBackPorch)),
+      "hsync-active" -> Seq(ResourceInt(if (staticTiming.hSyncPositive) 1 else 0)),
+      "vsync-active" -> Seq(ResourceInt(if (staticTiming.vSyncPositive) 1 else 0))
     )
   )
   AxiSlaveBinder.bindSimpleDevice(devname = "vtc0", dts = vtcDts, perms = AxiSlaveBinder.mmioPerms)
@@ -159,19 +171,53 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
   )
   AxiSlaveBinder.bindSimpleDevice(devname = "vidstat0", dts = vidStatusDts, perms = AxiSlaveBinder.mmioPerms)
 
+  // The framebuffer carve-out is fixed; a mode that does not fit it can never scan out.
+  if (vs.width.toLong * vs.height * 3 > ZynqUltraPS.VideoFbSize.toLong)
+    throw VivadoDesignException(
+      s"Video mode ${vs.width}x${vs.height} needs ${vs.width.toLong * vs.height * 3} bytes of framebuffer, " +
+        s"but the reserved carve-out holds ${ZynqUltraPS.VideoFbSize.toLong} (ZynqUltraPS.VideoFbSize).")
+
+  // The runtime-retunable pixel clock (incoherent designs; the hardware side is in
+  // wireMain): the clocking wizard's reconfiguration registers plus the retune BUDGET -
+  // the MMCM's input clock, its analog window, and the ceiling timing was closed at.
+  // Deliberately NOT a list of modes: whether a timing works is the monitor's call
+  // (sinks freely refuse modes no table can predict), so software synthesizes standard
+  // timings on request and solves the dividers against these facts, refusing only what
+  // this hardware itself cannot do.
+  if (vs.incoherent) {
+    val staticClock = VideoStreamFeature.pixelClockFor(vs)
+    // The ceiling itself must be synthesizable - fail at generation, not on the board.
+    MmcmSolver.solve(input = p(PeripheryClockDomain).freq, target = staticClock)
+    val pixClkDts = DTSInfo(
+      parent = mmioBus,
+      regs = Seq(("reg", VivadoMmioMap.PixelClkBase, VivadoMmioMap.RegionSize)),
+      compatibles = Seq("soct,pixel-clkwiz"),
+      extraProps = Map(
+        // The wizard's clk_in1: what the runtime solver's dividers act on.
+        "soct,input-frequency" ->
+          Seq(ResourceInt(BigInt(p(PeripheryClockDomain).freq.toHz.toLong))),
+        // Timing closure ran at the synthesized mode's clock; retunes only go down.
+        "soct,max-frequency" -> Seq(ResourceInt(BigInt(staticClock.toHz.toLong))),
+        // The MMCME4 analog window (DS925) - a speed-grade fact the generator knows
+        // and a runtime solver must not guess.
+        "soct,vco-min" -> Seq(ResourceInt(BigInt(MmcmSolver.VcoMin.toHz.toLong))),
+        "soct,vco-max" -> Seq(ResourceInt(BigInt(MmcmSolver.VcoMax.toHz.toLong))),
+        "soct,pfd-min" -> Seq(ResourceInt(BigInt(MmcmSolver.PfdMin.toHz.toLong))),
+        "soct,pfd-max" -> Seq(ResourceInt(BigInt(MmcmSolver.PfdMax.toHz.toLong)))
+      )
+    )
+    AxiSlaveBinder.bindSimpleDevice(devname = "pixclk0", dts = pixClkDts,
+      perms = AxiSlaveBinder.mmioPerms)
+  }
+
   override def claimedIrqs: Seq[Irq] = Seq(vdmaIrq)
 
   /**
-   * The pixel clock for a video mode. Only modes with standard (CEA-861) pixel clocks are
-   * supported; anything else needs its own entry here.
-   *
-   * @throws VivadoDesignException if the mode has no known pixel clock
+   * The pixel clock domain of the configured mode, implied by its timing
+   * ([[soct.vivado.misc.VideoTiming]]).
    */
-  private def pixelClockFor(vs: VideoStreamParams): Freq = (vs.width, vs.height, vs.fps) match {
-    case (1920, 1080, 60) => 148.5.MHz
-    case (1280, 720, 60) => 74.25.MHz
-    case _ => throw VivadoDesignException(s"No known pixel clock for video mode ${vs.width}x${vs.height}@${vs.fps}. Add it to VideoStreamFeature.pixelClockFor.")
-  }
+  private def pixelDomainFor(vs: VideoStreamParams): ClockDomain =
+    new ClockDomain(VideoStreamFeature.pixelClockFor(vs))
 
   override def wireMain(ctx: FeatureWireContext): Unit = {
     val c = ctx.c
@@ -219,10 +265,13 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     val vidOut = AxisVideoOut().withGroup("video")
 
     // Pixel clock: synthesized from the periphery clock, since no board clock matches video rates
-    val pixelDomain = new ClockDomain(pixelClockFor(vs))
-    val pixClkWiz = ClkWiz(inputDom = Some(c.peripheryDomain)).withInstanceName("pixel_clk_wiz").withGroup("video")
+    val pixelDomain = pixelDomainFor(vs)
+    val pixClkWiz = ClkWiz(inputDom = Some(c.peripheryDomain), dynReconfig = vs.incoherent)
+      .withInstanceName("pixel_clk_wiz").withGroup("video")
     peripheryClock --> pixClkWiz.CLK_IN.next()
-    c.periphPsr.PeripheralReset --> pixClkWiz.RESET
+    // With dynamic reconfiguration the core has no standalone `reset` input - its reset
+    // is s_axi_aresetn, wired with the reconfiguration interface below.
+    if (!vs.incoherent) c.periphPsr.PeripheralReset --> pixClkWiz.RESET
     val pixelClock = pixClkWiz.CLK_OUT(1, pixelDomain)
 
     // Clocks: control and memory sides on the periphery domain; the whole video path - the
@@ -283,6 +332,20 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     vidOut.OVERFLOW --> statusBits.IN(2)
     statusBits --> vidStatus.GPIO_IO_I
 
+    // Dynamic pixel-clock reconfiguration (see the pixclk0 device-tree node above):
+    // software retunes the MMCM through the wizard's AXI4-Lite registers to switch
+    // video modes without a new bitstream. The pixel-domain reset already rides
+    // LOCKED (pixel_psr.DCM_LOCKED), so the domain resets itself across a retune.
+    if (vs.incoherent) {
+      peripheryClock --> pixClkWiz.S_AXI_ACLK
+      c.periphPsr.PeripheralAResetN --> pixClkWiz.S_AXI_ARESETN
+      c.mmioSMC.M_AXI.next() <-> pixClkWiz.S_AXI_LITE
+      bd.addConfigTcl(() => Seq(
+        (s"assign_bd_address -offset 0x${VivadoMmioMap.PixelClkBase.toHexString.toUpperCase}" +
+          s" -range 0x${VivadoMmioMap.RegionSize.toHexString.toUpperCase}" +
+          s" [get_bd_addr_segs ${pixClkWiz.bdPath}/s_axi_lite/Reg]").tcl))
+    }
+
     // Interrupt (a level, held until the driver clears DMASR - INTC input configured as
     // level accordingly; the DTS carries it on the VDMA's channel child node)
     vdma.MM2S_INTROUT --> c.interruptConcat.IN(vdmaIrq.index)
@@ -320,6 +383,17 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
 }
 
 object VideoStreamFeature {
+  /**
+   * The timing of a configured video mode: exact CEA-861 for the modes that standard
+   * defines, VESA CVT reduced blanking computed for any other resolution - the
+   * configuration is free, not limited to a table (see [[soct.vivado.misc.VideoTiming]]).
+   */
+  def timingFor(vs: VideoStreamParams): VideoTiming =
+    VideoTiming.forMode(vs.width, vs.height, vs.fps)
+
+  /** The pixel clock of a configured video mode, implied by its timing. */
+  def pixelClockFor(vs: VideoStreamParams): Freq = timingFor(vs).pixelClock
+
   /** The single presence decision: `Some` iff the design has a video stream ([[HasVideoStream]]). */
   def ifPresent(mmioBus: Device, intcDev: Device, irqs: IrqAllocator,
                 chosenDev: Device, reservedMemoryDev: Device)

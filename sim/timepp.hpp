@@ -1,12 +1,14 @@
 #pragma once
 #include <algorithm>
 #include <cassert>
-#include <iostream>
 #include <chrono>
+#include <cstdint>
+#include <iostream>
 #include <map>
-#include <memory>
+#include <optional>
+#include <random>
+#include <string_view>
 #include <vector>
-#include <numeric>
 
 class Timepp {
 public:
@@ -31,14 +33,17 @@ public:
             return hash == other.hash;
         }
 
-        static std::size_t hash_str(const std::string& s) {
-            static std::hash<std::string> h;
+        // string_view on purpose: the string overload would build a heap-allocated
+        // temporary from the char* on EVERY construction - and identifiers are
+        // constructed once per measurement, i.e. once per simulated cycle.
+        static std::size_t hash_str(const std::string_view s) {
+            static constexpr std::hash<std::string_view> h;
             return h(s);
         }
 
         template <typename T>
         static std::size_t hash_int(auto s) {
-            static std::hash<T> h;
+            static constexpr std::hash<T> h;
             return h(s);
         }
     };
@@ -73,61 +78,61 @@ public:
         std::cout << "Timepp Summary\n";
         std::cout << "-----------------------------------\n";
 
-        for (const auto& [identifier, measures] : m_measures) {
-            assert(measures->size() % 2 == 0 && "The number of measures should be even (start and end)");
-            std::vector<uint64_t> times;
-            times.reserve(measures->size() / 2);
-            const auto [file, line, func_name, _] = identifier;
-            for (size_t i = 0; i < measures->size(); i += 2) {
-                const auto start = measures->at(i);
-                const auto end = measures->at(i + 1);
-                assert(start < end && "The start time should be less than the end time");
-                const auto duration = end - start;
-                times.push_back(duration);
+        for (auto& [identifier, stats] : m_measures) {
+            assert(!stats.pending_start && "A measurement is still open (push without pop)");
+            if (stats.count == 0) {
+                continue;
             }
+            const auto [file, line, func_name, _] = identifier;
 
             auto to_ms = []<typename T>(T time) {
                 return static_cast<double>(time) / 1'000'000.0;
             };
 
-            const uint64_t sum = std::accumulate(times.begin(), times.end(), 0llu);
-            const double mean = to_ms(static_cast<double>(sum) / static_cast<double>(times.size()));
-            // sort the vector to calculate the median
-            std::ranges::sort(times);
-            const size_t center = times.size() / 2;
-            const auto median = to_ms(times.size() % 2 == 0
-                                          ? (times.at(center - 1) + times.at(center)) / 2
-                                          : times.at(center));
-            const auto min = to_ms(*std::ranges::min_element(times));
-            const auto max = to_ms(*std::ranges::max_element(times));
+            const double mean = to_ms(static_cast<double>(stats.sum) / static_cast<double>(stats.count));
 
-            if (times.size() == 1) {
+            if (stats.count == 1) {
                 std::cout << "What: " << func_name << "\n";
                 std::cout << "Where: " << file << ":" << line << "\n";
                 std::cout << "Time: " << mean << "ms\n";
                 std::cout << "Ticks per sec: " << format_hz(mean > 0 ? 1000 / mean : 0) << "\n";
                 std::cout << "-----------------------------------\n";
             } else {
+                std::vector<uint64_t> sample = stats.reservoir;
+                std::ranges::sort(sample);
+                const size_t center = sample.size() / 2;
+                const auto median = to_ms(sample.size() % 2 == 0
+                                              ? (sample.at(center - 1) + sample.at(center)) / 2
+                                              : sample.at(center));
+
                 std::cout << "What: " << func_name << "\n";
                 std::cout << "Where: " << file << ":" << line << "\n";
                 std::cout << "Mean: " << mean << "ms\n";
-                std::cout << "Median: " << median << "ms\n";
-                std::cout << "Min: " << min << "ms\n";
-                std::cout << "Max: " << max << "ms\n";
+                std::cout << "Median" << (stats.count > ReservoirCap ? " (sampled)" : "")
+                          << ": " << median << "ms\n";
+                std::cout << "Min: " << to_ms(stats.min) << "ms\n";
+                std::cout << "Max: " << to_ms(stats.max) << "ms\n";
                 std::cout << "Ticks per sec (mean): " << format_hz(mean > 0 ? 1000 / mean : 0) << "\n";
-                std::cout << "Total: " << to_ms(sum) << "ms\n";
-                std::cout << "Number of runs: " << times.size() << "\n";
+                std::cout << "Total: " << to_ms(stats.sum) << "ms\n";
+                std::cout << "Number of runs: " << stats.count << "\n";
                 std::cout << "-----------------------------------\n";
             }
         }
     }
 
     void add_time(const Identifier& id) {
-        const auto time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        if (!m_measures.contains(id)) {
-            m_measures.emplace(id, std::make_unique<std::vector<uint64_t>>());
+        const auto time = now();
+        auto& stats = stats_of(id);
+        // Calls come in strict start/end pairs (the timest/timefn macros): the first
+        // opens the measurement, the second closes it into one duration sample.
+        if (stats.pending_start) {
+            assert(time >= *stats.pending_start && "The start time should not be after the end time");
+            const auto start = *stats.pending_start;
+            stats.pending_start.reset();
+            stats.record(time - start);
+        } else {
+            stats.pending_start = time;
         }
-        m_measures[id]->push_back(time);
     }
 
     auto add_func(const Identifier& id, auto func) -> std::enable_if_t<!std::is_void_v<decltype(func())>, decltype(func())> {
@@ -144,18 +149,15 @@ public:
     }
 
     void push(const Identifier& id) {
-        m_stack.emplace_back(id, std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        m_stack.emplace_back(id, now());
     }
 
     void pop() {
-        const auto end = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        const auto end = now();
         const auto [id, start] = m_stack.back();
         m_stack.pop_back();
-        if (!m_measures.contains(id)) {
-            m_measures.emplace(id, std::make_unique<std::vector<uint64_t>>());
-        }
-        m_measures[id]->push_back(start);
-        m_measures[id]->push_back(end);
+        assert(end >= start && "The start time should not be after the end time");
+        stats_of(id).record(end - start);
     }
 
     static const char* alt_or_default(const std::string_view& alt = "") {
@@ -166,7 +168,49 @@ public:
     }
 
 private:
-    std::map<Identifier, std::unique_ptr<std::vector<uint64_t>>> m_measures;
+    // The cycle loop produces one sample per simulated clock, so storing every
+    // sample would grow the heap without bound (16 bytes per cycle - gigabytes
+    // over a Linux boot). Statistics stream instead: mean/min/max/total/count are
+    // exact in O(1) memory, and the median comes from a fixed-size uniform sample
+    // (reservoir sampling, algorithm R) - exact until the reservoir fills, an
+    // unbiased estimate afterwards (the summary marks it "(sampled)" then).
+    static constexpr size_t ReservoirCap = 4096;
+
+    struct Stats {
+        uint64_t count = 0;
+        uint64_t sum = 0;
+        uint64_t min = UINT64_MAX;
+        uint64_t max = 0;
+        std::optional<uint64_t> pending_start; // add_time's open measurement
+        std::vector<uint64_t> reservoir;
+        // Deterministic on purpose: reruns of the same simulation summarize the
+        // same way.
+        std::minstd_rand rng{0x9E3779B9u};
+
+        void record(const uint64_t duration) {
+            sum += duration;
+            min = std::min(min, duration);
+            max = std::max(max, duration);
+            if (reservoir.size() < ReservoirCap) {
+                reservoir.push_back(duration);
+            } else if (const auto slot = rng() % (count + 1); slot < ReservoirCap) {
+                reservoir[slot] = duration;
+            }
+            count++;
+        }
+    };
+
+    // steady_clock, not high_resolution_clock: the latter aliases the system clock
+    // on some platforms, which NTP may step backwards mid-measurement.
+    static uint64_t now() {
+        return std::chrono::steady_clock::now().time_since_epoch().count();
+    }
+
+    Stats& stats_of(const Identifier& id) {
+        return m_measures.try_emplace(id).first->second;
+    }
+
+    std::map<Identifier, Stats> m_measures;
     std::vector<std::tuple<Identifier, uint64_t>> m_stack;
 };
 

@@ -24,6 +24,10 @@ foreach (_drv ${_driver_dirs})
     # without a second in-tree copy of them.
     set(_drv_copy_cmds "")
     if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt")
+        # The list is baked into the target's commands at configure time; without this,
+        # editing it would silently not reach the build until an unrelated reconfigure.
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt")
         file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt" _drv_extra)
         foreach (_src ${_drv_extra})
             string(STRIP "${_src}" _src)

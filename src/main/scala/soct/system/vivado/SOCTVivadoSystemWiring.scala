@@ -74,9 +74,7 @@ trait SOCTVivadoSystemWiring {
     val clockPins = top.ioClocksMapping.map(_._2.clkPin).toSeq
     val resetPins = top.ioClocksMapping.map(_._2.assocRstPin).toSeq
 
-    val peripheryDomain = new ClockDomain(
-      freq = p(PeripheryClockDomain),
-    )
+    val peripheryDomain = new ClockDomain(p(PeripheryClockDomain))
 
     // TODO Currently, this design only supports a single clock domain for the buses, but we should enable multiple clock domains for different buses in the future.
     val freqs = clocks.flatMap(_.freq).distinct

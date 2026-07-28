@@ -84,16 +84,21 @@
   monitor &mdash; the measured trade is in <em>Coherent and incoherent frame fetch</em>
   below.</p>
   <p>Either fragment adds the video mode's parameters
-  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>VideoStreamParams</code></a>,
-  default 1280&times;720@60) and one fabric interrupt for the VDMA (cascaded, like every
+  (<a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/config/soceteer/Configs.scala"><code>VideoStreamParams</code></a>;
+  the incoherent variant defaults to 1920&times;1080@60 &mdash; its private fetch port carries the
+  maximum mode, and the runtime-retunable pixel clock scales <em>down</em> from there &mdash; while
+  the coherent variant defaults to 640&times;480@30 to leave its shared path to the cores) and one
+  fabric interrupt for the VDMA (cascaded, like every
   peripheral interrupt, through the AXI interrupt controller into the PLIC; the device tree
   carries it on the VDMA's channel child node, following the mainline binding). The ZCU104 is the reference
   board throughout this guide; <code>--board</code> takes any registered MPSoC board (see
   <a href="boards.html">Adding an FPGA Board</a>).</p>
-  <p>Each mode needs a known pixel clock: the supported modes are enumerated in
-  <code>VideoStreamFeature.pixelClockFor</code> (1280&times;720@60 and 1920&times;1080@60);
-  a new mode is added by giving it its CTA-861 pixel clock there. Whether a mode is
-  <em>dependable</em> is a separate, fetch-path question &mdash; the frame fetch must sustain
+  <p>Any resolution and refresh rate is accepted: standard modes get their exact CEA-861
+  timing, anything else a VESA CVT reduced-blanking timing computed by the generator
+  (<code>soct.vivado.misc.VideoTiming</code>), and the complete timing is published in the
+  device tree so software programs the timing generator and DisplayPort stream attributes
+  without tables of its own. Whether a mode is <em>dependable</em> is a separate, fetch-path
+  question &mdash; the frame fetch must sustain
   <em>width &times; height &times; fps &times; 3</em> bytes per second against whatever else
   the system is doing, which is what <em>Coherent and incoherent frame fetch</em> below is
   about.</p>
@@ -408,6 +413,40 @@ psu_ps_pl_reset_config</code></pre>
   <p>The incoherent variant is the one to pick for a console design: the frame fetch cannot be
   starved by CPU traffic, so the display stays locked no matter what the shell does, and the L2
   stays available for CPU performance.</p>
+
+  <h3>Runtime resolution switching</h3>
+  <p>On incoherent designs the pixel MMCM is generated with its AXI4-Lite reconfiguration
+  interface, and the device tree's <code>soct,pixel-clkwiz</code> node carries the retune
+  <em>budget</em>: the MMCM's input clock, its analog window (VCO and phase-detector ranges,
+  a speed-grade fact), and the pixel-clock ceiling &mdash; timing closure ran at the
+  configured mode's clock, so retuning only ever goes <em>down</em>. Deliberately, nothing
+  anywhere lists which <em>modes</em> exist: whether a monitor accepts a timing is the
+  monitor's call, and no table can predict it for an arbitrary sink. The kernel module
+  therefore accepts any complete timing through the standard fbdev interface, solves the
+  MMCM dividers for its pixel clock at runtime, and refuses only what the hardware itself
+  cannot synthesize.</p>
+  <p>The timing <em>policy</em> lives in userspace. The shell image ships
+  <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/linux/userspace/fbmode"><code>fbmode</code></a>
+  (the image's BusyBox carries no <code>fbset</code> applet; a stock <code>fbset</code> with
+  a modes file speaks the same ioctl and works too), which carries the exact CEA-861/DMT
+  structures for the common geometries and computes VESA CVT reduced blanking for anything
+  else:</p>
+<pre><code>fbmode                        # current mode + the well-known list
+fbmode 4                      # switch to list entry 4 (720p60)
+fbmode --custom 1600 900 45   # any geometry and refresh, CVT-RB timing</code></pre>
+  <p>Because a wrong guess can leave the monitor dark, a switch must be confirmed: unless
+  <code>-y</code> is given, <code>fbmode</code> waits ten seconds for a <code>y</code>
+  keypress and otherwise restores the previous mode &mdash; the old timing is read back from
+  the kernel before switching, so the revert needs no stored state and works from a blind
+  console.</p>
+  <p>The switch halts the VDMA first (its soft reset needs the stream clock, which the retune
+  is about to stop), reprograms the MMCM through the reconfiguration registers, and waits for
+  relock &mdash; the pixel domain's reset rides <code>locked</code>, so the domain resets
+  itself across the retune. Then the VDMA, the timing generator and the DisplayPort stream
+  attributes are reprogrammed for the new mode; the DP link itself stays trained, since the
+  main link does not depend on the pixel clock. The frame is presented black and the console
+  repaints. Coherent designs are static: <code>simplefb</code> owns the framebuffer device and
+  knows nothing of modes, and the pixel clock is fixed at synthesis.</p>
 
   <h3>Troubleshooting: the kernel must match the bitstream</h3>
   <p>A kernel image is design-specific. Its device tree is embedded at build time from the

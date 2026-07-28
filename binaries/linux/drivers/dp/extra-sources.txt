@@ -1,6 +1,9 @@
 # Sources copied beside this module before kbuild runs (paths relative to binaries/linux;
 # see kernel-modules.cmake). The vendored Xilinx DisplayPort drivers are shared with the
-# bare-metal dp-test and compiled here against the kernel shims in this directory.
+# bare-metal dp-test and compiled here against the kernel shims in this directory; the
+# clocking-wizard helper is shared with any other module that retunes a wizard.
+drivers/clk-wzrd/clk-wzrd.c
+drivers/clk-wzrd/clk-wzrd.h
 ../../shared/vendor/xilinx-dp/xdppsu.c
 ../../shared/vendor/xilinx-dp/xdppsu.h
 ../../shared/vendor/xilinx-dp/xdppsu_hw.h

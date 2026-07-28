@@ -1,9 +1,10 @@
 # soct-dp: DisplayPort pipeline bring-up (see dp-main.c). The Xilinx dppsu/avbuf sources
 # are the repo's one vendored copy (shared/vendor/xilinx-dp, also compiled by the
-# bare-metal dp-test) - copied beside this module at build time (extra-sources.txt).
+# bare-metal dp-test) - copied beside this module at build time (extra-sources.txt),
+# as is the shared clocking-wizard reconfiguration helper (drivers/clk-wzrd).
 # The headers in this directory are their kernel shims.
 obj-m := soct-dp.o
-soct-dp-objs := dp-main.o fb.o shim.o xdppsu.o xdppsu_spm.o xdppsu_serdes.o \
+soct-dp-objs := dp-main.o fb.o shim.o clk-wzrd.o xdppsu.o xdppsu_spm.o xdppsu_serdes.o \
                 xavbuf.o xavbuf_videoformats.o
 
 ccflags-y := -I$(src)

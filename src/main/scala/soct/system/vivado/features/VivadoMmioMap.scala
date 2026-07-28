@@ -19,4 +19,5 @@ object VivadoMmioMap {
   val VideoStatusBase: Long = 0x60040000L
   val IntcBase: Long = 0x60050000L
   val SysResetBase: Long = 0x60060000L
+  val PixelClkBase: Long = 0x60070000L
 }

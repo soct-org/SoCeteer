@@ -24,7 +24,7 @@ class SdCardFeature(pmodPort: Int, mmioBus: Device, intcDev: Device, irqs: IrqAl
   // silently goes stale when the domain is reconfigured. The fastest reachable SD clock
   // is clock/2 (minimum divider), which is also what the driver would derive on its
   // own; anything higher underflows its divider computation.
-  private val periphHz = p(PeripheryClockDomain).toHz.toLong
+  private val periphHz = p(PeripheryClockDomain).freq.toHz.toLong
 
   val dts: DTSInfo = DTSInfo(
     parent = mmioBus,

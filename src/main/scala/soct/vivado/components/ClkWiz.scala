@@ -14,11 +14,17 @@ import scala.collection.mutable
  * For now, the ClkWiz IP can only be driven by a single clock input, but can provide multiple clock outputs.
  * Documentation: https://docs.amd.com/r/en-US/pg065-clk-wiz
  *
- * @param inputDom clock domain of the input clock when it is a BD-internal net (e.g. a DDR4
- *                  additional clock output) instead of a board clock port; board clock ports
- *                  carry their own frequency and must not set this
+ * @param inputDom    clock domain of the input clock when it is a BD-internal net (e.g. a DDR4
+ *                    additional clock output) instead of a board clock port; board clock ports
+ *                    carry their own frequency and must not set this
+ * @param dynReconfig expose the AXI4-Lite dynamic-reconfiguration interface (PG065 chapter
+ *                    "Dynamic Reconfiguration through AXI4-Lite"): software can then retune
+ *                    the MMCM at runtime through [[S_AXI_LITE]]. The static configuration
+ *                    stays the timing-closure configuration - runtime retuning must only
+ *                    ever LOWER output frequencies, constraints are not re-derived.
  */
-case class ClkWiz(inputDom: Option[ClockDomain] = None)(implicit bd: SOCTBdBuilder, p: Parameters)
+case class ClkWiz(inputDom: Option[ClockDomain] = None, dynReconfig: Boolean = false)
+                 (implicit bd: SOCTBdBuilder, p: Parameters)
   extends BdComp with Xip with HasIndexedPins {
 
   override def partName: String = "xilinx.com:ip:clk_wiz:6.0"
@@ -26,6 +32,13 @@ case class ClkWiz(inputDom: Option[ClockDomain] = None)(implicit bd: SOCTBdBuild
   object RESET extends BdPinIn("reset", ClkWiz.this)
 
   object LOCKED extends BdPinOut("locked", ClkWiz.this)
+
+  /** The dynamic-reconfiguration register interface; only present with [[dynReconfig]]. */
+  object S_AXI_LITE extends BdIntfPin("s_axi_lite", ClkWiz.this)
+
+  object S_AXI_ACLK extends BdPinIn("s_axi_aclk", ClkWiz.this)
+
+  object S_AXI_ARESETN extends BdPinIn("s_axi_aresetn", ClkWiz.this)
 
   case class CLK_OUT_I(idx: Int, dom: ClockDomain) extends BdPinOut(s"clk_out$idx", ClkWiz.this)
   // TODO upper limit on number of clkouts based on FPGA family
@@ -58,8 +71,16 @@ case class ClkWiz(inputDom: Option[ClockDomain] = None)(implicit bd: SOCTBdBuild
       case (idx, clkout) =>
         m += s"CONFIG.CLKOUT${idx}_REQUESTED_OUT_FREQ" -> f"${clkout.dom.freq.toMHz}%.3f" // braces are added automatically
         m += s"CONFIG.CLKOUT${idx}_USED" -> "true"
+        // Only non-default requests are emitted; the IP's own defaults (50% duty,
+        // 0 degrees) stay implicit so a plain domain leaves the configuration untouched.
+        if (clkout.dom.dutyCycle != 0.5)
+          m += s"CONFIG.CLKOUT${idx}_REQUESTED_DUTY_CYCLE" -> f"${clkout.dom.dutyCycle * 100}%.3f"
+        if (clkout.dom.phaseDeg != 0.0)
+          m += s"CONFIG.CLKOUT${idx}_REQUESTED_PHASE" -> f"${clkout.dom.phaseDeg}%.3f"
     }
     m += "CONFIG.NUM_OUT_CLKS" -> clkouts.size.toString
+
+    if (dynReconfig) m += "CONFIG.USE_DYN_RECONFIG" -> "true"
 
     val clkIn1Src = CLK_IN.get(1).flatMap(bd.sourceOf)
     val clkIn1DSrc = CLK_IN_D.get(1).flatMap(bd.sourceOf)
@@ -84,7 +105,15 @@ case class ClkWiz(inputDom: Option[ClockDomain] = None)(implicit bd: SOCTBdBuild
         throw VivadoDesignException(s"ClkWiz $instanceName clk_in1 must be connected to a clock source, but it is not connected to any source.")
     }
 
-    bd.sourceOf(RESET) match {
+    if (dynReconfig) {
+      // With the AXI4-Lite reconfiguration interface the core has NO standalone `reset`
+      // input - s_axi_aresetn is the core's reset (verified against the generated core:
+      // Vivado errors "No pins matched .../reset" when it is wired).
+      if (bd.sourceOf(RESET).isDefined)
+        throw VivadoDesignException(s"ClkWiz $instanceName uses dynamic reconfiguration: the core has no standalone `reset` input - drive s_axi_aresetn instead.")
+      if (bd.sourceOf(S_AXI_ARESETN).isEmpty)
+        throw VivadoDesignException(s"ClkWiz $instanceName uses dynamic reconfiguration and needs s_axi_aresetn driven - it is the core's reset.")
+    } else bd.sourceOf(RESET) match {
       case Some(r: FPGAResetPortSource) =>
         m += "CONFIG.RESET_BOARD_INTERFACE" -> r.instanceName
       case Some(_) =>

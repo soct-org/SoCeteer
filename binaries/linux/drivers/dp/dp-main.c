@@ -5,14 +5,27 @@
  *
  * The pipeline is framebuffer (DRAM) -> AXI VDMA -> AXI4-Stream video out (+ VTC
  * timing) -> PS DP live video input -> DP main link -> monitor, and every stage is
- * discovered from the device tree. The framebuffer is the fixed reserved-memory
- * carve-out; who serves it as a framebuffer device depends on how the VDMA reaches
- * DRAM. On a coherent design the /chosen/framebuffer node describes it: simplefb
- * registers it and fbcon renders into it independently of this module, which only
- * starts the hardware that puts it on the monitor. On an incoherent design
- * (`soct,incoherent` on the VDMA node) there is no /chosen node - CPU writes sit in
- * the caches where the scanout never sees them, so this module registers its own
- * cache-flushing framebuffer device instead (fb.c).
+ * discovered from the device tree - including the video timing itself: the vtc node
+ * carries the complete `display-timings` structure of the synthesized mode, so any
+ * mode the generator accepts drives the monitor without this module knowing it in
+ * advance. The framebuffer is the fixed reserved-memory carve-out; who serves it as
+ * a framebuffer device depends on how the VDMA reaches DRAM. On a coherent design
+ * the /chosen/framebuffer node describes it: simplefb registers it and fbcon
+ * renders into it independently of this module, which only starts the hardware
+ * that puts it on the monitor. On an incoherent design (`soct,incoherent` on the
+ * VDMA node) there is no /chosen node - CPU writes sit in the caches where the
+ * scanout never sees them, so this module registers its own cache-flushing
+ * framebuffer device instead (fb.c).
+ *
+ * Incoherent designs also expose the pixel-clock MMCM for runtime reconfiguration:
+ * the `soct,pixel-clkwiz` node carries the retune budget - the MMCM's input clock,
+ * its analog window, and the clock ceiling timing closure ran at. There is no mode
+ * list, deliberately: whether a timing works is the monitor's call, which no table
+ * can predict, so userspace submits any complete timing through the standard fbdev
+ * interfaces (the shell image ships `fbmode` for it) and this module solves the
+ * MMCM dividers against the budget, refusing only what the hardware itself cannot
+ * do. The pixel domain's reset rides the MMCM's LOCKED output, so the domain
+ * resets itself across a retune.
  *
  * The VDMA node is status-disabled precisely so the dmaengine driver keeps its hands
  * off (it resets every channel at probe); this module programs the engine's register
@@ -27,11 +40,14 @@
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/math.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/workqueue.h>
 
+#include "clk-wzrd.h"
+#include "dp.h"
 #include "fb.h"
 #include "xavbuf.h"
 #include "xdppsu.h"
@@ -88,13 +104,55 @@ static struct {
 	void __iomem *vtc;
 	void __iomem *vidstat;
 	void __iomem *window;
+	void __iomem *pixclk; /* reconfigurable pixel MMCM; NULL on static designs */
+	phys_addr_t fb;
+	struct soct_dp_mode cur;         /* what the pipeline is scanning */
+	bool retunable;
+	struct soct_clk_wzrd_limits lim; /* the MMCM budget, from the device tree */
+	u32 max_hz;                      /* clock ceiling: timing closure ran here */
 	XDpPsu dp;
 	XAVBuf avbuf;
 } s;
 
-static int vdma_start(phys_addr_t fb, u32 width, u32 height)
+static u32 mode_htotal(const struct soct_dp_mode *m)
 {
-	unsigned int i;
+	return m->hactive + m->hfront_porch + m->hsync_len + m->hback_porch;
+}
+
+static u32 mode_vtotal(const struct soct_dp_mode *m)
+{
+	return m->vactive + m->vfront_porch + m->vsync_len + m->vback_porch;
+}
+
+static int mode_prop(struct device_node *np, const char *name, const char *alt, u32 *out)
+{
+	if (!of_property_read_u32(np, name, out))
+		return 0;
+	return alt ? of_property_read_u32(np, alt, out) : -EINVAL;
+}
+
+/* Parses the vtc node's timing (it spells the active area and refresh with a
+ * `soct,` prefix, keeping generic bindings from misreading them). */
+static int of_read_mode(struct device_node *np, struct soct_dp_mode *m)
+{
+	if (mode_prop(np, "hactive", "soct,hactive", &m->hactive) ||
+	    mode_prop(np, "hfront-porch", NULL, &m->hfront_porch) ||
+	    mode_prop(np, "hsync-len", NULL, &m->hsync_len) ||
+	    mode_prop(np, "hback-porch", NULL, &m->hback_porch) ||
+	    mode_prop(np, "vactive", "soct,vactive", &m->vactive) ||
+	    mode_prop(np, "vfront-porch", NULL, &m->vfront_porch) ||
+	    mode_prop(np, "vsync-len", NULL, &m->vsync_len) ||
+	    mode_prop(np, "vback-porch", NULL, &m->vback_porch) ||
+	    mode_prop(np, "hsync-active", NULL, &m->hsync_active) ||
+	    mode_prop(np, "vsync-active", NULL, &m->vsync_active) ||
+	    mode_prop(np, "fps", "soct,fps", &m->fps) ||
+	    mode_prop(np, "clock-frequency", NULL, &m->pixel_clock_hz))
+		return -EINVAL;
+	return 0;
+}
+
+static int vdma_halt(void)
+{
 	u32 sr;
 
 	writel(VDMA_DMACR_RESET, s.vdma + VDMA_MM2S_DMACR);
@@ -103,6 +161,18 @@ static int vdma_start(phys_addr_t fb, u32 width, u32 height)
 		pr_err("soct-dp: VDMA reset did not complete\n");
 		return -EIO;
 	}
+	return 0;
+}
+
+static int vdma_start(phys_addr_t fb, u32 width, u32 height)
+{
+	unsigned int i;
+	int err;
+	u32 sr;
+
+	err = vdma_halt();
+	if (err)
+		return err;
 
 	/* Keep the reset defaults EXCEPT Circular_Park, whose reset value is 1: cleared, the
 	 * engine parks on the store PARK_PTR selects instead of cycling all of them. All
@@ -125,28 +195,50 @@ static int vdma_start(phys_addr_t fb, u32 width, u32 height)
 	return 0;
 }
 
-static void vtc_start(const XVidC_VideoTiming *t)
+static void vtc_start(const struct soct_dp_mode *m)
 {
-	const u32 hss = (u32)t->HActive + t->HFrontPorch;
-	const u32 hbs = hss + t->HSyncWidth;
-	const u32 vss = (u32)t->VActive + t->F0PVFrontPorch;
-	const u32 vbs = vss + t->F0PVSyncWidth;
+	const u32 hss = m->hactive + m->hfront_porch;
+	const u32 hbs = hss + m->hsync_len;
+	const u32 vss = m->vactive + m->vfront_porch;
+	const u32 vbs = vss + m->vsync_len;
 
-	writel(t->HTotal, s.vtc + VTC_GHSIZE);
-	writel((u32)t->F0PVTotal | ((u32)t->F0PVTotal << 16), s.vtc + VTC_GVSIZE);
-	writel((u32)t->HActive | ((u32)t->VActive << 16), s.vtc + VTC_GASIZE);
-	writel((u32)t->VActive << 16, s.vtc + VTC_GASIZE_F1);
+	writel(mode_htotal(m), s.vtc + VTC_GHSIZE);
+	writel(mode_vtotal(m) | (mode_vtotal(m) << 16), s.vtc + VTC_GVSIZE);
+	writel(m->hactive | (m->vactive << 16), s.vtc + VTC_GASIZE);
+	writel(m->vactive << 16, s.vtc + VTC_GASIZE_F1);
 	writel(hss | (hbs << 16), s.vtc + VTC_GHSYNC);
 	writel(vss | (vbs << 16), s.vtc + VTC_GVSYNC);
 	writel(vss | (vbs << 16), s.vtc + VTC_GVSYNC_F1);
 	writel(0, s.vtc + VTC_GFENC); /* progressive */
-	writel((u32)t->HActive | ((u32)t->HActive << 16), s.vtc + VTC_GVBHOFF);
+	writel(m->hactive | (m->hactive << 16), s.vtc + VTC_GVBHOFF);
 	writel(hss | (hss << 16), s.vtc + VTC_GVSHOFF);
-	writel((u32)t->HActive | ((u32)t->HActive << 16), s.vtc + VTC_GVBHOFF_F1);
+	writel(m->hactive | (m->hactive << 16), s.vtc + VTC_GVBHOFF_F1);
 	writel(hss | (hss << 16), s.vtc + VTC_GVSHOFF_F1);
-	writel(VTC_POL_BASE | (t->HSyncPolarity ? VTC_POL_HSP : 0)
-	       | (t->VSyncPolarity ? VTC_POL_VSP : 0), s.vtc + VTC_GPOL);
+	writel(VTC_POL_BASE | (m->hsync_active ? VTC_POL_HSP : 0)
+	       | (m->vsync_active ? VTC_POL_VSP : 0), s.vtc + VTC_GPOL);
 	writel(VTC_CTL_ALLSS | VTC_CTL_RU | VTC_CTL_GE | VTC_CTL_SW, s.vtc + VTC_CTL);
+}
+
+/* Retunes the pixel MMCM (clk-wzrd.h). LOCKED drops during the retune and the
+ * pixel domain resets itself (its reset rides LOCKED), so every pixel-domain core
+ * must be reprogrammed afterwards; the register interfaces this module touches all
+ * sit in the periphery clock domain and stay reachable throughout. */
+static int pixclk_retune(const struct soct_clk_wzrd_setting *set)
+{
+	int err = soct_clk_wzrd_retune(s.pixclk, set);
+
+	if (err == -EBUSY) {
+		pr_err("soct-dp: the pixel MMCM is not locked - cannot retune\n");
+		return err;
+	}
+	if (err) {
+		pr_err("soct-dp: the pixel MMCM did not relock at %u Hz\n",
+		       set->achieved_hz);
+		return err;
+	}
+	/* Give the pixel-domain reset synchronizer time to release after relock. */
+	usleep_range(1000, 2000);
+	return 0;
 }
 
 static int avbuf_select_live_video(void)
@@ -203,18 +295,168 @@ static int dp_link_up(void)
 	return 0;
 }
 
-static void dp_start_stream(XVidC_VideoMode mode)
+/* Pushes the mode's main stream attributes over the trained link. The MSA is built
+ * from the timing itself (XDpPsu_CfgMsaUseCustom), not a standard-mode table - the
+ * caller's timing is the only source of modes. */
+static void dp_start_stream(const struct soct_dp_mode *m)
 {
+	XDpPsu_MainStreamAttributes msa = { 0 };
+
+	msa.PixelClockHz = m->pixel_clock_hz;
+	msa.Vtm.VmId = XVIDC_VM_USE_EDID_PREFERRED; /* marker: not a table mode */
+	msa.Vtm.FrameRate = m->fps;
+	msa.Vtm.Timing.HActive = m->hactive;
+	msa.Vtm.Timing.HFrontPorch = m->hfront_porch;
+	msa.Vtm.Timing.HSyncWidth = m->hsync_len;
+	msa.Vtm.Timing.HBackPorch = m->hback_porch;
+	msa.Vtm.Timing.HTotal = mode_htotal(m);
+	msa.Vtm.Timing.HSyncPolarity = m->hsync_active;
+	msa.Vtm.Timing.VActive = m->vactive;
+	msa.Vtm.Timing.F0PVFrontPorch = m->vfront_porch;
+	msa.Vtm.Timing.F0PVSyncWidth = m->vsync_len;
+	msa.Vtm.Timing.F0PVBackPorch = m->vback_porch;
+	msa.Vtm.Timing.F0PVTotal = mode_vtotal(m);
+	msa.Vtm.Timing.VSyncPolarity = m->vsync_active;
+
 	XDpPsu_SetColorEncode(&s.dp, XDPPSU_CENC_RGB);
 	XDpPsu_CfgMsaSetBpc(&s.dp, 8);
 	XDpPsu_CfgMsaEnSynchClkMode(&s.dp, 1);
-	XDpPsu_CfgMsaUseStandardVideoMode(&s.dp, mode);
+	XDpPsu_CfgMsaUseCustom(&s.dp, &msa, 1);
 	/* Idle pattern while reconfiguring, then reset the TX and push the MSA. */
 	XDpPsu_EnableMainLink(&s.dp, 0);
 	XDpPsu_WriteReg(s.dp.Config.BaseAddr, XDPPSU_SOFT_RESET, 0x1);
 	XDpPsu_WriteReg(s.dp.Config.BaseAddr, XDPPSU_SOFT_RESET, 0x0);
 	XDpPsu_SetVideoMode(&s.dp);
 	XDpPsu_EnableMainLink(&s.dp, 1);
+}
+
+/* Settles, then reads the video-out status flags (bit 0 locked, bit 1 underflow). */
+static u32 video_status(void)
+{
+	msleep(100);
+	return s.vidstat ? readl(s.vidstat) : 0;
+}
+
+const struct soct_dp_mode *soct_dp_current_mode(void)
+{
+	return &s.cur;
+}
+
+int soct_dp_validate_mode(struct soct_dp_mode *m)
+{
+	struct soct_clk_wzrd_setting set;
+	int err;
+
+	if (!m->hactive || !m->vactive || !m->fps || !m->pixel_clock_hz)
+		return -EINVAL;
+	if (!s.retunable) {
+		/* Static design: only the synthesized mode exists. The clock tolerance
+		 * absorbs the fbdev UAPI's picosecond round-trip. */
+		struct soct_dp_mode t = *m;
+
+		t.pixel_clock_hz = s.cur.pixel_clock_hz;
+		if ((u64)abs_diff(m->pixel_clock_hz, s.cur.pixel_clock_hz) * 200 >
+			    s.cur.pixel_clock_hz ||
+		    !soct_dp_mode_equal(&t, &s.cur))
+			return -EOPNOTSUPP;
+		m->pixel_clock_hz = s.cur.pixel_clock_hz;
+		return 0;
+	}
+	/* The ceiling: timing closure ran at the synthesized clock, so retunes only
+	 * go down. A rounding-hair above (the picosecond round-trip again) clamps;
+	 * genuinely above is refused. */
+	if (m->pixel_clock_hz > s.max_hz + s.max_hz / 200)
+		return -EDOM;
+	if (m->pixel_clock_hz > s.max_hz)
+		m->pixel_clock_hz = s.max_hz;
+	err = soct_clk_wzrd_solve(&s.lim, m->pixel_clock_hz, &set);
+	if (err)
+		return err;
+	if (set.achieved_hz > s.max_hz)
+		return -EDOM;
+	m->pixel_clock_hz = set.achieved_hz;
+	return 0;
+}
+
+int soct_dp_switch_mode(const struct soct_dp_mode *m)
+{
+	struct soct_clk_wzrd_setting set;
+	struct soct_dp_mode want = *m;
+	bool retune;
+	u32 flags;
+	int err;
+
+	err = soct_dp_validate_mode(&want);
+	if (err)
+		return err;
+	if (soct_dp_mode_equal(&want, &s.cur))
+		return 0;
+	retune = want.pixel_clock_hz != s.cur.pixel_clock_hz;
+	if (retune) {
+		/* Solving for an achieved value lands on its own setting exactly. */
+		err = soct_clk_wzrd_solve(&s.lim, want.pixel_clock_hz, &set);
+		if (err)
+			return err;
+	}
+
+	/* Halt the fetch first, while its stream clock still runs: the VDMA's soft
+	 * reset needs all of its clocks, and the retune stops the pixel clock. */
+	err = vdma_halt();
+	if (err)
+		return err;
+	if (retune) {
+		err = pixclk_retune(&set);
+		if (err)
+			return err; /* scanout stays halted - an honest, visible failure */
+	}
+	err = vdma_start(s.fb, want.hactive, want.vactive);
+	if (err)
+		return err;
+	vtc_start(&want);
+	dp_start_stream(&want);
+	s.cur = want;
+
+	/* Re-locking hunts for a few frames after a restart; poll instead of
+	 * sampling once, so an unlocked report means genuinely unlocked. */
+	if (s.vidstat) {
+		if (read_poll_timeout(readl, flags, flags & 1u, 10000, 1000000,
+				      false, s.vidstat))
+			pr_warn("soct-dp: the video out did NOT lock after the switch (status=0x%x)\n",
+				flags);
+	} else {
+		flags = 0;
+	}
+	pr_info("soct-dp: scanout switched to %ux%u@%u, %u Hz pixel clock (video out locked=%u underflow=%u)\n",
+		want.hactive, want.vactive, want.fps, want.pixel_clock_hz,
+		flags & 1u, (flags >> 1) & 1u);
+	return 0;
+}
+
+/* Parses the retunable-pixel-clock node's budget; absent node = static design
+ * (every coherent design, and device trees older than this module). */
+static void parse_pixclk(void)
+{
+	struct device_node *np = of_find_compatible_node(NULL, NULL, "soct,pixel-clkwiz");
+
+	if (!np)
+		return;
+	if (of_property_read_u32(np, "soct,input-frequency", &s.lim.input_hz) ||
+	    of_property_read_u32(np, "soct,max-frequency", &s.max_hz) ||
+	    of_property_read_u32(np, "soct,vco-min", &s.lim.vco_min_hz) ||
+	    of_property_read_u32(np, "soct,vco-max", &s.lim.vco_max_hz) ||
+	    of_property_read_u32(np, "soct,pfd-min", &s.lim.pfd_min_hz) ||
+	    of_property_read_u32(np, "soct,pfd-max", &s.lim.pfd_max_hz)) {
+		pr_warn("soct-dp: the pixel-clkwiz node lacks the retune budget - resolution switching disabled\n");
+		of_node_put(np);
+		return;
+	}
+	s.pixclk = of_iomap(np, 0);
+	of_node_put(np);
+	if (!s.pixclk) {
+		pr_warn("soct-dp: cannot map the pixel clock wizard - resolution switching disabled\n");
+		return;
+	}
+	s.retunable = true;
 }
 
 /** ioremap register index 0 of the first node with `compat`; NULL when the node is absent. */
@@ -233,12 +475,10 @@ static void soct_dp_work(struct work_struct *work)
 {
 	struct device_node *vdma_np, *vtc_np, *win_np, *chosen, *fb_np;
 	struct resource fb_res;
-	u32 ps_base, width, height, fps, fb_w, fb_h, fb_stride, flags;
-	XVidC_VideoMode mode = XVIDC_VM_NUM_SUPPORTED;
+	u32 ps_base, fb_w, fb_h, fb_stride, flags;
 	XDpPsu_Config cfg = { 0 };
 	struct resource win_res;
 	bool incoherent;
-	int m;
 
 	s.vdma = iomap_compatible("xlnx,axi-vdma-1.00.a", &vdma_np);
 	if (!s.vdma) {
@@ -282,45 +522,46 @@ static void soct_dp_work(struct work_struct *work)
 	}
 	SoctXil_SetPsWindow(s.window, ps_base, resource_size(&win_res));
 
-	/* The mode is baked into the design; the framebuffer node must agree with it. */
-	if (of_property_read_u32(vtc_np, "soct,hactive", &width) ||
-	    of_property_read_u32(vtc_np, "soct,vactive", &height) ||
-	    of_property_read_u32(vtc_np, "soct,fps", &fps)) {
-		pr_err("soct-dp: the vtc node does not carry the video mode\n");
+	/* The synthesized mode, complete timing included; the framebuffer node must
+	 * agree with its geometry. */
+	if (of_read_mode(vtc_np, &s.cur)) {
+		pr_err("soct-dp: the vtc node does not carry the full video timing - the device tree is older than this module\n");
 		return;
 	}
 	if (!incoherent &&
 	    (of_property_read_u32(fb_np, "width", &fb_w) ||
 	     of_property_read_u32(fb_np, "height", &fb_h) ||
 	     of_property_read_u32(fb_np, "stride", &fb_stride) ||
-	     fb_w != width || fb_h != height || fb_stride != width * 3)) {
+	     fb_w != s.cur.hactive || fb_h != s.cur.vactive ||
+	     fb_stride != s.cur.hactive * 3)) {
 		pr_err("soct-dp: framebuffer node and video mode disagree - inconsistent device tree\n");
 		return;
 	}
-	for (m = 0; m < XVIDC_VM_NUM_SUPPORTED; m++) {
-		if (XVidC_VideoTimingModes[m].Timing.HActive == width &&
-		    XVidC_VideoTimingModes[m].Timing.VActive == height &&
-		    (u32)XVidC_VideoTimingModes[m].FrameRate == fps)
-			mode = XVidC_VideoTimingModes[m].VmId;
-	}
-	if (mode == XVIDC_VM_NUM_SUPPORTED) {
-		pr_err("soct-dp: video mode %ux%u@%u is not in the timing table\n",
-		       width, height, fps);
-		return;
+
+	s.fb = fb_res.start;
+	parse_pixclk();
+	if (s.retunable && soct_dp_validate_mode(&s.cur)) {
+		/* Normalizes the boot clock to the solver's achieved value, so later
+		 * validations converge on it. Failure means the budget cannot even
+		 * reproduce the synthesized clock - an inconsistent device tree. */
+		pr_warn("soct-dp: the retune budget cannot reproduce the synthesized pixel clock - resolution switching disabled\n");
+		s.retunable = false;
 	}
 
 	pr_info("soct-dp: scanout %ux%u@%u from the console framebuffer at %pa%s\n",
-		width, height, fps, &fb_res.start,
+		s.cur.hactive, s.cur.vactive, s.cur.fps, &fb_res.start,
 		incoherent ? " (incoherent fetch, cache-flushing fbdev)" : "");
+	if (s.retunable)
+		pr_info("soct-dp: pixel clock retunable up to %u Hz\n", s.max_hz);
 
 	/* Before the first fetch: the frame must be cleared and pushed out of the caches. */
 	if (incoherent &&
-	    soct_dp_fb_prepare(fb_res.start, resource_size(&fb_res), width, height))
+	    soct_dp_fb_prepare(fb_res.start, resource_size(&fb_res), &s.cur))
 		return;
 
-	if (vdma_start(fb_res.start, width, height))
+	if (vdma_start(fb_res.start, s.cur.hactive, s.cur.vactive))
 		return;
-	vtc_start(&XVidC_VideoTimingModes[mode].Timing);
+	vtc_start(&s.cur);
 
 	cfg.BaseAddr = PS_DP_BASEADDR;
 	XDpPsu_CfgInitialize(&s.dp, &cfg, cfg.BaseAddr);
@@ -330,10 +571,9 @@ static void soct_dp_work(struct work_struct *work)
 	}
 	if (dp_link_up())
 		return;
-	dp_start_stream(mode);
+	dp_start_stream(&s.cur);
 
-	msleep(100);
-	flags = s.vidstat ? readl(s.vidstat) : 0;
+	flags = video_status();
 	pr_info("soct-dp: display is up (video out locked=%u underflow=%u)\n",
 		flags & 1u, (flags >> 1) & 1u);
 	if (!(flags & 1u))
@@ -366,6 +606,8 @@ static void __exit soct_dp_exit(void)
 		iounmap(s.vidstat);
 	if (s.window)
 		iounmap(s.window);
+	if (s.pixclk)
+		iounmap(s.pixclk);
 }
 
 module_init(soct_dp_init);
