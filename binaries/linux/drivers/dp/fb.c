@@ -32,6 +32,7 @@
 #include <linux/math64.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/printk.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
@@ -67,6 +68,16 @@ static void flush_range(phys_addr_t start, size_t len)
 
 	for (; a < start + len; a += CACHE_LINE)
 		writeq(a, fbs.l2_ctrl + L2_FLUSH64_OFFSET);
+}
+
+static void soct_dp_fb_flush_work(struct work_struct *work);
+
+/* Pushes the pending damage out right now, from whatever context. The flush is a
+ * loop of register writes - no locks beyond the damage lock, no sleeping - so it
+ * is safe where the worker cannot run. */
+static void soct_dp_fb_flush_now(void)
+{
+	soct_dp_fb_flush_work(&fbs.flush_work.work);
 }
 
 static void soct_dp_fb_flush_work(struct work_struct *work)
@@ -117,6 +128,15 @@ static void soct_dp_fb_damage_area(struct fb_info *info, u32 x, u32 y, u32 w, u3
 	}
 	spin_unlock_irqrestore(&fbs.lock, flags);
 
+	/* A dying kernel is exactly when the screen must be believed: the CPU that
+	 * printed this may never run a worker again (an oops holding a CPU with
+	 * interrupts disabled strands everything queued to it), which would leave
+	 * the last messages - the interesting ones - recorded as damage and never
+	 * pushed. Flush inline instead of deferring. */
+	if (unlikely(oops_in_progress)) {
+		soct_dp_fb_flush_now();
+		return;
+	}
 	schedule_delayed_work(&fbs.flush_work, FLUSH_DELAY);
 }
 

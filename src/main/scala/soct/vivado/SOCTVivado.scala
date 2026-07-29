@@ -311,6 +311,7 @@ object SOCTVivado {
          |  Log:     ${logFile.toAbsolutePath}
          |  Follow:  $follow
          |  Kill:    $kill""".stripMargin)
+    soct.log.info("When done, run --sfr (sync-from-remote) to pull the results back into the workspace.")
   }
 
   private def launchRemoteBuild(args: SOCTArgs, boardPaths: VivadoSOCTPaths, stage: BuildStage, vivado: String): Unit = {

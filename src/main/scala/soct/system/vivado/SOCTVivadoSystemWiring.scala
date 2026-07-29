@@ -121,15 +121,20 @@ trait SOCTVivadoSystemWiring {
    *
    * @param fpgaRst the board reset port
    * @param c       the common design
+   * @return the combined system reset (board OR debug ndreset OR software reset register) -
+   *         every reset synchronizer must trigger from THIS net, not the raw board pin: a
+   *         reset that skips part of the AXI fabric strands the surviving side mid-protocol
+   *         (masters vanish owing beats), wedging it against all later traffic.
    */
-  protected def wireDebugReset(fpgaRst: FPGAResetPortSource, c: CommonDesign): Unit = {
+  protected def wireDebugReset(fpgaRst: FPGAResetPortSource, c: CommonDesign): BdPinOut = {
     // Top-level on purpose: these gates span the periphery and core reset domains.
     val hwReset: DrivesNet = if (debug.isDefined) {
       OR(fpgaRst, portToBdPin(debug.getWrappedValue.get.ndreset))
         .withInstanceName("ndreset_or_sys_rst").RES
     } else fpgaRst
-    OR(hwReset, c.sysResetGpio.GPIO_IO_O)
-      .withInstanceName("sw_or_hw_reset") --> Seq(c.periphPsr.EXT_RESET_IN, c.corePsr.EXT_RESET_IN)
+    val swOrHw = OR(hwReset, c.sysResetGpio.GPIO_IO_O).withInstanceName("sw_or_hw_reset")
+    swOrHw --> Seq(c.periphPsr.EXT_RESET_IN, c.corePsr.EXT_RESET_IN)
+    swOrHw.RES
   }
 
   /**

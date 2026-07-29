@@ -108,16 +108,27 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     // --------------------------------------------------------------------------
     // Reset strategy
     // --------------------------------------------------------------------------
-    wireDebugReset(fpgaRst, c)
+    val systemReset = wireDebugReset(fpgaRst, c)
 
     // Per-channel DDR reset domain, synchronized to that channel's UI clock. The DDR4
     // doesn't expose an explicit MMCM-locked pin, but `c0_init_calib_complete` is a
     // superset: it asserts only after the MMCM has locked AND the DRAM init calibration
     // is finished.
-    val ddrPsrs = memPaths.zip(fpgaDoms).zipWithIndex.map { case ((path, dom), i) =>
+    //
+    // Triggered by the COMBINED system reset, not the board pin: a software reset
+    // (syscon register / debug ndreset) resets the memory masters (L2 mid-burst, the
+    // incoherent VDMA's continuous fetch) and must reset the memory AXI complex - the
+    // controller's AXI shim and the memory SmartConnect - in the same stroke, or the
+    // surviving side is left owing responses to masters that vanished and wedges every
+    // later DRAM access (JTAG-probed: post-reset `mrd` of DRAM hangs the debug module
+    // while BRAM executes fine). SYS_RST above deliberately stays on the board pin
+    // alone: a warm reboot must not re-run DRAM calibration, and the DDR MMCM behind it
+    // feeds the system clock wizard - pulling SYS_RST on a software reset would
+    // collapse every derived clock mid-reset.
+    val ddrPsrs = memPaths.zipWithIndex.map { case (path, i) =>
       val psr = ProcSysReset().withInstanceName(s"ddr_psr_$i").withGroup(s"ddr_reset_$i")
       path.ddr4Inst.C0_DDR4_UI_CLK --> psr.SLOWEST_SYNC_CLK
-      dom.reset --> psr.EXT_RESET_IN
+      systemReset --> psr.EXT_RESET_IN
       path.ddr4Inst.C0_INIT_CALIB_COMPLETE --> psr.DCM_LOCKED
       psr.PeripheralAResetN --> path.ddr4Inst.C0_DDR4_ARESETN
       psr
