@@ -1,0 +1,29 @@
+riscv: enable the RoCC extension context for user threads
+
+Rocket-class cores gate custom (RoCC) instructions on sstatus.XS: with the
+extension context Off, every accelerator instruction traps as illegal. Mainline
+Linux never touches XS - no upstream hart has RoCC state - so userspace cannot
+reach accelerators like Gemmini without this. Mark the extension context Initial
+for every new user thread, mirroring what start_thread already does for the FPU
+via SR_FS_INITIAL. The status field is per-thread (pt_regs) and context-switched
+as a whole, so this composes with scheduling; on designs without a RoCC the bit
+is inert.
+
+Not upstreamable as-is (upstream would want this keyed on an extension probe),
+which is why it lives here - see patches/README.md for the policy.
+
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -145,6 +145,12 @@ void start_thread(struct pt_regs *regs, unsigned long pc,
+ 	unsigned long sp)
+ {
+ 	regs->status = SR_PIE;
++	/*
++	 * RoCC accelerators (custom instructions) require the extension context
++	 * enabled; without XS every accelerator instruction traps as illegal.
++	 * Inert on harts without a RoCC.
++	 */
++	regs->status |= SR_XS_INITIAL;
+ 	if (has_fpu()) {
+ 		regs->status |= SR_FS_INITIAL;
+ 		/*
