@@ -278,11 +278,7 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     // VDMA's pixel stream, the video out, the timing generator and the PS live input - on
     // the pixel domain. The stream must carry one pixel per cycle at the full pixel rate;
     // on the (slower) periphery clock it starves the video out mid-line.
-    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vtc.S_AXI_ACLK)
-    // The frame-fetch master runs in the domain of the SmartConnect it drives: the periphery
-    // clock for the coherent path, the core clock for the incoherent one (memSMC's slave side
-    // already runs there, so the private port needs no extra SmartConnect clock).
-    (if (memPathOpt.isDefined) ctx.coreClock else peripheryClock) --> vdma.M_AXI_MM2S_ACLK
+    peripheryClock --> Seq(vdma.S_AXI_LITE_ACLK, vtc.S_AXI_ACLK, vdma.M_AXI_MM2S_ACLK)
     pixelClock --> Seq(vdma.M_AXIS_MM2S_ACLK, vidOut.ACLK, vtc.CLK, vidOut.VID_IO_OUT_CLK,
       ps.DP_VIDEO_IN_CLK)
 
@@ -315,7 +311,12 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     c.mmioSMC.M_AXI.next() <-> vtc.S_AXI
     memPathOpt match {
       case None => c.dmaSMC.S_AXI.next() <-> vdma.M_AXI
-      case Some(mem) => mem.memSMC.S_AXI.next() <-> vdma.M_AXI
+      case Some(mem) =>
+        // The periphery-clocked private port on the (core + DDR)-clocked memory
+        // SmartConnect: hand it the periphery clock so the crossing is synchronous
+        // inside the SmartConnect.
+        peripheryClock --> mem.memSMC.ACLK.next()
+        mem.memSMC.S_AXI.next() <-> vdma.M_AXI
     }
 
     // Video pipeline status readable by software: {bit2 overflow, bit1 underflow,

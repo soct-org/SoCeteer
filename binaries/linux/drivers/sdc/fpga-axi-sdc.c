@@ -10,6 +10,12 @@
 //     for controllers whose sdio_card_detect_level parameter does not match the slot's
 //     detect-switch polarity: without the inversion a card inserted at boot reads
 //     "absent" and is never enumerated (while re-inserting appears to work).
+//   - every register poll is bounded and the hardware watchdogs are clamped instead of
+//     disabled on overflow: pulling the card used to freeze the whole SoC - the command
+//     wait spins under the host lock with interrupts off, and the RTL's timeout
+//     registers are narrower than 32 bits (25 for cmd) with ZERO meaning "watchdog
+//     off", so at card clocks >= ~34 MHz the driver's overflow fallback silently
+//     disarmed the one mechanism that bounds a command to a vanished card.
 
 #include <linux/version.h>
 #include <linux/delay.h>
@@ -117,6 +123,26 @@ static const struct of_device_id axi_sdc_of_match_table[] = {
     { .compatible = "riscv,axi-sd-card-1.0" },
     {},
 };
+
+/* The controller's reset FSM settles in fabric-clock time; anything slower means the
+ * hardware is gone, and several callers spin under the host lock with interrupts off -
+ * where an unbounded poll freezes the whole SoC. Warn and move on instead. */
+#define SDC_RESET_REG_TIMEOUT_US 10000
+
+static void sdc_wait_sw_reset(struct sdc_host * host, bool set) {
+    ktime_t deadline = ktime_add_us(ktime_get(), SDC_RESET_REG_TIMEOUT_US);
+
+    for (;;) {
+        uint32_t reg = host->regs->software_reset;
+        if (set ? (reg & 1) != 0 : reg == 0) return;
+        if (ktime_after(ktime_get(), deadline)) {
+            dev_warn_ratelimited(&host->pdev->dev,
+                                 "software_reset stuck at 0x%x\n", reg);
+            return;
+        }
+        cpu_relax();
+    }
+}
 MODULE_DEVICE_TABLE(of, axi_sdc_of_match_table);
 
 /* Set clock prescalar value based on the required clock in HZ */
@@ -137,12 +163,26 @@ static void sdc_set_clock(struct sdc_host * host, uint clock) {
 }
 
 static void sdc_cmd_finish(struct sdc_host * host, struct mmc_command * cmd) {
-    while (1) {
+    /* Runs under the host lock with interrupts off: this bound is what turns a pulled
+     * card into an -ETIMEDOUT instead of a frozen SoC. The hardware watchdog
+     * (cmd_timeout, clamped in sdc_send_cmd) fires first whenever it is armed; this
+     * cap is the backstop for when it cannot be. */
+    ktime_t deadline = ktime_add_ms(ktime_get(), 2 * CMD_TIMEOUT_MS);
+
+    for (;;) {
         unsigned status = host->regs->cmd_int_status;
-        if (status) {
+        if (!status) {
+            if (ktime_after(ktime_get(), deadline)) {
+                cmd->error = -ETIMEDOUT;
+                break;
+            }
+            cpu_relax();
+            continue;
+        }
+        {
             // clear interrupts
             host->regs->cmd_int_status = 0;
-            while (host->regs->software_reset != 0) {}
+            sdc_wait_sw_reset(host, false);
             if (status == SDC_CMD_INT_STATUS_CC) {
                 // get response
                 cmd->resp[0] = host->regs->response1;
@@ -181,7 +221,11 @@ static int sdc_setup_data_xfer(struct sdc_host * host, struct mmc_host * mmc, st
     host->regs->block_size = data->blksz - 1;
     host->regs->block_count = data->blocks - 1;
     host->regs->data_timeout = (uint32_t)timeout;
-    if (host->regs->data_timeout != timeout) host->regs->data_timeout = 0;
+    /* The RTL's timeout registers are narrower than 32 bits and ZERO DISABLES the
+     * watchdog: when the value does not fit, clamp to the register's natural maximum
+     * (an all-ones write keeps what fits) rather than silently dropping the one
+     * mechanism that bounds a transfer to a vanished card. */
+    if (host->regs->data_timeout != timeout) host->regs->data_timeout = ~0u;
 
     return 0;
 }
@@ -224,7 +268,9 @@ static int sdc_send_cmd(struct sdc_host * host, struct mmc_host * mmc, struct mm
 
     host->regs->command = command;
     host->regs->cmd_timeout = (uint32_t)timeout;
-    if (host->regs->cmd_timeout != timeout) host->regs->cmd_timeout = 0;
+    /* Clamp, never disable - see the data_timeout comment (cmd's register is 25 bits:
+     * above ~34 MHz the full CMD_TIMEOUT_MS no longer fits). */
+    if (host->regs->cmd_timeout != timeout) host->regs->cmd_timeout = ~0u;
     host->regs->argument = cmd->arg;
 
     sdc_cmd_finish(host, cmd);
@@ -286,10 +332,10 @@ static void sdc_reset(struct mmc_host * mmc) {
 
     // software reset
     host->regs->software_reset = 1;
-    while ((host->regs->software_reset & 1) == 0) {}
+    sdc_wait_sw_reset(host, true);
     // clear software reset
     host->regs->software_reset = 0;
-    while (host->regs->software_reset != 0) {}
+    sdc_wait_sw_reset(host, false);
     udelay(10000);
 
     // set bus width 1 bit
@@ -309,7 +355,7 @@ static void sdc_reset(struct mmc_host * mmc) {
     else if (card_detect & SDC_CARD_REMOVE_INT_REQ) {
         host->regs->card_detect = SDC_CARD_INSERT_INT_EN;
     }
-    while (host->regs->software_reset != 0) {}
+    sdc_wait_sw_reset(host, false);
 
     spin_unlock_irq(&host->lock);
 }
@@ -369,7 +415,7 @@ static irqreturn_t sdc_isr(int irq, void * dev_id) {
     if ((data_status = host->regs->dat_int_status) != 0) {
         host->regs->dat_int_enable = 0;
         host->regs->dat_int_status = 0;
-        while (host->regs->software_reset != 0) {}
+        sdc_wait_sw_reset(host, false);
         if (host->data) {
             struct mmc_request * mrq = host->mrq;
             struct mmc_data * data = host->data;

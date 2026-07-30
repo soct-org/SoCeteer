@@ -13,7 +13,7 @@ if (_kernel_patches)
     execute_process(COMMAND git -C "${SOCT_BOOT_LINUX_DIR}" rev-parse --is-inside-work-tree
             RESULT_VARIABLE _ktree_git OUTPUT_QUIET ERROR_QUIET)
     if (NOT _ktree_git EQUAL 0)
-        message(FATAL_ERROR "linux: ${SOCT_BOOT_LINUX_DIR} is not a git tree, so the kernel patches in patches/ cannot be applied reliably - use a git checkout (the standard submodule), or apply them manually and make the tree a git repository.")
+        message(FATAL_ERROR "linux: ${SOCT_BOOT_LINUX_DIR} is not a git tree, so the kernel patches in patches/ cannot be applied reliably - use a git clone (see the README's Linux quick start), or apply them manually and make the tree a git repository.")
     endif ()
 endif ()
 foreach (_kpatch ${_kernel_patches})

@@ -1,8 +1,9 @@
 #pragma once
+#include "mnist_common.h" // the contract shared with the Linux variant (incl. the FP-config guard)
 #include "model.h"
 #include "include/gemmini_testutils.h"
 #include <algorithm>
-constexpr size_t NUM_CLASSES = 10; // Number of classes for MNIST
+constexpr size_t NUM_CLASSES = MNIST_CLASSES;
 
 #ifndef SOCT_CONFIG_MNIST_CACHE_SIZE
 constexpr size_t CACHE_SIZE = 1; // Caches images for repeated inference of the same image

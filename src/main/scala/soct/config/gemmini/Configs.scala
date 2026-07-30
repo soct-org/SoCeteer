@@ -1,7 +1,6 @@
 package soct
 
-import freechips.rocketchip.rocket.WithNBigCores
-import freechips.rocketchip.subsystem.{SystemBusKey, WithInclusiveCache}
+import freechips.rocketchip.subsystem.SystemBusKey
 import freechips.rocketchip.tile.BuildRoCC
 import gemmini.{Gemmini, GemminiConfigs, GemminiFPConfigs}
 import org.chipsalliance.cde.config.{Config, Parameters}
@@ -18,15 +17,17 @@ import scala.annotation.unused
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4Fp extends Config(
   new WithGemminiFp(4, 64).orElse(
-    new WithInclusiveCache).orElse(
-    new WithNBigCores(1)))
+    new WithL2Cache).orElse(
+    new RocketB1)
+)
 
 
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4 extends Config(
   new WithGemmini(4, 64).orElse(
-    new RocketB1()).orElse(
-    new WithInclusiveCache()))
+    new RocketB1).orElse(
+    new WithL2Cache)
+)
 
 
 object GemminiUtils {

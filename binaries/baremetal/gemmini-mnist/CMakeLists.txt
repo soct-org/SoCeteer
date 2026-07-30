@@ -9,4 +9,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../soctglue-static.cmake)
 target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11 -Os -O3)
 target_include_directories(${SOCT_PROGRAM} PRIVATE
         ${SOCT_SYSTEM_ROOT}/gemmini-rocc-tests
+        # The model, sample data and contract shared with the Linux variant
+        # (binaries/linux/userspace/gemmini-mnist).
+        ${SOCETEER_ROOT}/shared/mnist
 )
