@@ -45,3 +45,6 @@ cmake-build-*
 SOCTSystem-latest.cmake
 docs/api/
 /binaries/.zig-cache
+# Drop-in source trees, deliberately not submodules (see the Booting Linux quick start)
+/binaries/linux/linux-stable/
+/binaries/linux/opensbi/

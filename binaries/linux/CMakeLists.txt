@@ -28,9 +28,11 @@ cmake_minimum_required(VERSION 3.21)
 #   cmake/kernel-modules.cmake  - <name>-driver module builds + <name>-index IDE targets
 #
 # Requires the drop-in source trees binaries/linux/linux-stable/ and binaries/linux/opensbi/
+# (deliberately not submodules - the kernel tree would dominate every repository clone)
 # and a host satisfying shared/cmake/SoctBootHostTools.cmake (LLVM with RISC-V + ld.lld,
-# GNU make >= 4.0, GNU sed on macOS) - all missing pieces fail the configure loudly,
-# with the remedy in the message.
+# GNU make >= 4.0, GNU sed on macOS, dtc, kbuild's flex/bison/bc). The configure probes
+# ALL of it and fails with one consolidated list of everything missing, each item with
+# the install/clone command that provides it.
 ################################################################################################
 
 if (NOT DEFINED SOCT_CMAKE_PATH)
@@ -59,25 +61,91 @@ set(SOCT_BOOT_OPENSBI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/opensbi" CACHE PATH
         "OpenSBI source tree")
 set(DTC "dtc" CACHE STRING "Path to the device tree compiler binary")
 
-if (NOT EXISTS "${SOCT_BOOT_LINUX_DIR}/Makefile" OR NOT EXISTS "${SOCT_BOOT_OPENSBI_DIR}/Makefile")
-    message(FATAL_ERROR "The linux project requires the kernel and OpenSBI source trees at ${SOCT_BOOT_LINUX_DIR} and ${SOCT_BOOT_OPENSBI_DIR} (drop-in checkouts; see the binaries guide).")
-endif ()
 if (NOT DEFINED SOCT_MEM_BASE_ADDR OR NOT DEFINED SOCT_ELFS_DIR OR NOT DEFINED SOCT_DTS)
     message(FATAL_ERROR "The system file must define SOCT_MEM_BASE_ADDR, SOCT_ELFS_DIR and SOCT_DTS")
 endif ()
 
+################################################################################################
+# Prerequisites - probed ALL at once: one configure run reports EVERYTHING that is missing,
+# each item with the command that provides it, instead of dying at the first gap and making
+# the user iterate. (A broken SOCT_SYSTEM file above is a different failure class - wrong
+# input, not a missing host piece - and stays an immediate error.)
+################################################################################################
+set(_linux_missing "")
+
+# Records one missing prerequisite: `what` names it, every further argument is a remedy
+# line (a command to run, or an explanation), shown indented beneath it.
+function(soct_linux_missing what)
+    # NB: remedy lines must not contain ';' - ARGN expansion would split them.
+    set(_entry "\n  * ${what}")
+    foreach (_remedy ${ARGN})
+        string(APPEND _entry "\n      ${_remedy}")
+    endforeach ()
+    set(_linux_missing "${_linux_missing}${_entry}" PARENT_SCOPE)
+endfunction()
+
+if (NOT EXISTS "${SOCT_BOOT_LINUX_DIR}/Makefile")
+    # v7.2-rc3 is the version patches/ and drivers/ are developed against (also the pin in
+    # the README quick start - SOCTReadmeBuilder.linuxKernelTag); newer kernels may work,
+    # and an incompatible one fails loudly when the patches no longer apply.
+    soct_linux_missing("The Linux kernel source tree (expected at ${SOCT_BOOT_LINUX_DIR})"
+            "git clone --depth 1 --branch v7.2-rc3 https://github.com/gregkh/linux.git ${SOCT_BOOT_LINUX_DIR}"
+            "(the tested version - a newer kernel may work, incompatible patches fail loudly)")
+endif ()
+if (NOT EXISTS "${SOCT_BOOT_OPENSBI_DIR}/Makefile")
+    soct_linux_missing("The OpenSBI source tree (expected at ${SOCT_BOOT_OPENSBI_DIR})"
+            "git clone --depth 1 https://github.com/riscv-software-src/opensbi.git ${SOCT_BOOT_OPENSBI_DIR}")
+endif ()
+
 soct_boot_find_host_tools()
 if (NOT _path_ok)
-    message(FATAL_ERROR "The build directory path contains ',' or ' ', which the kernel/OpenSBI makefiles cannot handle - use one without those characters (e.g. rename the IDE build profile).")
+    soct_linux_missing("A build directory path without ',' or ' ' - the kernel/OpenSBI makefiles cannot handle either (this one: '${CMAKE_CURRENT_BINARY_DIR}')"
+            "re-run CMake with a different -B path (e.g. rename the IDE build profile)")
 endif ()
 if (NOT _llvm_ok)
-    message(FATAL_ERROR "No RISC-V-capable LLVM (clang + ld.lld) found - install one (macOS: brew install llvm lld; Debian: clang + lld) or set -DSOCT_BOOT_LLVM_DIR.")
+    soct_linux_missing("A RISC-V-capable LLVM (clang + ld.lld)"
+            "macOS:         brew install llvm lld"
+            "Debian/Ubuntu: apt install clang lld"
+            "or point at an install: -DSOCT_BOOT_LLVM_DIR=<llvm bin directory>")
 endif ()
 if (NOT _make_ok)
-    message(FATAL_ERROR "The kernel requires GNU make >= 4.0 and none was found - install one (macOS: brew install make) or set -DSOCT_BOOT_MAKE.")
+    soct_linux_missing("GNU make >= 4.0 (kernel requirement)"
+            "macOS:         brew install make"
+            "Debian/Ubuntu: apt install make"
+            "or -DSOCT_BOOT_MAKE=<path>")
 endif ()
 if (NOT _darwin_sed_ok)
-    message(FATAL_ERROR "The kernel's generator scripts need GNU sed on macOS (BSD sed mangles the vDSO offsets header) - brew install gnu-sed.")
+    soct_linux_missing("GNU sed (the kernel's generator scripts on macOS; BSD sed mangles the vDSO offsets header)"
+            "brew install gnu-sed")
+endif ()
+
+# The device tree compiler is only invoked at build time (boot-image.cmake), so probe it
+# here where the miss is reportable with a remedy instead of a mid-build command failure.
+find_program(_soct_dtc_probe "${DTC}")
+if (NOT _soct_dtc_probe)
+    soct_linux_missing("The device tree compiler ('${DTC}' not found)"
+            "macOS:         brew install dtc"
+            "Debian/Ubuntu: apt install device-tree-compiler"
+            "or -DDTC=<path>")
+endif ()
+
+# Host utilities kbuild expects beyond make (kconfig lexer/parser, timeconst).
+set(_kernel_utils_missing "")
+foreach (_tool flex bison bc)
+    find_program(_soct_${_tool}_probe "${_tool}")
+    if (NOT _soct_${_tool}_probe)
+        list(APPEND _kernel_utils_missing "${_tool}")
+    endif ()
+endforeach ()
+if (_kernel_utils_missing)
+    list(JOIN _kernel_utils_missing " " _kernel_utils_missing)
+    soct_linux_missing("Kernel host utilities: ${_kernel_utils_missing}"
+            "macOS:         ship with the Xcode command line tools (xcode-select --install)"
+            "Debian/Ubuntu: apt install ${_kernel_utils_missing}")
+endif ()
+
+if (_linux_missing)
+    message(FATAL_ERROR "The linux project is missing prerequisites:\n${_linux_missing}\n\nProvide the above and re-run CMake. Background: the Booting Linux guide (docs/guides/linux.html).")
 endif ()
 
 ProcessorCount(_ncpu)

@@ -58,9 +58,38 @@ object SOCTReadmeBuilder {
   /** The non-preset DIMM used in the FPGA quick start; its capacity must resolve via [[PartRegistry]]. */
   private val exampleMemPart = "MTA16ATF2G64HZ-2G3"
 
+  /** The kernel tag the Linux quick start clones: the version the in-tree patches
+   * (`binaries/linux/patches`) and out-of-tree drivers are developed against. A
+   * recommendation, not a requirement - newer kernels may work (the patches fail
+   * loudly when they no longer apply). */
+  private val linuxKernelTag = "v7.2-rc3"
+
   private def rel(path: Path): String = {
     SOCTPaths.projectRoot.relativize(path).toString
   }
+
+  /** The branch the documentation links resolve against. */
+  private val docsBranch = "main"
+
+  /**
+   * A markdown link to a documentation page in this repository, routed through
+   * htmlpreview.github.io.
+   *
+   * GitHub serves repository `.html` files as source, so a plain repository link shows the
+   * markup rather than the page; htmlpreview fetches the file and renders it (rewriting the
+   * pages' relative script and stylesheet references along the way). Readers therefore get
+   * the real page without cloning, while the documentation stays in the repository - there is
+   * no published site to keep in sync.
+   *
+   * [[verifyAgainstApi]] checks that `page` exists, so a moved or renamed guide fails the
+   * README build instead of shipping a dead link.
+   *
+   * @param page the project-root-relative path of the page (e.g. `docs/guides/video.html`)
+   * @param text the link text
+   * @return the markdown link
+   */
+  private def guide(page: String, text: String): String =
+    s"[$text](https://htmlpreview.github.io/?$url/blob/$docsBranch/$page)"
 
   /**
    * Resolve a named static project path relative to the project root.
@@ -97,7 +126,7 @@ object SOCTReadmeBuilder {
        || **Block-design DSL** | Components, connections, clock domains and timing constraints written in Scala - every line of Vivado TCL is generated |
        || **Memory** | `--ext-mem-part` names the DIMM you inserted; capacity, device tree and address decode follow |
        || **Linux** | OpenSBI, kernel and BusyBox initramfs in one `BOOT.ELF`, loaded from SD by the stock boot ROM; device tree, memory map and console come from the design; `reboot` works (SBI SRST through the reset network) |
-       || **Display** | The Linux console on a DisplayPort monitor ([guide](docs/guides/video.html)); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
+       || **Display** | The Linux console on a DisplayPort monitor (${guide("docs/guides/video.html", "guide")}); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
        || **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal |
        || **Drivers** | Out-of-tree modules build with kbuild in one CMake target, land in the initramfs and index in clangd/CLion; an SD block driver ships in-tree (`/dev/mmcblk0`) |
        || **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux |
@@ -106,8 +135,9 @@ object SOCTReadmeBuilder {
        |
        |### Documentation
        |
-       |This README is only the quick start. The full documentation is local to the repository -
-       |open **[docs/docs.html](docs/docs.html)** in a browser for the guides and the API reference
+       |This README is only the quick start. The full documentation lives in the repository and
+       |reads online through htmlpreview: **${guide("docs/docs.html", "the documentation site")}**
+       |for the guides and the API reference - or open `docs/docs.html` from your clone
        |(regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain $slPath --help"`.
        |
        |---
@@ -201,7 +231,7 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |
        |Programs are then loaded over JTAG
        |(`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
-       |application at reset. See the [Binaries guide](docs/guides/binaries.html).
+       |application at reset. See the ${guide("docs/guides/binaries.html", "Binaries guide")}.
        |
        |**Using the DIMM that is actually inserted:** Vivado's board flow locks the DDR4 controller to the
        |board-preset module ($exampleBoard preset: 4 GiB). If your board carries a different DIMM, pass its
@@ -214,7 +244,7 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |```
        |
        |Details (part registry, custom interface internals, on-hardware validation with `mem-test`):
-       |[FPGA Memory & Custom DDR4](docs/guides/fpga-memory.html). Supported boards:
+       |${guide("docs/guides/fpga-memory.html", "FPGA Memory & Custom DDR4")}. Supported boards:
        |${FPGARegistry.getKnownBoards.mkString(", ")} - add new boards by extending `FPGA` and registering them in `FPGARegistry`.
        |
        |---
@@ -226,8 +256,10 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |like any other program.
        |
        |```bash
-       |# 1. Drop in the source trees (plain checkouts, recent versions)
-       |git clone --depth 1 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git ${path("binaries")}/linux/linux-stable
+       |# 1. Drop in the source trees - plain checkouts, deliberately not submodules (the kernel
+       |#    tree alone would dominate every clone of this repository). The kernel version is the
+       |#    one the in-tree patches and drivers are developed against.
+       |git clone --depth 1 --branch $linuxKernelTag https://github.com/gregkh/linux.git ${path("binaries")}/linux/linux-stable
        |git clone --depth 1 https://github.com/riscv-software-src/opensbi.git ${path("binaries")}/linux/opensbi
        |
        |# 2. Configure and build (host clang + ld.lld with RISC-V support; musl sysroot bootstraps itself)
@@ -244,7 +276,7 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |`/init`); kernel modules under [binaries/linux/drivers/](binaries/linux/drivers) are built
        |against the shared kernel build and packed into the initramfs automatically. Toolchains,
        |host requirements, kernel patches and JTAG-flashing images without an SD card:
-       |[Booting Linux guide](docs/guides/linux.html).
+       |${guide("docs/guides/linux.html", "Booting Linux guide")}.
        |
        |---
        |
@@ -299,6 +331,17 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
       .filterNot(target => Files.exists(SOCTPaths.projectRoot.resolve(target)))
     if (badLinks.nonEmpty) {
       throw new InternalBugException(s"README references repository paths that do not exist: ${badLinks.mkString(", ")}")
+    }
+
+    // Documentation links are absolute (htmlpreview) and so escape the check above, but they
+    // still name repository files - verify the paths they render.
+    val previewPattern = s"""htmlpreview\\.github\\.io/\\?${java.util.regex.Pattern.quote(url)}/blob/$docsBranch/([^)#]+)""".r
+    val badPages = previewPattern.findAllMatchIn(readme).map(_.group(1).trim).toSeq.distinct
+      .filterNot(page => Files.exists(SOCTPaths.projectRoot.resolve(page)))
+    if (badPages.nonEmpty) {
+      throw new InternalBugException(
+        s"README links documentation pages that do not exist: ${badPages.mkString(", ")}. " +
+          "Generate the docs (`sbt buildDocs`) or fix the paths in SOCTReadmeBuilder.")
     }
   }
 
