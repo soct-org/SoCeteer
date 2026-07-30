@@ -138,11 +138,21 @@ abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends La
   // The MMIO export port (ExtBus) is a forwarding window, not a physical device.
   // Gaps within it just generate bus errors — they don't need DTS entries.
   // Replace the full MMIO window in allRanges with only its DTS-described sub-ranges.
+  //
+  // The described sub-ranges are the INTERSECTION of the DTS ranges with the window — not
+  // a "fully inside the window" filter: dtsRanges is unified, so a described range that
+  // abuts the window's edge merges with its neighbor OUTSIDE the window (the PS register
+  // window ends exactly where DRAM begins) and a fully-inside test would drop the merged
+  // range entirely, misreporting the in-window part as described-but-nonexistent.
   private val adjustedAllRanges: Seq[AddressRange] = p(ExtBus) match {
     case Some(ep) =>
       val mmioWindow = AddressRange(ep.base, ep.size)
       val outsideMmio = AddressRange.subtract(allRanges, Seq(mmioWindow))
-      val insideMmio  = dtsRanges.filter(r => r.base >= mmioWindow.base && r.base + r.size <= mmioWindow.base + mmioWindow.size)
+      val insideMmio = dtsRanges.flatMap { r =>
+        val base = r.base max mmioWindow.base
+        val end  = (r.base + r.size) min (mmioWindow.base + mmioWindow.size)
+        if (end > base) Some(AddressRange(base, end - base)) else None
+      }
       AddressRange.unify(outsideMmio ++ insideMmio)
     case None => allRanges
   }

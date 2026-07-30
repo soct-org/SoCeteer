@@ -69,8 +69,6 @@ object SOCTLauncher {
 
   // Generate the design for Vivado synthesis
   private def generateVivadoDesign(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
-    log.info("Generating design for Vivado synthesis")
-
     if (args.board.isEmpty) {
       throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
     }
@@ -114,8 +112,6 @@ object SOCTLauncher {
 
   // Generate the design for simulation
   private def generateSimDesign(args: SOCTArgs, simPaths: SimSOCTPaths, config: SOCTConfig): Unit = {
-    log.info("Generating design for simulation")
-
     config.params = config.params.orElse(new soct.RocketSimBaseConfig)
 
     Transpiler.evalDesign(config, simPaths)
