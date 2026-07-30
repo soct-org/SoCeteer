@@ -20,7 +20,7 @@
 | **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal |
 | **Drivers** | Out-of-tree modules build with kbuild in one CMake target, land in the initramfs and index in clangd/CLion; an SD block driver ships in-tree (`/dev/mmcblk0`) |
 | **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux |
-| **Chisel** | edu.berkeley.cs 3.6.1 and org.chipsalliance 7.11.0 |
+| **Chisel** | edu.berkeley.cs 3.6.1 and org.chipsalliance 7.13.0 |
 | **Runs anywhere** | Docker images for x86_64 and ARM64; native on Linux, macOS and Windows |
 
 ### Documentation
