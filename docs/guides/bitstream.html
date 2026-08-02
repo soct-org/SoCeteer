@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From Design to Bitstream — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Guides / From Design to Bitstream</p>
+  <h1>From Design to Bitstream</h1>
+  <p class="lead">Generate a design for an FPGA board and let the launcher drive Vivado to a
+  <em>bitstream</em> &mdash; the file that configures the FPGA with the design. Needs
+  <a href="setup.html">Setting up SoCeteer</a> and an AMD/Xilinx Vivado installation.
+  Launcher commands run as described there: in a terminal, or as the program arguments of
+  the IntelliJ run configuration.</p>
+
+  <h2>1. Generate the design</h2>
+  <p>A design is a core config plus additions, generated for a specific board and the
+  memory module actually inserted in it:</p>
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
+  --config soct.RocketB2 --with-config soct.WithIncoherentVideoStream --with-config soct.WithL2Cache \
+  --ext-mem-part &lt;DIMM-part&gt; --vivado &lt;path-to&gt;/vivado"</code></pre>
+  <div class="hint">Filling in the placeholders:
+  <ul>
+    <li><code>--board</code> &mdash; a registered board name (currently <code>ZCU104</code>,
+      <code>VCU118</code>; the README lists them).</li>
+    <li><code>--ext-mem-part</code> &mdash; the part number, read off the label of the
+      memory module inserted in the board's DIMM slot. If omitted, the board's factory
+      module is assumed; unknown parts must be added to the registry &mdash; see
+      <a href="../systems/fpga-memory.html">FPGA Memory &amp; Custom DDR4</a>.</li>
+    <li><code>--vivado</code> &mdash; the <code>vivado</code> executable inside your
+      installation, e.g. <code>/opt/Xilinx/Vivado/2025.2/bin/vivado</code>.</li>
+    <li><code>--config</code> / <code>--with-config</code> &mdash; fully-qualified Scala
+      config names from the <code>soct</code> package (cores like <code>soct.RocketB1</code>,
+      additions like <code>soct.WithL2Cache</code>); <code>--help</code> shows the
+      defaults.</li>
+  </ul></div>
+  <p>Generation takes about a minute and creates
+  <code>workspace/&lt;design&gt;/&lt;board&gt;/</code> &mdash; the design name encodes
+  config and additions, e.g. <code>RocketB2-64-l2-video-nc</code> &mdash; holding the
+  Vivado project, the device tree and the <code>SOCTSystem.cmake</code> the software builds
+  are pointed at. <code>--target vivado</code> generates the project <em>without</em>
+  building it, useful for inspecting the design in the Vivado GUI first.</p>
+
+  <h2>2. Build the bitstream</h2>
+  <p>Same command, different target, plus parallel jobs:</p>
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bs --board ZCU104 ... --vivado-parallel 8"</code></pre>
+  <table>
+    <tr><th>Target</th><th>Result</th></tr>
+    <tr><td><code>vivado</code> / <code>vivado.bd</code></td><td>project + block design only</td></tr>
+    <tr><td><code>vivado.syn</code></td><td>&hellip;then synthesis</td></tr>
+    <tr><td><code>vivado.bs</code></td><td>&hellip;then the bitstream</td></tr>
+  </table>
+  <p>The launcher returns after a minute; the build itself continues <em>detached</em> in
+  the background, and the launcher prints the log path plus a ready-made command to follow
+  it. Expect between half an hour and a few hours depending on the design and the machine;
+  <code>write_bitstream completed successfully</code> at the end of the log marks
+  completion.</p>
+
+  <div class="opt">Without a local Vivado installation (or a machine too small for it), the
+  same commands run the build on another host &mdash; see
+  <a href="remote.html">Remote Development</a>.</div>
+
+  <h2>3. Program the board</h2>
+  <p>Open the workspace's Vivado project and program the bitstream with the Hardware
+  Manager (or your usual <code>xsdb</code> flow). From here on it is software: the boot ROM
+  inside the bitstream loads <code>BOOT.ELF</code> from the SD card, and JTAG can load ELFs
+  directly &mdash; the <a href="../systems/binaries.html">Binaries page</a> covers both,
+  and <a href="linux-monitor.html">Monitor &amp; Linux Programs</a> is the full worked
+  run.</p>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
+</body>
+</html>

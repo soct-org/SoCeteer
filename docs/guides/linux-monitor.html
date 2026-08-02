@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor &amp; Linux Programs — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Guides / Monitor &amp; Linux Programs</p>
+  <h1>Monitor &amp; Linux Programs</h1>
+  <p class="lead">The full run: a video design on the board, Linux booting from SD, a
+  DisplayPort monitor with a USB keyboard as a self-contained terminal, images on the
+  screen, and persistent storage on the card. Relies on
+  <a href="setup.html">Setting up SoCeteer</a> (including its Linux-development step) and
+  <a href="bitstream.html">From Design to Bitstream</a> (or its
+  <a href="remote.html">remote variant</a>). Steps 1&ndash;3 run on the development
+  machine; steps 4 onward happen on the board's consoles.</p>
+
+  <h2>1. Generate and build the video design</h2>
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bs --board ZCU104 \
+  --config soct.RocketB2 --with-config soct.WithIncoherentVideoStream --with-config soct.WithL2Cache \
+  --ext-mem-part &lt;DIMM-part&gt; --vivado &lt;path-to&gt;/vivado --vivado-parallel 8"</code></pre>
+  <p>This is the build flow from <a href="bitstream.html">From Design to Bitstream</a>;
+  that guide explains how to fill in the placeholders and how long the build takes. The
+  <code>--with-config</code> additions put the video pipeline into the design &mdash; the
+  incoherent variant plus L2 is the right choice for a console, since its display cannot be
+  starved by CPU load; <a href="../systems/video.html">DisplayPort Video</a> compares the
+  variants. The build's workspace is
+  <code>workspace/RocketB2-64-l2-video-nc/ZCU104/</code>; when it finishes, program the
+  bitstream onto the board.</p>
+
+  <h2>2. Build the shell image</h2>
+  <p>On your computer, in the <code>binaries/linux</code> project (CLion: build the target;
+  terminal:)</p>
+<pre><code>cmake -S binaries/linux -B build-linux \
+  -DSOCT_SYSTEM=workspace/RocketB2-64-l2-video-nc/ZCU104/SOCTSystem.cmake
+cmake --build build-linux --target shell-boot-elf</code></pre>
+  <p>The first build compiles the entire Linux kernel &mdash; expect tens of minutes;
+  rebuilds after that are quick. The result is <code>shell.BOOT.ELF</code> in the
+  workspace's <code>elfs/</code> directory: firmware, kernel, the design's device tree,
+  drivers and a BusyBox userspace in one file. It must match the flashed bitstream &mdash;
+  rebuild it whenever the design changes.</p>
+
+  <h2>3. Prepare the SD card and cables</h2>
+  <ul>
+    <li>Copy <code>shell.BOOT.ELF</code> onto a FAT-formatted SD card <strong>renamed to
+      <code>BOOT.ELF</code></strong>, at the top level &mdash; that exact name is what the
+      boot ROM looks for.</li>
+    <li>Copy a few images (PNG/JPEG) next to it, for step 7.</li>
+    <li>Insert the card into the board, connect the DisplayPort monitor and a USB
+      keyboard.</li>
+    <li>Connect the <em>serial console</em> &mdash; a text terminal into the SoC over the
+      board's USB cable. Open it at 115200 baud, e.g.
+      <code>screen /dev/ttyUSB1 115200</code>.</li>
+  </ul>
+  <div class="hint">Which serial device? The board's USB-UART bridge shows up as several
+  ports &mdash; compare <code>ls /dev/ttyUSB*</code> (macOS:
+  <code>/dev/tty.usbserial-*</code>) before and after plugging the board in, and try them
+  at 115200; the right one prints text during boot.</div>
+
+  <h2>4. Boot</h2>
+  <p>Power-cycle the board (or press its reset button). The boot ROM loads
+  <code>BOOT.ELF</code> from the card; boot ends in a banner on <em>both</em> consoles: the
+  serial terminal, and the monitor, which renders the Linux console. The USB keyboard types
+  into its own independent shell on the monitor. The prompt reads
+  <code>ramdisk@ZCU104</code>: the system is RAM-only, nothing survives a reboot yet.</p>
+  <p>The shell is BusyBox &mdash; the usual commands (<code>ls</code>, <code>mount</code>,
+  <code>vi</code>, <code>dmesg</code>) &mdash; plus SoCeteer's own helper programs; the
+  banner lists them. Steps 5&ndash;7 are those helpers.</p>
+
+  <h2>5. Video modes: <code>fbmode</code></h2>
+  <p><code>fbmode</code> switches the monitor's resolution and refresh rate:</p>
+<pre><code>fbmode            # show the current mode and a numbered list to pick from
+fbmode 6          # switch to list entry 6
+fbmode --custom 1600 900 60   # any other geometry</code></pre>
+  <p>Confirm a switch by pressing <code>y</code> within 10&nbsp;seconds, otherwise it
+  reverts &mdash; the protection against a mode the monitor cannot display. What modes the
+  design can produce: <a href="../systems/video.html">DisplayPort Video</a>.</p>
+
+  <h2>6. Persistent storage: <code>soct</code></h2>
+  <p><code>soct</code> creates and enters a persistent environment on the SD card (or a USB
+  stick) &mdash; the answer to the <code>ramdisk</code> prompt:</p>
+<pre><code>soct              # lists SD/USB devices and what they hold, then enters or creates</code></pre>
+  <p>Inside (prompt <code>soct@ZCU104</code>), files under <code>/home/soct</code> and the
+  shell history survive reboots, and the card's FAT &mdash; the images from step 3 &mdash;
+  is at <code>/media/&lt;device&gt;</code>. Leave with <code>exit</code>: when the last
+  session leaves, everything is unmounted and a message says the card can be pulled. Do not
+  pull it before that message; if it does not come, the printed list names the console
+  still inside.</p>
+
+  <h2>7. Images on the monitor: <code>fbimg</code></h2>
+  <p><code>fbimg</code> shows an image file (PNG, JPEG, BMP, GIF) on the monitor:</p>
+<pre><code>fbimg /media/mmcblk0p1/photo.png</code></pre>
+  <p>It holds the screen until any key or Ctrl-C &mdash; from either console.</p>
+
+  <div class="opt">Without a monitor, everything except <code>fbmode</code>/<code>fbimg</code>
+  works identically over the serial console alone &mdash; the video design still boots
+  fine.</div>
+
+  <div class="opt">During development the SD step can be skipped: with the flash variables
+  set (<a href="remote.html">Remote Development</a>), <code>cmake --build build-linux
+  --target shell-flash</code> loads the image over JTAG &mdash; the card is then only
+  needed for <code>soct</code> storage.</div>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
+</body>
+</html>

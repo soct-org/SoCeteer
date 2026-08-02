@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote Development — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Guides / Remote Development</p>
+  <h1>Remote Development</h1>
+  <p class="lead">Bitstream builds need a large Linux machine; the checkout, IDEs and
+  editing stay local. This guide connects the two: a build server (a lab machine or shared
+  server) runs Vivado over SSH, driven from the local checkout. Assumes
+  <a href="setup.html">Setting up SoCeteer</a>.</p>
+
+  <h2>1. One SSH config entry</h2>
+  <p>SSH has a config file, <code>~/.ssh/config</code> on your computer, where a
+  <code>Host</code> entry gives a machine a short name plus how to reach it. SoCeteer
+  addresses the build server by that name &mdash; it is what <code>--ssh-config</code>
+  takes. Create (or extend) the file:</p>
+<pre><code>Host fpga-server
+    HostName 192.168.1.50        # its IP address, or a hostname if it has one
+    User &lt;your-login-on-that-machine&gt;</code></pre>
+  <div class="note">The server side has three prerequisites: an SSH daemon
+  (<code>sshd</code>) running, a firewall that lets SSH through (port 22 by default), and a
+  POSIX/bash-compatible login shell &mdash; the launcher drives the server with shell
+  commands. The <a href="https://wiki.archlinux.org/title/OpenSSH">Arch Wiki's OpenSSH
+  page</a> covers installing and enabling <code>sshd</code> and the firewall side.</div>
+  <p>Test with <code>ssh fpga-server</code>: it should open a shell on the server without a
+  password prompt (otherwise set up SSH keys first). Everything below uses the name
+  <code>fpga-server</code>; substitute accordingly.</p>
+
+  <h2>2. Build the bitstream remotely</h2>
+  <p>Take any build command from <a href="bitstream.html">From Design to Bitstream</a> and
+  add the remote flags. Note that <code>--vivado</code> now names the executable <em>on the
+  server</em>, not the local one:</p>
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bs --board ZCU104 ... \
+  --remote-dir soct-work --ssh-config fpga-server --use-remote-vivado \
+  --vivado &lt;path-on-server&gt;/vivado --vivado-parallel 8"</code></pre>
+  <div class="hint">Unsure where Vivado lives on the server?
+  <code>ssh fpga-server which vivado</code>, or look under its Xilinx installation root
+  &mdash; <code>vivado</code> and the <code>xsdb</code> used below sit in the same
+  <code>bin/</code> directory.</div>
+  <p><code>--remote-dir</code> is a directory on the server, relative to the home directory
+  there; the launcher creates it, syncs the generated project over and launches the build
+  detached on the server &mdash; it prints the log path and a follow command, and
+  disconnecting locally does not kill the run. When the log reports the bitstream done,
+  pull the results back into the local workspace by re-running the same command with
+  <code>--sfr</code> (sync-from-remote) in place of the build target.</p>
+
+  <h2>3. Flash binaries remotely</h2>
+  <p>When the board is connected to the server, programs are flashed through it too. This
+  part is CMake, not the launcher: point the build tree at the server's <code>xsdb</code>
+  once (in CLion: the CMake options field; terminal: the configure command), and every
+  program's <code>&lt;name&gt;-flash</code> target uploads the ELF and flashes it from
+  there:</p>
+<pre><code>cmake -S binaries -B build -DSOCT_SYSTEM=&lt;workspace&gt;/SOCTSystem.cmake \
+  -DSOCT_FLASH_HOST=fpga-server \
+  -DSOCT_FLASH_XSDB=&lt;path-on-server&gt;/xsdb
+
+cmake --build build --target hello-hart-flash</code></pre>
+  <p>The same variables work on <code>binaries/linux</code>, where each boot image gets a
+  <code>&lt;name&gt;-flash</code> target (e.g. <code>shell-flash</code>) &mdash; booting
+  Linux without touching the SD card. The variable reference and flash preludes (extra TCL
+  before loading, e.g. programming the bitstream first) are on the
+  <a href="../systems/binaries.html">Binaries page</a>.</p>
+
+  <div class="opt">The board's serial console cannot cross SSH by itself &mdash; attach to
+  it on the server, e.g. <code>ssh -t fpga-server screen /dev/ttyUSB1 115200</code>.
+  <a href="linux-monitor.html">Monitor &amp; Linux Programs</a> shows how to find the right
+  <code>ttyUSB</code> device.</div>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
+</body>
+</html>

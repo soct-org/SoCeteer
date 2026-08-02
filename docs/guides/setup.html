@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setting up SoCeteer — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Guides / Setting up SoCeteer</p>
+  <h1>Setting up SoCeteer</h1>
+  <p class="lead">From nothing to a generated design and working IDE projects. Follow it top
+  to bottom once; every other guide assumes it. No prior experience with sbt, CMake or
+  projects of this size is assumed.</p>
+
+  <h2>1. Install the tools</h2>
+  <p>In a terminal (all of this is on your own computer):</p>
+<pre><code># Ubuntu/Debian:  sudo apt-get install git cmake ninja-build device-tree-compiler flex bison
+# macOS:          brew install git cmake ninja dtc flex bison</code></pre>
+  <p>And the two IDEs, both from JetBrains:</p>
+  <ul>
+    <li><strong>IntelliJ IDEA</strong> with the <em>Scala</em> plugin &mdash; for the
+      hardware side (the design generator is written in Scala).</li>
+    <li><strong>CLion</strong> &mdash; for the software side (everything that runs on the
+      generated SoC is C, built with CMake).</li>
+  </ul>
+  <div class="hint">JetBrains IDEs are free for students
+  (<a href="https://www.jetbrains.com/community/education/">jetbrains.com/community/education</a>).
+  The IDEs are optional &mdash; every step below also has a terminal form.</div>
+
+  <h2>2. Get the code</h2>
+<pre><code>git clone --recurse-submodules https://github.com/soct-org/SoCeteer.git
+cd SoCeteer</code></pre>
+  <p><code>--recurse-submodules</code> matters: the repository pulls in the CPU generators
+  (Rocket Chip among others) as git submodules.</p>
+
+  <h2>3. Run the launcher once</h2>
+  <p>The <em>launcher</em> (<code>soct.SOCTLauncher</code>) is the program that turns a
+  design description into everything else &mdash; Verilog, device tree, Vivado project. The
+  guides always write launcher invocations in their command-line form:</p>
+<pre><code>sbt "runMain soct.SOCTLauncher &lt;options&gt;"</code></pre>
+  <p>Pick <strong>one</strong> of the two ways to run these, and read every launcher command
+  in the guides accordingly:</p>
+  <ul>
+    <li><strong>Terminal</strong>: paste the command as-is, in a terminal at the repository
+      root. <code>sbt</code> is Scala's build tool &mdash; install Java&nbsp;11+ and
+      <a href="https://www.scala-sbt.org/1.x/docs/Setup.html">SBT</a> first. The first run
+      downloads the Scala toolchain and takes several minutes.</li>
+    <li><strong>IntelliJ</strong>: <em>File &rarr; Open</em> the repository root; IntelliJ
+      recognizes the sbt project and imports it (the first import also takes several
+      minutes). Then
+      create a <a href="https://www.jetbrains.com/help/idea/run-debug-configuration.html">Run/Debug
+      configuration</a> of type <em>Application</em>: main class
+      <code>soct.SOCTLauncher</code>, and the <code>&lt;options&gt;</code> part of a command
+      &mdash; everything after <code>runMain soct.SOCTLauncher</code> &mdash; goes into the
+      <em>Program arguments</em> field. Pressing Run is the IDE equivalent of the command;
+      keep one configuration per design you work on.</li>
+  </ul>
+  <p>Run the launcher once <em>without</em> options to verify the setup: a new
+  <code>workspace/&lt;design&gt;/&lt;target&gt;/</code> directory appears in the
+  repository. The file to remember in there is <code>SOCTSystem.cmake</code>: it describes
+  the generated system (memory map, cores, devices), and every software build in the next
+  step is pointed at it. <code>--help</code> lists all launcher options.</p>
+
+  <h2>4. Open the software projects</h2>
+  <p>The software side is <em>not</em> one big project &mdash; it is separate CMake projects,
+  each opened on its own (in CLion: <em>File &rarr; Open</em> on the directory):</p>
+  <table>
+    <tr><th>Project directory</th><th>What it builds</th><th>Configure with</th></tr>
+    <tr><td><code>binaries/</code></td><td>bare-metal programs, boot ROMs</td>
+      <td><code>-DSOCT_SYSTEM=&lt;workspace&gt;/SOCTSystem.cmake</code></td></tr>
+    <tr><td><code>sim/</code></td><td>the Verilator simulator</td>
+      <td><code>-DCMAKE_BUILD_TYPE=Release -DSOCT_SYSTEM=&lt;workspace&gt;/SOCTSystem.cmake</code></td></tr>
+    <tr><td><code>binaries/linux/</code></td><td>kernel, drivers, Linux userspace</td>
+      <td><code>-DSOCT_SYSTEM=&lt;workspace&gt;/SOCTSystem.cmake</code> (see step 5)</td></tr>
+  </table>
+  <p>Where the &ldquo;Configure with&rdquo; column goes:</p>
+  <ul>
+    <li><strong>CLion</strong>: into the <em>CMake options</em> field of the
+      <a href="https://www.jetbrains.com/help/clion/cmake-profile.html">CMake profile</a>
+      (<em>Settings &rarr; Build, Execution, Deployment &rarr; CMake</em>). CLion then
+      configures the project by itself.</li>
+    <li><strong>Terminal</strong>: after
+      <code>cmake -S &lt;project-dir&gt; -B &lt;build-dir&gt;</code>, then build with
+      <code>cmake --build &lt;build-dir&gt; --target &lt;name&gt;</code>.</li>
+  </ul>
+  <div class="hint"><code>&lt;workspace&gt;</code> is the directory step 3 created:
+  <code>workspace/&lt;design&gt;/&lt;target&gt;/</code> under the repo root. Each generated
+  design has its own, so the software projects follow whichever design you point them at.
+  Avoid build-directory paths containing spaces or commas &mdash; the Linux project refuses
+  them at configure time.</div>
+
+  <h2>5. Linux development</h2>
+  <div class="opt">Only needed when you build Linux things (the kernel, drivers, Linux
+  userspace programs, boot images) &mdash; skip it otherwise, whichever path you use. The
+  kernel and firmware sources are not submodules; clone them once into place:
+<pre><code>git clone --depth 1 --branch v7.2-rc3 https://github.com/gregkh/linux.git binaries/linux/linux-stable
+git clone --depth 1 https://github.com/riscv-software-src/opensbi.git binaries/linux/opensbi</code></pre>
+  Newer versions may work; these are the tested ones. Then open (or configure)
+  <code>binaries/linux</code> like the other projects in step 4. Configuring lists every
+  tool still missing (LLVM, GNU make, host tools) with the install command for each &mdash;
+  details on the <a href="../systems/linux.html">Booting Linux</a> page.</div>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
+</body>
+</html>
