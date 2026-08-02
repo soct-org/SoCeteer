@@ -58,7 +58,9 @@ cmake --build build-linux --target shell-boot-elf</code></pre>
   <div class="hint">Which serial device? The board's USB-UART bridge shows up as several
   ports &mdash; compare <code>ls /dev/ttyUSB*</code> (macOS:
   <code>/dev/tty.usbserial-*</code>) before and after plugging the board in, and try them
-  at 115200; the right one prints text during boot.</div>
+  at 115200; the right one prints text during boot. If the port is missing or silent:
+  close the Vivado Hardware Manager (it holds the port), avoid USB hubs, and on Linux
+  <code>udevadm trigger</code> re-creates a vanished device.</div>
 
   <h2>4. Boot</h2>
   <p>Power-cycle the board (or press its reset button). The boot ROM loads

@@ -1,9 +1,7 @@
 package soct
 
-import soct.SOCTLauncher.SOCTConfig
-import soct.SOCTNames.{DEFAULT_EXAMPLE_BINARY, SOCT_SIMULATOR_EXE, SOCT_SYSTEM_CMAKE_FILE}
 import soct.build.{BuildInfo => info}
-import soct.vivado.fpga.{FPGARegistry, PartRegistry}
+import soct.vivado.fpga.FPGARegistry
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -11,12 +9,13 @@ import java.nio.file.{Files, Path}
 /**
  * Generates the project README from the live project API.
  *
- * The README is intentionally a quick-start guide only (simulation + FPGA); everything else
- * lives on the local docs site (docs/docs.html). Every fact in the emitted text is pulled from
- * the real API (argument parser, registries, paths, build info), and [[verifyAgainstApi]] checks
- * the result against the API before writing - so the build of the README FAILS LOUDLY when the
- * project API drifts (a flag is renamed, a board disappears, a path moves) instead of publishing
- * stale instructions.
+ * The README is intentionally a shop window: the pitch, the feature overview and the links
+ * into the documentation. The how-to lives in the guides (docs/guides), the internals in the
+ * systems pages (docs/systems) - the README duplicates neither. Every fact in the emitted
+ * text is pulled from the real API (argument parser, registries, paths, build info), and
+ * [[verifyAgainstApi]] checks the result against the API before writing - so the build of the
+ * README FAILS LOUDLY when the project API drifts (a flag is renamed, a board disappears, a
+ * documentation page moves) instead of publishing stale content.
  */
 object SOCTReadmeBuilder {
   private val name = info.name
@@ -31,38 +30,6 @@ object SOCTReadmeBuilder {
   private val otherChisels = chiselVersions.filterNot(_.startsWith("3"))
 
   private val slPath = SOCTLauncher.getClass.getCanonicalName.stripSuffix("$")
-  private val slFilePath = info.scalaMain + "/" + slPath.replace(".", "/") + ".scala"
-
-  private val defaultArgs = SOCTArgs()
-  private val defaultConfigPath = defaultArgs.baseConfig.getClass.getCanonicalName
-
-  private val paths = new SimSOCTPaths(defaultArgs, SOCTConfig(defaultArgs))
-
-  private val soctCmakePath = s"${rel(paths.systemDir)}/$SOCT_SYSTEM_CMAKE_FILE"
-
-  private val defaultBin = DEFAULT_EXAMPLE_BINARY
-  private val defaultBinPath = rel(paths.elfsDir.resolve(s"$defaultBin.elf"))
-
-  private val simBuildDir = rel(paths.buildDir.resolve("sim-build"))
-  private val progBuildDir = rel(paths.buildDir.resolve("prog-build"))
-  private val cmakeSoctSystemDef = s"-DSOCT_SYSTEM=/path/to/${rel(paths.soctSystemCMakeFile)}"
-
-  /** The board used in the FPGA quick start; must be registered in [[FPGARegistry]]. */
-  private val exampleBoard = "ZCU104"
-
-  /** The example board's workspace directory and linux build/output paths for the Linux quick start. */
-  private val fpgaSystemDir = s"${rel(paths.systemDir.getParent)}/$exampleBoard"
-  private val linuxBuildDir = s"$fpgaSystemDir/build/linux-build"
-  private val fpgaElfsDir = s"$fpgaSystemDir/${paths.elfsDir.getFileName}"
-
-  /** The non-preset DIMM used in the FPGA quick start; its capacity must resolve via [[PartRegistry]]. */
-  private val exampleMemPart = "MTA16ATF2G64HZ-2G3"
-
-  /** The kernel tag the Linux quick start clones: the version the in-tree patches
-   * (`binaries/linux/patches`) and out-of-tree drivers are developed against. A
-   * recommendation, not a requirement - newer kernels may work (the patches fail
-   * loudly when they no longer apply). */
-  private val linuxKernelTag = "v7.2-rc3"
 
   private def rel(path: Path): String = {
     SOCTPaths.projectRoot.relativize(path).toString
@@ -84,7 +51,7 @@ object SOCTReadmeBuilder {
    * [[verifyAgainstApi]] checks that `page` exists, so a moved or renamed guide fails the
    * README build instead of shipping a dead link.
    *
-   * @param page the project-root-relative path of the page (e.g. `docs/guides/video.html`)
+   * @param page the project-root-relative path of the page (e.g. `docs/guides/setup.html`)
    * @param text the link text
    * @return the markdown link
    */
@@ -120,32 +87,54 @@ object SOCTReadmeBuilder {
        |
        |### Features
        |
+       |#### Generators
+       |
        || | |
        ||----|----|
-       || **Cores** | [RocketChip](https://github.com/chipsalliance/rocket-chip), [BOOM](https://github.com/riscv-boom/riscv-boom), [Gemmini](https://github.com/ucb-bar/gemmini) and more, emitted for [Verilator](https://www.veripool.org/wiki/verilator) simulation or [Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html) FPGA synthesis |
-       || **Block-design DSL** | Components, connections, clock domains and timing constraints written in Scala - every line of Vivado TCL is generated |
-       || **Memory** | `--ext-mem-part` names the DIMM you inserted; capacity, device tree and address decode follow |
-       || **Linux** | OpenSBI, kernel and BusyBox initramfs in one `BOOT.ELF`, loaded from SD by the stock boot ROM; device tree, memory map and console come from the design; `reboot` works (SBI SRST through the reset network) |
-       || **Display** | The Linux console on a DisplayPort monitor (${guide("docs/guides/linux-monitor.html", "guide")}, ${guide("docs/systems/video.html", "internals")}); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
-       || **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal |
-       || **Drivers** | Out-of-tree modules build with kbuild in one CMake target, land in the initramfs and index in clangd/CLion; an SD block driver ships in-tree (`/dev/mmcblk0`) |
-       || **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux |
-       || **Chisel** | edu.berkeley.cs ${chisel3s.mkString(", ")} and org.chipsalliance ${otherChisels.mkString(", ")} |
+       || **RocketChip** | The [reference RISC-V core generator](https://github.com/chipsalliance/rocket-chip): in-order cores with caches, MMU and supervisor support; the default config |
+       || **BOOM** | A [superscalar out-of-order RISC-V core](https://github.com/riscv-boom/riscv-boom), for when single-thread performance matters |
+       || **Shuttle** | A [superscalar in-order RISC-V core](https://github.com/ucb-bar/shuttle) - more throughput than RocketChip without going out-of-order |
+       || **Saturn** | A [RISC-V vector unit](https://github.com/ucb-bar/saturn-vectors) (RVV) that attaches to RocketChip and Shuttle cores |
+       || **Gemmini** | A [systolic-array ML accelerator](https://github.com/ucb-bar/gemmini), attached to a core as a RoCC coprocessor |
+       || **L2 cache** | [SiFive's inclusive last-level cache](https://github.com/sifive/block-inclusivecache-sifive), shared by all cores and added through a single config |
+       || **Nail** | A [fault-injection and reliability-evaluation framework](https://gitlab.iti.uni-luebeck.de/pubs/nail) (built on [Chiffre](https://github.com/IBM/chiffre)): bit flips and stuck-at faults injected into the running design, controlled from software. Not a submodule - clone it into `generators/` and the build picks it up |
+       |
+       |#### System design
+       |
+       || | |
+       ||----|----|
+       || **Configs** | Cores are picked, sized and combined through Chisel configs; both Chisel generations are supported (edu.berkeley.cs ${chisel3s.mkString(", ")}, org.chipsalliance ${otherChisels.mkString(", ")}) |
+       || **Block-design DSL** | Components, connections, clock domains and timing constraints written in Scala - every line of [Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html) TCL is generated |
+       || **Memory** | `--ext-mem-part` names the DIMM you inserted; capacity, device tree and address decode follow - including modules the board's preset does not know |
+       || **Boards** | ${FPGARegistry.getKnownBoards.mkString(", ")} - a new board is one Scala definition |
+       |
+       |#### Running a design
+       |
+       || | |
+       ||----|----|
+       || **Simulation** | The design runs under [Verilator](https://www.veripool.org/wiki/verilator): host-bridged syscalls, waveform tracing, and live GDB debugging of the simulated SoC |
+       || **FPGA builds** | The launcher drives Vivado from project generation to the finished bitstream, locally or on a remote build server |
        || **Runs anywhere** | Docker images for x86_64 and ARM64; native on Linux, macOS and Windows |
        |
-       |### Documentation
+       |#### Linux
        |
-       |This README is only the quick start. The full documentation lives in the repository and
-       |reads online through htmlpreview: **${guide("docs/docs.html", "the documentation site")}**
-       |- step-by-step guides (start with ${guide("docs/guides/setup.html", "Setting up SoCeteer")}),
-       |per-subsystem internals, and the API reference - or open `docs/docs.html` from your
-       |clone (regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain $slPath --help"`.
+       || | |
+       ||----|----|
+       || **Boot image** | One `BOOT.ELF` - firmware, kernel and BusyBox userspace - loaded from the SD card or over JTAG; device tree, memory map and console come from the design, so one kernel serves every design |
+       || **Shell image** | Boots into a BusyBox shell on the serial console and the monitor alike; `reboot` works |
+       || **Persistent storage** | `soct` keeps a persistent environment on the SD card or a USB stick - files and shell history survive reboots |
+       || **Drivers** | Out-of-tree kernel modules build with the rest in one CMake target and land in the boot image; an SD-card driver ships in-tree (`/dev/mmcblk0`) |
+       || **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux - toolchains are fetched or auto-detected |
        |
-       |---
+       |#### Display & peripherals
        |
-       |## Setup
+       || | |
+       ||----|----|
+       || **Display** | The Linux console on a DisplayPort monitor (${guide("docs/guides/linux-monitor.html", "guide")}, ${guide("docs/systems/video.html", "internals")}), with a display that CPU load cannot starve |
+       || **Video tools** | Runtime resolution switching (`fbmode`) and a framebuffer image viewer (`fbimg`) ship in the image |
+       || **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal, and USB sticks can carry the persistent environment |
        |
-       |Clone with submodules and install the system dependencies (full reference: [Dockerfile](${path("dockerfile")})):
+       |### Get started
        |
        |```bash
        |git clone --recurse-submodules $gitUrl
@@ -154,137 +143,28 @@ object SOCTReadmeBuilder {
        |
        |⚠️ Don't open the project in an IDE before initializing submodules.
        |
-       |* **Java 11+ & [SBT](https://www.scala-sbt.org/1.x/docs/Setup.html)** (or IntelliJ IDEA with the Scala plugin)
-       |* **CMake & Ninja**, **Device Tree Compiler (dtc)**, **Flex & Bison**:
+       |Then follow ${guide("docs/guides/setup.html", "Setting up SoCeteer")}: host packages, the
+       |IDE projects and a first generated design. Alternatively, the prebuilt Docker image
+       |carries every host dependency ([Dockerfile](${path("dockerfile")})):
        |
        |```bash
-       |# Ubuntu/Debian:  sudo apt-get install cmake ninja-build device-tree-compiler flex bison
-       |# Arch Linux:     sudo pacman -S cmake ninja dtc flex bison
-       |# macOS:          brew install cmake ninja dtc flex bison
-       |# Windows:        choco install cmake ninja dtc-msys2 winflexbison3
+       |docker run --rm -it -u $$(id -u):$$(id -g) -v "$root":$rootDocker -w $rootDocker ghcr.io/soct-org/soceteer:latest bash
        |```
        |
-       |The RISC-V toolchain ([xpack-dev-tools](https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack)) and
-       |[Verilator](${path("verilator")}) are downloaded/built automatically on first use.
+       |### Documentation
        |
-       |---
+       |**Guides** - step-by-step example runs:
        |
-       |## Quick Start: Simulation
+       |* ${guide("docs/guides/setup.html", "Setting up SoCeteer")} - from the clone to the IDE projects and a first generated design
+       |* ${guide("docs/guides/bitstream.html", "From Design to Bitstream")} - generate a design and let the launcher drive Vivado to a bitstream
+       |* ${guide("docs/guides/remote.html", "Remote Development")} - build and flash through a server that has Vivado and the board
+       |* ${guide("docs/guides/linux-monitor.html", "Monitor & Linux Programs")} - the full run: Linux from SD, a DisplayPort console, persistent storage on the card
        |
-       |```bash
-       |# 1. Emit the design (default config, Verilator target)
-       |sbt "runMain $slPath"
-       |
-       |# Or via Docker:
-       |# docker run --rm -it -u $$(id -u):$$(id -g) -v "$root":$rootDocker -w $rootDocker ghcr.io/soct-org/soceteer:latest bash
-       |
-       |# 2. Build the example binary
-       |mkdir -p $progBuildDir
-       |cmake -S ${path("binaries")} -B $progBuildDir $cmakeSoctSystemDef
-       |cmake --build $progBuildDir --target $defaultBin
-       |
-       |# 3. Build and run the Verilator simulator
-       |mkdir -p $simBuildDir
-       |cmake -S ${path("sim")} -B $simBuildDir -DCMAKE_BUILD_TYPE=Release $cmakeSoctSystemDef
-       |cmake --build $simBuildDir
-       |$simBuildDir/$SOCT_SIMULATOR_EXE $defaultBinPath
-       |```
-       |
-       |Step 3 is automated by the `verilator.build` target, which emits the design and then configures
-       |and builds the simulator in one go (into `$simBuildDir`):
-       |
-       |```bash
-       |sbt "runMain $slPath --target verilator.build"
-       |$simBuildDir/$SOCT_SIMULATOR_EXE $defaultBinPath
-       |```
-       |
-       |Every emit writes `$soctCmakePath` (variables for arch, core count, ABI, paths) and updates the
-       |`SOCTSystem-latest.cmake` symlink at the project root, which all CMake projects fall back to when no
-       |explicit `${SOCTNames.SOCT_SYSTEM_CMAKE_KEY}` is passed. Pick a different system with
-       |`--config <class>` (default: `$defaultConfigPath`) and `--xlen 32/64`.
-       |
-       |**IntelliJ IDEA / CLion:** run the `main` method in [$slFilePath]($slFilePath), then open
-       |`${path("binaries")}` and `${path("sim")}` as CLion projects with `$cmakeSoctSystemDef` in the CMake options.
-       |
-       |---
-       |
-       |## Quick Start: FPGA ($exampleBoard)
-       |
-       |```bash
-       |# Emit the design, generate the Vivado project, block design and constraints:
-       |sbt "runMain $slPath --target vivado --board $exampleBoard --vivado /path/to/vivado"
-       |```
-       |
-Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), run synthesis and
-       |implementation, and program the bitstream.
-       |
-       |To build without opening the GUI, pick a build target instead of `vivado`: `vivado.syn`
-       |(synthesis) or `vivado.bs` (through `write_bitstream`), with `--vivado-parallel <jobs>` for
-       |the job count. The build runs **detached** - the launcher prints its log path and a follow
-       |command (`tail -f` / `Get-Content -Wait`) and returns immediately:
-       |
-       |```bash
-       |sbt "runMain $slPath --target vivado.bs --board $exampleBoard --vivado-parallel 8 --vivado /path/to/vivado"
-       |```
-       |
-       |Add `--use-remote-vivado` (with `--ssh-config`/`--remote-dir`) to run the build on a remote host;
-       |follow the remote log it prints, then pull the results back with `--sfr`.
-       |
-       |Programs are then loaded over JTAG
-       |(`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
-       |application at reset. See the ${guide("docs/systems/binaries.html", "Binaries page")}.
-       |
-       |**Using the DIMM that is actually inserted:** Vivado's board flow locks the DDR4 controller to the
-       |board-preset module ($exampleBoard preset: 4 GiB). If your board carries a different DIMM, pass its
-       |Vivado part name - the design switches to a custom DDR4 interface and sizes memory, device tree and
-       |address decode from the part:
-       |
-       |```bash
-       |# Example: 16 GiB dual-rank SODIMM in the $exampleBoard slot
-       |sbt "runMain $slPath --target vivado --board $exampleBoard --ext-mem-part $exampleMemPart --vivado /path/to/vivado"
-       |```
-       |
-       |Details (part registry, custom interface internals, on-hardware validation with `mem-test`):
-       |${guide("docs/systems/fpga-memory.html", "FPGA Memory & Custom DDR4")}. Supported boards:
-       |${FPGARegistry.getKnownBoards.mkString(", ")} - add new boards by extending `FPGA` and registering them in `FPGARegistry`.
-       |
-       |---
-       |
-       |## Quick Start: Linux
-       |
-       |The FPGA designs boot Linux: `BOOT.ELF` is an OpenSBI firmware wrapping the kernel, the
-       |design's device tree and a BusyBox initramfs - loaded from the SD card by the boot ROM
-       |like any other program.
-       |
-       |```bash
-       |# 1. Drop in the source trees - plain checkouts, deliberately not submodules (the kernel
-       |#    tree alone would dominate every clone of this repository). The kernel version is the
-       |#    one the in-tree patches and drivers are developed against.
-       |git clone --depth 1 --branch $linuxKernelTag https://github.com/gregkh/linux.git ${path("binaries")}/linux/linux-stable
-       |git clone --depth 1 https://github.com/riscv-software-src/opensbi.git ${path("binaries")}/linux/opensbi
-       |
-       |# 2. Configure and build (host clang + ld.lld with RISC-V support; musl sysroot bootstraps itself)
-       |cmake -S ${path("binaries")}/linux -B $linuxBuildDir -DSOCT_SYSTEM=/path/to/$fpgaSystemDir/$SOCT_SYSTEM_CMAKE_FILE
-       |cmake --build $linuxBuildDir --target shell-boot-elf
-       |
-       |# 3. Copy $fpgaElfsDir/shell.BOOT.ELF to a FAT-formatted SD card as BOOT.ELF and reset the board
-       |```
-       |
-       |The `shell` image boots into an interactive BusyBox shell on the
-       |UART, with the SD card itself available as `/dev/mmcblk0` through the bundled out-of-tree
-       |driver. Every program under [binaries/linux/userspace/](binaries/linux/userspace) that
-       |includes `initram.cmake` becomes its own bootable image (`<name>-boot-elf`, running as
-       |`/init`); kernel modules under [binaries/linux/drivers/](binaries/linux/drivers) are built
-       |against the shared kernel build and packed into the initramfs automatically. Toolchains,
-       |host requirements, kernel patches and JTAG-flashing images without an SD card:
-       |${guide("docs/systems/linux.html", "Booting Linux page")}.
-       |
-       |---
-       |
-       |## Hints
-       |* The [firtool](https://github.com/llvm/circt/releases) binary needed for Chisel is x86_64-only; ARM64 macOS needs Rosetta (`softwareupdate --install-rosetta --agree-to-license`).
-       |* If UART to the board fails, close the Vivado hardware manager; if `/dev/ttyUSB*` disappears, `udevadm trigger` can help. Avoid USB hubs for the board connection.
-       |* On Windows, Verilator requires Visual Studio and building the simulator requires MinGW. For command-length errors during Verilator builds, move the project to a shorter path or pass `--single-verilog-file`.
+       |**Systems** - per-subsystem internals and reference: the hardware flow, the block-design
+       |DSL, memory, the Linux boot chain, the video pipeline and more, plus the glossary and the
+       |Scaladoc API reference. Everything is on **${guide("docs/docs.html", "the documentation site")}**
+       |(rendered through htmlpreview) - or open `docs/docs.html` from the clone (`sbt buildDocs`
+       |regenerates the API reference). All launcher options: `sbt "runMain $slPath --help"`.
        |""".stripMargin
   }
 
@@ -294,12 +174,11 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
    *
    * Checks:
    *  - every `--flag` referenced in the README exists in [[SOCTParser]]'s usage
-   *  - the example board is registered in [[FPGARegistry]]
-   *  - the example memory part's capacity resolves via [[PartRegistry]]
    *  - every repository file/directory referenced by a relative link exists
+   *  - every documentation page linked through htmlpreview exists
    *
    * @param readme the emitted README content
-   * @throws InternalBugException if any referenced flag, board, part or path no longer exists
+   * @throws InternalBugException if any referenced flag or path no longer exists
    */
   def verifyAgainstApi(readme: String): Unit = {
     val usage = SOCTParser.usage
@@ -308,22 +187,14 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
     val flagPattern = """(?<![\w/])--([a-z][a-z0-9-]*)""".r
     val cliFlags = flagPattern.findAllMatchIn(readme).map(_.group(1)).toSet
     val ignored = Set(
-      "recurse-submodules", "branch", "rm", "it", "init", "recursive", "depth", // git/docker flags in examples
-      "build", "target", "install-rosetta", "agree-to-license" // cmake/macOS flags in examples
+      "recurse-submodules", "init", "recursive", // git flags in examples
+      "rm", "it" // docker flags in examples
     )
     val missing = (cliFlags -- ignored).filterNot(f => f == "help" || usage.contains(s"--$f"))
     if (missing.nonEmpty) {
       throw new InternalBugException(
         s"README references launcher flags that no longer exist in SOCTParser: ${missing.toSeq.sorted.mkString("--", ", --", "")}. " +
           "Update SOCTReadmeBuilder to match the current CLI.")
-    }
-
-    if (FPGARegistry.n2bOpt(exampleBoard).isEmpty) {
-      throw new InternalBugException(s"README example board '$exampleBoard' is not registered in FPGARegistry (known: ${FPGARegistry.getKnownBoards.mkString(", ")}).")
-    }
-
-    if (PartRegistry.capacityOf(exampleMemPart).isEmpty) {
-      throw new InternalBugException(s"README example memory part '$exampleMemPart' does not resolve in PartRegistry.")
     }
 
     // Every relative markdown link target must exist in the repository.

@@ -102,6 +102,13 @@ git clone --depth 1 https://github.com/riscv-software-src/opensbi.git binaries/l
   tool still missing (LLVM, GNU make, host tools) with the install command for each &mdash;
   details on the <a href="../systems/linux.html">Booting Linux</a> page.</div>
 
+  <div class="note">Platform notes: the <code>firtool</code> binary Chisel needs is
+  x86_64-only &mdash; on Apple-silicon macOS install Rosetta first
+  (<code>softwareupdate --install-rosetta --agree-to-license</code>). On Windows, Verilator
+  needs Visual Studio and the simulator build needs MinGW; command-length errors during
+  Verilator builds are avoided by a shorter project path or
+  <code>--single-verilog-file</code>.</div>
+
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>
 <script src="../glossary.js" defer></script>
