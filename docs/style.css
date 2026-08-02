@@ -45,6 +45,27 @@ th { background: var(--card); }
   border-left: 4px solid var(--accent); background: var(--card);
   padding: .7rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0;
 }
+/* Optional-step boxes in the guides: visually distinct from .note so a reader can
+ * skip them without reading - the label is added here, not in the page text. */
+.opt {
+  border-left: 4px solid #3f8efc; background: var(--card);
+  padding: .7rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0;
+}
+.opt::before {
+  content: "Optional"; display: inline-block; font-weight: 600; color: #3f8efc;
+  font-size: .8rem; text-transform: uppercase; letter-spacing: .05em;
+  margin-right: .6rem;
+}
+/* Hint boxes: where a placeholder value in a command comes from on YOUR setup. */
+.hint {
+  border-left: 4px solid #2da160; background: var(--card);
+  padding: .7rem 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0;
+}
+.hint::before {
+  content: "Hint"; display: inline-block; font-weight: 600; color: #2da160;
+  font-size: .8rem; text-transform: uppercase; letter-spacing: .05em;
+  margin-right: .6rem;
+}
 footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; border-top: 1px solid var(--border); padding-top: 1rem; }
 
 /* Glossary terms (annotated by glossary.js): dotted underline, tooltip on hover */

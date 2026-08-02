@@ -12,46 +12,71 @@
   <p class="lead">A framework for designing and running RISC-V-based SoCs on FPGA and in simulation, built on top of Chisel.</p>
 
   <h2>Guides</h2>
+  <p class="lead">&ldquo;I just want to know how to use it&rdquo; &mdash; step-by-step example
+  runs, from a fresh clone to a monitor showing a Linux shell. Shared steps are their own
+  guides, referenced where a run relies on them.</p>
   <div class="cards">
-    <a class="card" href="guides/architecture.html">
+    <a class="card" href="guides/setup.html">
+      <h3>Setting up SoCeteer</h3>
+      <p>Clone, host packages, the IDE projects (IntelliJ + CLion), and what extra to pull for Linux development.</p>
+    </a>
+    <a class="card" href="guides/bitstream.html">
+      <h3>From Design to Bitstream</h3>
+      <p>Generate a design with the launcher and build the bitstream &mdash; project-only, synthesis, or the full run.</p>
+    </a>
+    <a class="card" href="guides/remote.html">
+      <h3>Remote Development</h3>
+      <p>Build the bitstream on a remote Vivado host and flash binaries over SSH, all from your local checkout.</p>
+    </a>
+    <a class="card" href="guides/linux-monitor.html">
+      <h3>Monitor &amp; Linux Programs</h3>
+      <p>The full run: a video design, the Linux shell image on SD, a DisplayPort monitor and USB keyboard, images on screen, persistent storage.</p>
+    </a>
+  </div>
+
+  <h2>Systems</h2>
+  <p class="lead">&ldquo;I need to understand how it works and the design decisions&rdquo;
+  &mdash; one page per subsystem, with the reference tables the guides link into.</p>
+  <div class="cards">
+    <a class="card" href="systems/architecture.html">
       <h3>Architecture &amp; Hardware Flow</h3>
       <p>How a design goes from Chisel configs through Diplomacy, FIRRTL and firtool to Verilog, and on to Verilator or Vivado.</p>
     </a>
-    <a class="card" href="guides/binaries.html">
+    <a class="card" href="systems/binaries.html">
       <h3>Binaries</h3>
       <p>What runs where: execution contexts, the two CMake projects and their templates, the system file, building and JTAG flashing.</p>
     </a>
-    <a class="card" href="guides/baremetal.html">
+    <a class="card" href="systems/baremetal.html">
       <h3>Bare-Metal Programs &amp; soctglue</h3>
       <p>The runtime library, linker layout, heap and stack budgets, syscall handler chain, FatFs, and how to add programs and boot ROMs.</p>
     </a>
-    <a class="card" href="guides/linux.html">
+    <a class="card" href="systems/linux.html">
       <h3>Booting Linux</h3>
-      <p>The boot chain and the device tree's journey, boot images, out-of-tree kernel drivers, userspace programs, toolchains and host requirements.</p>
+      <p>The boot chain and the device tree's journey, boot images, the shell image and its persistent storage, kernel drivers, userspace programs, toolchains.</p>
     </a>
-    <a class="card" href="guides/fpga-memory.html">
+    <a class="card" href="systems/fpga-memory.html">
       <h3>FPGA Memory &amp; Custom DDR4</h3>
       <p>Selecting DIMMs with <code>--ext-mem-part</code>, the part registry, and how the custom (non board-flow) DDR4 interface works.</p>
     </a>
-    <a class="card" href="guides/vivado-dsl.html">
+    <a class="card" href="systems/vivado-dsl.html">
       <h3>The Vivado Block-Design DSL</h3>
       <p>Components, pins, connect operators, constraints and TCL generation &mdash; how block designs are described in Scala and how to add your own components.</p>
     </a>
-    <a class="card" href="guides/boards.html">
+    <a class="card" href="systems/boards.html">
       <h3>Adding an FPGA Board</h3>
       <p>What a board definition declares (clocks, resets, memory ports, PMOD), where to find the data in the Vivado board files, and how to register it.</p>
     </a>
-    <a class="card" href="guides/simulation.html">
+    <a class="card" href="systems/simulation.html">
       <h3>Simulation &amp; Debugging</h3>
       <p>The Verilator harness, waveform tracing, syscall bridging via FESVR/HTIF, and live debugging of the simulated SoC with OpenOCD and GDB.</p>
     </a>
-    <a class="card" href="guides/video.html">
+    <a class="card" href="systems/video.html">
       <h3>DisplayPort Video</h3>
       <p>The framebuffer-to-monitor pipeline: VDMA, video out, the PS DP controller behind an address window, and the software contract that lights it up.</p>
     </a>
     <a class="card" href="glossary.html">
       <h3>Glossary</h3>
-      <p>Every non-general term the guides use, in one place &mdash; the same definitions the hover tooltips show.</p>
+      <p>Every non-general term the pages use, in one place &mdash; the same definitions the hover tooltips show.</p>
     </a>
   </div>
 
@@ -67,7 +92,7 @@
     (validates the doc links, runs <code>sbt doc</code> and copies the result into <code>docs/api/</code>).
   </div>
 
-  <footer>SoCeteer &mdash; local documentation. Rebuild the API reference with <code>sbt buildDocs</code>; the guides are hand-maintained in <code>docs/guides/</code>. <em>Note</em>: This documentation was generated using Claude Fable 5 but was validated and edited by a human.</footer>
+  <footer>SoCeteer &mdash; local documentation. Rebuild the API reference with <code>sbt buildDocs</code>; the guides and systems pages are hand-maintained in <code>docs/</code>. <em>Note</em>: This documentation was generated using Claude Fable 5 but was validated and edited by a human.</footer>
 </main>
 <script src="glossary.js" defer></script>
 <script src="sections.js" defer></script>

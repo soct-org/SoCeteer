@@ -16,7 +16,7 @@
 | **Block-design DSL** | Components, connections, clock domains and timing constraints written in Scala - every line of Vivado TCL is generated |
 | **Memory** | `--ext-mem-part` names the DIMM you inserted; capacity, device tree and address decode follow |
 | **Linux** | OpenSBI, kernel and BusyBox initramfs in one `BOOT.ELF`, loaded from SD by the stock boot ROM; device tree, memory map and console come from the design; `reboot` works (SBI SRST through the reset network) |
-| **Display** | The Linux console on a DisplayPort monitor ([guide](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/video.html)); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
+| **Display** | The Linux console on a DisplayPort monitor ([guide](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/linux-monitor.html), [internals](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/systems/video.html)); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
 | **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal |
 | **Drivers** | Out-of-tree modules build with kbuild in one CMake target, land in the initramfs and index in clangd/CLion; an SD block driver ships in-tree (`/dev/mmcblk0`) |
 | **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux |
@@ -27,8 +27,9 @@
 
 This README is only the quick start. The full documentation lives in the repository and
 reads online through htmlpreview: **[the documentation site](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/docs.html)**
-for the guides and the API reference - or open `docs/docs.html` from your clone
-(regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain soct.SOCTLauncher --help"`.
+- step-by-step guides (start with [Setting up SoCeteer](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/setup.html)),
+per-subsystem internals, and the API reference - or open `docs/docs.html` from your
+clone (regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain soct.SOCTLauncher --help"`.
 
 ---
 
@@ -121,7 +122,7 @@ follow the remote log it prints, then pull the results back with `--sfr`.
 
 Programs are then loaded over JTAG
 (`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
-application at reset. See the [Binaries guide](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/binaries.html).
+application at reset. See the [Binaries page](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/systems/binaries.html).
 
 **Using the DIMM that is actually inserted:** Vivado's board flow locks the DDR4 controller to the
 board-preset module (ZCU104 preset: 4 GiB). If your board carries a different DIMM, pass its
@@ -134,7 +135,7 @@ sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 --ext-mem-part MTA
 ```
 
 Details (part registry, custom interface internals, on-hardware validation with `mem-test`):
-[FPGA Memory & Custom DDR4](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/fpga-memory.html). Supported boards:
+[FPGA Memory & Custom DDR4](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/systems/fpga-memory.html). Supported boards:
 ZCU104, VCU118 - add new boards by extending `FPGA` and registering them in `FPGARegistry`.
 
 ---
@@ -166,7 +167,7 @@ includes `initram.cmake` becomes its own bootable image (`<name>-boot-elf`, runn
 `/init`); kernel modules under [binaries/linux/drivers/](binaries/linux/drivers) are built
 against the shared kernel build and packed into the initramfs automatically. Toolchains,
 host requirements, kernel patches and JTAG-flashing images without an SD card:
-[Booting Linux guide](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/linux.html).
+[Booting Linux page](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/systems/linux.html).
 
 ---
 

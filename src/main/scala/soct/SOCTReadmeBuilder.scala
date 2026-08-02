@@ -126,7 +126,7 @@ object SOCTReadmeBuilder {
        || **Block-design DSL** | Components, connections, clock domains and timing constraints written in Scala - every line of Vivado TCL is generated |
        || **Memory** | `--ext-mem-part` names the DIMM you inserted; capacity, device tree and address decode follow |
        || **Linux** | OpenSBI, kernel and BusyBox initramfs in one `BOOT.ELF`, loaded from SD by the stock boot ROM; device tree, memory map and console come from the design; `reboot` works (SBI SRST through the reset network) |
-       || **Display** | The Linux console on a DisplayPort monitor (${guide("docs/guides/video.html", "guide")}); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
+       || **Display** | The Linux console on a DisplayPort monitor (${guide("docs/guides/linux-monitor.html", "guide")}, ${guide("docs/systems/video.html", "internals")}); the preferred design (`soct.WithIncoherentVideoStream` + `soct.WithL2Cache`) has a frame fetch CPU load cannot starve |
        || **USB** | Host controller on by default on MPSoC boards: keyboard plus monitor make the board a self-contained terminal |
        || **Drivers** | Out-of-tree modules build with kbuild in one CMake target, land in the initramfs and index in clangd/CLion; an SD block driver ships in-tree (`/dev/mmcblk0`) |
        || **Toolchains** | CMake projects for boot ROMs and bare-metal programs; a separate LLVM/musl project for everything Linux |
@@ -137,8 +137,9 @@ object SOCTReadmeBuilder {
        |
        |This README is only the quick start. The full documentation lives in the repository and
        |reads online through htmlpreview: **${guide("docs/docs.html", "the documentation site")}**
-       |for the guides and the API reference - or open `docs/docs.html` from your clone
-       |(regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain $slPath --help"`.
+       |- step-by-step guides (start with ${guide("docs/guides/setup.html", "Setting up SoCeteer")}),
+       |per-subsystem internals, and the API reference - or open `docs/docs.html` from your
+       |clone (regenerate with `sbt buildDocs`). All launcher options: `sbt "runMain $slPath --help"`.
        |
        |---
        |
@@ -231,7 +232,7 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |
        |Programs are then loaded over JTAG
        |(`<program>-flash` targets) or from the SD card - the stock `sd-boot` ROM loads a `BOOT.ELF`
-       |application at reset. See the ${guide("docs/guides/binaries.html", "Binaries guide")}.
+       |application at reset. See the ${guide("docs/systems/binaries.html", "Binaries page")}.
        |
        |**Using the DIMM that is actually inserted:** Vivado's board flow locks the DDR4 controller to the
        |board-preset module ($exampleBoard preset: 4 GiB). If your board carries a different DIMM, pass its
@@ -244,7 +245,7 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |```
        |
        |Details (part registry, custom interface internals, on-hardware validation with `mem-test`):
-       |${guide("docs/guides/fpga-memory.html", "FPGA Memory & Custom DDR4")}. Supported boards:
+       |${guide("docs/systems/fpga-memory.html", "FPGA Memory & Custom DDR4")}. Supported boards:
        |${FPGARegistry.getKnownBoards.mkString(", ")} - add new boards by extending `FPGA` and registering them in `FPGARegistry`.
        |
        |---
@@ -276,7 +277,7 @@ Open the generated project (`workspace/<config>/$exampleBoard/vivado-project`), 
        |`/init`); kernel modules under [binaries/linux/drivers/](binaries/linux/drivers) are built
        |against the shared kernel build and packed into the initramfs automatically. Toolchains,
        |host requirements, kernel patches and JTAG-flashing images without an SD card:
-       |${guide("docs/guides/linux.html", "Booting Linux guide")}.
+       |${guide("docs/systems/linux.html", "Booting Linux page")}.
        |
        |---
        |

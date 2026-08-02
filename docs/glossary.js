@@ -147,7 +147,7 @@ function soctGlossaryRender(root) {
 
 /** Wrap term occurrences in tooltip links (all pages except the glossary). */
 function soctGlossaryAnnotate() {
-  const base = location.pathname.includes("/guides/") ? "../" : "";
+  const base = /\/(guides|systems)\//.test(location.pathname) ? "../" : "";
   const byTerm = new Map();
   for (const group of SOCT_GLOSSARY) {
     for (const e of group.entries) {

@@ -125,14 +125,15 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
   The command line is deliberately <em>not</em> baked into the kernel: the generator
   emits a <code>/chosen</code> node whose <code>bootargs</code> select the design's UART
   as console and early console, so one kernel image serves any hardware generation.</p>
+  <h2>The shell image</h2>
   <p>The <code>shell</code> image (<code>shell.BOOT.ELF</code>) boots into an interactive
   BusyBox shell. Its <code>/init</code> (<code>linux/userspace/shell/init.sh</code>) mounts the
-  pseudo filesystems, installs the applet links and keeps a job-controlled shell alive on
-  the console (<code>setsid</code> + <code>cttyhack</code>; the script itself stays
-  PID&nbsp;1, so an exiting shell is respawned instead of panicking the kernel). PID&nbsp;1
-  also answers shutdown requests: <code>reboot</code> without <code>-f</code> never calls
-  the kernel &mdash; it signals init &mdash; so the script traps SIGTERM into the real
-  <code>reboot -f</code> syscall, which lands in the SBI SRST reset (see
+  pseudo filesystems, installs the applet links, loads the packed kernel modules and keeps a
+  job-controlled shell alive on the console (<code>setsid</code> + <code>cttyhack</code>; the
+  script itself stays PID&nbsp;1, so an exiting shell is respawned instead of panicking the
+  kernel). PID&nbsp;1 also answers shutdown requests: <code>reboot</code> without
+  <code>-f</code> never calls the kernel &mdash; it signals init &mdash; so the script traps
+  SIGTERM into the real <code>reboot -f</code> syscall, which lands in the SBI SRST reset (see
   <em>reboot</em> below); <code>halt</code>/<code>poweroff</code> report that the FPGA
   has no software power control. BusyBox
   is not built from source &mdash; that would add a second kbuild frontier for one binary
@@ -140,6 +141,45 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
   rv64gc binary, hash-pinned and fetched once at configure time into
   <code>shared/vendor/busybox/</code> from <em>snapshot.debian.org</em>, whose archive
   URLs are permanent (regular pool URLs disappear once a package version is superseded).</p>
+
+  <h3>Consoles, banner, tools</h3>
+  <p>The serial console (the design's UART) always carries a shell. On a video design the
+  monitor renders the framebuffer console and a second, independent shell runs on
+  <code>tty1</code> &mdash; a USB keyboard and the monitor make a self-contained terminal
+  (see <a href="video.html">DisplayPort Video</a>). Boot ends in a banner: SoCeteer version
+  (from <code>/etc/soct-release</code>), the machine name (from the device tree's
+  <code>/chosen</code> <code>soct,board</code>), and the tools packed beside the BusyBox
+  applets &mdash; the list is a runtime scan of <code>/bin</code>, so it is always current.
+  Kernel messages are suppressed while the banner prints and remain available via
+  <code>dmesg</code>. The shipped tools: <code>fbmode</code> (video-mode switching, see
+  <a href="video.html">DisplayPort Video</a>), <code>fbimg</code> (framebuffer image viewer)
+  and <code>soct</code> (below). The prompt encodes persistence:
+  <code>ramdisk@&lt;board&gt;</code> means nothing survives a reboot.</p>
+
+  <h3>Persistent storage: <code>soct</code></h3>
+  <p>The initramfs is a ramdisk; <code>soct</code>
+  (<code>linux/userspace/shell/soct.sh</code>) adds a persistent environment on an SD card
+  or USB stick. The environment is a single ext2 image file
+  (<code>.soct/rootfs.ext2</code>, size <code>SOCT_PERSIST_MB</code>, default 64&nbsp;MB) on
+  the medium's FAT volume &mdash; FAT itself cannot host a root filesystem (no symlinks, no
+  permissions), the loop-mounted image can, and the file travels with the medium between
+  boards.</p>
+  <p>Run <code>soct</code> and it probes every candidate device (<code>/dev/mmcblk0*</code>
+  from the SD controller, <code>/dev/sd*</code> from USB mass storage &mdash; the list
+  mirrors the drivers the image carries) and prints what each holds. Exactly one existing
+  environment: it is entered. Exactly one empty FAT volume: an environment is created there,
+  then entered. Anything ambiguous: pick with <code>soct &lt;device&gt;</code>.</p>
+  <p>The mount map: the carrier mounts at <code>/media/&lt;device&gt;</code> and the
+  environment at <code>/soct-fs</code>, so the outer shell reads and writes the persistent
+  tree directly (<code>/soct-fs/home/soct</code>) while <code>soct</code> chroots into it.
+  Inside, the prompt becomes <code>soct@&lt;board&gt;</code>, home is
+  <code>/home/soct</code> (shell history persists), and the carrier media stay visible under
+  <code>/media</code>. Both consoles can be inside at once.</p>
+  <p>Leaving is plain <code>exit</code> (or Ctrl-D). The last session out unmounts
+  everything and prints that the medium can be removed; until then, leaving lists what still
+  holds the environment &mdash; pid, command and console, so a session forgotten on the
+  <em>other</em> console names itself. Do not pull the medium while the environment is
+  mounted: the image is journal-less ext2.</p>
 
   <h2>SoC-specific behavior</h2>
   <p>Everything a Linux user notices that is particular to this SoC, and how each piece is
@@ -172,7 +212,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
   hardware configuration &mdash; so a card already inserted at power-on enumerates during
   boot, and hot insert/removal both work. The <em>root</em> filesystem stays the initramfs
   embedded in the kernel image until the dynamic-userspace world
-  (<code>linux/rootfs</code>) exists; the card is data storage.</p>
+  (<code>linux/rootfs</code>) exists; the card is data storage &mdash; and the home of the
+  <code>soct</code> persistent environment (see <em>The shell image</em> above).</p>
 
   <h3><code>reboot</code></h3>
   <p>A working <code>reboot</code> crosses every layer of the stack; each one contributes a

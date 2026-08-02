@@ -21,6 +21,6 @@ build tree and the two worlds need different ones.
   OpenSBI builds. The kernel/OpenSBI source trees are drop-in checkouts at
   `linux/linux-stable/` and `linux/opensbi/`.
 
-The full story is in the local docs: `docs/guides/binaries.html` (execution contexts,
-system file, building, flashing), `docs/guides/baremetal.html` (soctglue, programs, boot
-ROMs) and `docs/guides/linux.html` (boot images, drivers, userspace, host requirements).
+The full story is in the local docs: `docs/systems/binaries.html` (execution contexts,
+system file, building, flashing), `docs/systems/baremetal.html` (soctglue, programs, boot
+ROMs) and `docs/systems/linux.html` (boot images, drivers, userspace, host requirements).
