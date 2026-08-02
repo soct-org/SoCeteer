@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoCeteer on Windows — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Guides / SoCeteer on Windows</p>
+  <h1>SoCeteer on Windows</h1>
+  <p class="lead">What differs when the development machine runs Windows. The hardware side
+  &mdash; design generation, simulation, Vivado builds &mdash; works natively (CI builds and
+  simulates on Windows for every change); the Linux software side needs WSL or Docker. Read
+  this before <a href="setup.html">Setting up SoCeteer</a>, then follow that guide with the
+  substitutions below.</p>
+
+  <h2>1. Before cloning</h2>
+  <p>The submodule tree contains paths longer than Windows' historical limit. Enable long
+  paths once, in an administrator PowerShell, before the clone:</p>
+<pre><code>Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+git config --system core.longpaths true</code></pre>
+  <p>Clone into a short path (e.g. <code>C:\s\SoCeteer</code>): generated file names are
+  deep, and Verilator builds can otherwise hit the command-line length limit.</p>
+
+  <h2>2. Packages</h2>
+<pre><code>choco install cmake ninja dtc-msys2 winflexbison3</code></pre>
+  <p>Plus Java and SBT (<code>choco install sbt</code>, or let IntelliJ provide both) &mdash;
+  and, for simulation only, Visual Studio (builds Verilator) and MinGW (builds the
+  simulator).</p>
+
+  <h2>3. What works, what differs</h2>
+  <table>
+    <tr><th>Area</th><th>On Windows</th></tr>
+    <tr><td>Design generation</td>
+      <td>Works natively; same launcher commands.</td></tr>
+    <tr><td>Bare-metal programs</td>
+      <td>Work natively; the RISC-V toolchain is fetched automatically.</td></tr>
+    <tr><td>Simulation</td>
+      <td>Works natively with Visual Studio and MinGW installed. A command-length error
+        during the Verilator build means the project path is too long &mdash; move it, or
+        pass <code>--single-verilog-file</code> to the launcher.</td></tr>
+    <tr><td>Vivado builds</td>
+      <td>Work natively, including the detached <code>vivado.syn</code>/<code>vivado.bs</code>
+        builds; the printed follow and kill commands are PowerShell
+        (<code>Get-Content -Wait</code>, <code>taskkill</code>).</td></tr>
+    <tr><td>Remote development</td>
+      <td>Works as the <em>local</em> side when <code>ssh</code> and <code>rsync</code> are
+        on the PATH (Windows ships OpenSSH; <code>rsync</code> comes with MSYS2 or Git for
+        Windows SDK). The build server itself must run Linux or macOS &mdash; a Windows
+        remote is refused, since the detached build needs a POSIX shell there.</td></tr>
+    <tr><td>Linux world (<code>binaries/linux</code>)</td>
+      <td>Not supported natively &mdash; the kernel build needs a GNU host. Use WSL2 or
+        Docker (below).</td></tr>
+  </table>
+
+  <h2>4. WSL2 and Docker</h2>
+  <p>A <a href="https://learn.microsoft.com/windows/wsl/install">WSL2</a> distribution
+  counts as a Linux host: everything in the other guides, including the Linux world, works
+  inside it with the Linux instructions as written. The prebuilt Docker image (see the
+  README) carries every host dependency and is the quickest route to a Linux-world build on
+  a Windows machine.</p>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
+</body>
+</html>
