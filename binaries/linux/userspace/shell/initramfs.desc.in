@@ -13,7 +13,10 @@ dir /lib/modules 0755 0 0
 dir /mnt 0755 0 0
 file /bin/busybox @SOCT_BUSYBOX@ 0755 0 0
 file /bin/fbmode @FBMODE_BIN@ 0755 0 0
+file /bin/fbimg @FBIMG_BIN@ 0755 0 0
+file /bin/soct @SOCT_SH@ 0755 0 0
 file /etc/profile @PROFILE_SH@ 0644 0 0
+file /etc/soct-release @SOCT_RELEASE@ 0644 0 0
 file /lib/modules/fpga-axi-sdc.ko @SDC_KO@ 0644 0 0
 file /lib/modules/soct-dp.ko @DP_KO@ 0644 0 0
 slink /bin/sh busybox 0777 0 0

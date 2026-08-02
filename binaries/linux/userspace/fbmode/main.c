@@ -238,7 +238,8 @@ static void usage(void) {
             "                                       geometries with a standard structure use it)\n"
             "       -y                              keep without asking (default: revert unless 'y'\n"
             "                                       is pressed within 10 s - a wrong mode can leave\n"
-            "                                       the monitor dark)\n");
+            "                                       the monitor dark)\n"
+            "       -d <fbdev>                      framebuffer device (default /dev/fb0)\n");
     exit(2);
 }
 
@@ -250,12 +251,17 @@ int main(int argc, char **argv) {
     char *args[8];
 
     for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-y"))
+        if (!strcmp(argv[i], "-y")) {
             yes = 1;
-        else if (n < (int)(sizeof(args) / sizeof(args[0])))
+        } else if (!strcmp(argv[i], "-d")) {
+            if (++i >= argc)
+                usage();
+            fb_dev = argv[i];
+        } else if (n < (int)(sizeof(args) / sizeof(args[0]))) {
             args[n++] = argv[i];
-        else
+        } else {
             usage();
+        }
     }
 
     fd = open(fb_dev, O_RDWR);

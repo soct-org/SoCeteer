@@ -406,9 +406,17 @@ psu_ps_pl_reset_config</code></pre>
       its drawing operations record a dirty rectangle, and a deferred worker (one frame time,
       so bursts coalesce) pushes the dirty lines out through the L2's <code>Flush64</code>
       register. This requires the L2: on an incoherent design without
-      <code>soct.WithL2Cache</code> the module refuses, loudly. <code>mmap</code> of the device
-      is refused too &mdash; this core has no page attributes that could uncache a user mapping,
-      so mapped stores would sit in the cache with nothing tracking them.</li>
+      <code>soct.WithL2Cache</code> the module refuses, loudly. <code>mmap</code> works too,
+      by faking coherence at page granularity: mapped pages are handed out write-protected,
+      the first store to a page faults and marks it dirty (<code>fb_deferred_io</code>), and a
+      deferred worker flushes dirty pages through the same <code>Flush64</code> path before
+      re-protecting them &mdash; so stock framebuffer software runs unmodified, with up to one
+      flush-delay of latency and a throughput ceiling set by the flush register (~240&nbsp;MB/s:
+      ample for images and UI, ~38&nbsp;fps for full-screen 1080p animation). Where the
+      carve-out lacks the <code>struct page</code> backing the fault handler needs, mmap is
+      refused instead, loudly. The shell image ships <code>fbimg</code>, a viewer for
+      PNG/JPEG/BMP/GIF/TGA/PPM (vendored <code>stb_image</code>) that scales, centers and
+      draws through the write() path &mdash; <code>fbimg /mnt/photo.png</code>.</li>
   </ul>
   <p>The incoherent variant is the one to pick for a console design: the frame fetch cannot be
   starved by CPU traffic, so the display stays locked no matter what the shell does, and the L2

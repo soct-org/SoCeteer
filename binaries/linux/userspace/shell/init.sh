@@ -9,6 +9,12 @@ export PATH=/bin
 /bin/busybox mount -t devtmpfs devtmpfs /dev
 /bin/busybox --install -s /bin
 
+# Kernel messages race init's own output on the console (module probes and the display
+# bring-up print for seconds); keep the console to the kernel's emergencies until the
+# banner is out, so it renders as one block. Everything suppressed here is in `dmesg`.
+_printk="$(cut -f1 /proc/sys/kernel/printk)"
+dmesg -n 1
+
 # The out-of-tree drivers baked into this image - the SD controller first: it hands the
 # boot medium to Linux as /dev/mmcblk0 (mount the FAT partition from the shell, e.g.
 # `mount -t vfat /dev/mmcblk0p1 /mnt` - or /dev/mmcblk0 when the card has no table).
@@ -16,8 +22,33 @@ for m in /lib/modules/*.ko; do
     [ -e "$m" ] && insmod "$m"
 done
 
+# The machine's name comes from the design (/chosen/soct,board in the DTS); prompts
+# read soct@<board>. Designs without the property still get a name.
+if [ -r /proc/device-tree/chosen/soct,board ]; then
+    hostname "$(tr -d '\0' < /proc/device-tree/chosen/soct,board)"
+else
+    hostname soct
+fi
+
+# The tools packed beside busybox: every real executable in /bin (the rest are
+# busybox applet links), so the listing keeps itself current.
+_tools=""
+for _f in /bin/*; do
+    [ -f "$_f" ] && [ ! -L "$_f" ] && [ "$_f" != /bin/busybox ] && _tools="$_tools ${_f##*/}"
+done
+. /etc/soct-release 2>/dev/null
+
 echo
-echo "=== SoCeteer Linux: $(uname -sr), $(busybox | busybox head -1 | busybox cut -d' ' -f1-2) ==="
+echo "==============================================================================="
+echo "  SoCeteer v${SOCT_VERSION:-?} on $(hostname)"
+echo "  $(uname -sr)  -  $(busybox | busybox head -1 | busybox cut -d' ' -f1-2)"
+echo "  Tools:$_tools"
+echo "  This shell is a ramdisk - nothing persists. 'soct' lists the SD/USB"
+echo "  devices and enters (or creates) the persistent environment there;"
+echo "  leaving it (exit) unmounts, so the medium can be pulled."
+echo "  Kernel messages: dmesg"
+echo "==============================================================================="
+dmesg -n "${_printk:-7}"
 
 # reboot(1) without -f never calls the kernel: it signals PID 1 (busybox convention:
 # TERM = reboot, USR1 = halt, USR2 = poweroff) and expects init to finish the job.

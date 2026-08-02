@@ -13,10 +13,17 @@
  * Damage is coalesced for about a frame time before flushing, so a burst of
  * console output costs one flush of the union rectangle, not one per drawing call.
  *
- * mmap is refused: this core has no page attributes that could uncache a user
- * mapping, so userspace stores would sit in the cache with nothing tracking them -
- * a silently stale display. Reads, writes and the console's drawing operations all
- * damage-track correctly.
+ * mmap fakes coherence at page granularity instead of refusing outright: pages
+ * are handed out write-protected, so the first store after a page is mapped (or
+ * after it was last flushed) faults, and fb_deferred_io marks the page dirty.
+ * A delayed worker then flushes the dirty pages through the same Flush64 path
+ * the drawing operations use and re-protects them, so a user mapping is
+ * coherent up to one flush-delay of latency - the same bound the console's own
+ * damage worker already accepts. The trick needs a struct page per carve-out
+ * page for fb_deferred_io's fault handler to hand out, which reserved no-map
+ * memory is not guaranteed to have; where the probe for that fails, mmap is
+ * refused as before. Reads, writes and the console's drawing operations
+ * damage-track correctly regardless of mmap.
  *
  * On designs with a retunable pixel clock the fbdev also switches resolutions:
  * check_var accepts ANY complete timing whose pixel clock dp-main.c can solve
@@ -28,10 +35,14 @@
 #include <linux/fb.h>
 #include <linux/io.h>
 #include <linux/jiffies.h>
+#include <linux/list.h>
 #include <linux/math.h>
 #include <linux/math64.h>
+#include <linux/mm.h>
+#include <linux/mmzone.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/pfn.h>
 #include <linux/printk.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
@@ -55,6 +66,8 @@ static struct {
 	resource_size_t carveout_size;
 	struct soct_dp_mode mode;
 	u32 width, height, stride;
+	bool mmap_ok; /* carve-out has struct pages; fb_deferred_io can track it */
+	u32 defio_size; /* frame size fb_deferred_io was sized for, set at registration */
 	spinlock_t lock;
 	bool dirty;
 	u32 x0, y0, x1, y1; /* dirty rectangle, inclusive; valid while dirty */
@@ -165,9 +178,51 @@ static int soct_dp_fb_setcolreg(u_int regno, u_int red, u_int green, u_int blue,
 	return 0;
 }
 
+/* fb_deferred_io write-protects mmap'd pages; the first store after a page is
+ * mapped (or last flushed) faults and fb_deferred_io tracks it, then calls back
+ * here after FLUSH_DELAY with everything touched since. Flush each page through
+ * the same Flush64 path the rect worker uses, merging adjacent pages into one
+ * flush_range call the way the rect worker merges one dirty rectangle. Runs in
+ * workqueue context - sleeping is fine, and fbs.lock is not needed: flush_range
+ * is just raw register writes, nothing here touches the rect-worker's state. */
+static void soct_dp_fb_deferred_io(struct fb_info *info, struct list_head *pagelist)
+{
+	struct fb_deferred_io_pageref *pageref;
+	phys_addr_t start = 0;
+	size_t len = 0;
+
+	list_for_each_entry(pageref, pagelist, list) {
+		phys_addr_t phys = fbs.phys + pageref->offset;
+
+		if (len && phys == start + len) {
+			len += PAGE_SIZE;
+			continue;
+		}
+		if (len)
+			flush_range(start, len);
+		start = phys;
+		len = PAGE_SIZE;
+	}
+	if (len)
+		flush_range(start, len);
+}
+
+/* Installed on info->fbdefio only when fbs.mmap_ok (soct_dp_fb_register), which
+ * also sets .delay = FLUSH_DELAY there: msecs_to_jiffies() is not a
+ * compile-time constant, so it cannot sit in this initializer. */
+static struct fb_deferred_io soct_dp_fb_defio = {
+	/* The coalescing walk in soct_dp_fb_deferred_io merges contiguous
+	 * offsets into one flush_range call; that merge only finds them if the
+	 * pagerefs arrive in ascending offset order. */
+	.sort_pagereflist = true,
+	.deferred_io = soct_dp_fb_deferred_io,
+};
+
 static int soct_dp_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
-	pr_warn_once("soct-dp: fb mmap refused - a user mapping would be cached with nothing flushing it; use write()\n");
+	if (fbs.mmap_ok)
+		return fb_deferred_io_mmap(info, vma);
+	pr_warn_once("soct-dp: fb mmap refused - the carve-out has no struct pages for fb_deferred_io to track; use write()\n");
 	return -ENODEV;
 }
 
@@ -238,10 +293,20 @@ static int soct_dp_fb_var_to_mode(const struct fb_var_screeninfo *var,
 static int soct_dp_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
 	struct soct_dp_mode m;
+	u64 frame_size;
 
 	if (soct_dp_fb_var_to_mode(var, &m))
 		return -EINVAL;
-	if ((u64)m.hactive * m.vactive * BYTES_PER_PIXEL > fbs.carveout_size)
+	frame_size = (u64)m.hactive * m.vactive * BYTES_PER_PIXEL;
+	if (frame_size > fbs.carveout_size)
+		return -EINVAL;
+	/* fb_deferred_io sizes its page tracking from the frame length at
+	 * fb_deferred_io_init() time, which runs once at registration - it
+	 * cannot grow later. The registration-time mode is therefore the real
+	 * ceiling under mmap, tighter than the carve-out itself; real designs
+	 * never hit this since they only ever run the one mode they were
+	 * timing-closed for. */
+	if (fbs.mmap_ok && frame_size > fbs.defio_size)
 		return -EINVAL;
 	if (soct_dp_validate_mode(&m))
 		return -EINVAL;
@@ -289,6 +354,11 @@ static int soct_dp_fb_set_par(struct fb_info *info)
 static void soct_dp_fb_destroy(struct fb_info *info)
 {
 	cancel_delayed_work_sync(&fbs.flush_work);
+	/* Flushes and frees whatever fb_deferred_io still has tracked, through
+	 * the same fbs.l2_ctrl the callback uses - must run before that (and
+	 * fbs.virt) are torn down below. */
+	if (fbs.mmap_ok)
+		fb_deferred_io_cleanup(info);
 	memunmap(fbs.virt);
 	fbs.virt = NULL;
 	iounmap(fbs.l2_ctrl);
@@ -342,6 +412,12 @@ int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size,
 	}
 	fbs.phys = fb;
 	fbs.carveout_size = fb_size;
+	/* The carve-out is no-map reserved memory: nothing guarantees the
+	 * platform actually backed it with struct pages, which is what
+	 * fb_deferred_io's fault handler hands out. Probe both ends rather
+	 * than assume; a hole anywhere inside is not expected to happen
+	 * without also failing at one of the ends. */
+	fbs.mmap_ok = pfn_valid(PHYS_PFN(fb)) && pfn_valid(PHYS_PFN(fb + fb_size - 1));
 	fbs.mode = *mode;
 	fbs.width = mode->hactive;
 	fbs.height = mode->vactive;
@@ -382,9 +458,26 @@ int soct_dp_fb_register(void)
 	info->fbops = &soct_dp_fb_ops;
 	info->pseudo_palette = fbs.palette;
 
+	if (fbs.mmap_ok) {
+		soct_dp_fb_defio.delay = FLUSH_DELAY;
+		info->fbdefio = &soct_dp_fb_defio;
+		err = fb_deferred_io_init(info);
+		if (err) {
+			pr_err("soct-dp: initializing deferred I/O failed (%d)\n", err);
+			framebuffer_release(info);
+			return err;
+		}
+		/* The ceiling soct_dp_fb_check_var must enforce from here on:
+		 * fb_deferred_io_init() just sized its page tracking from
+		 * info->fix.smem_len, fixed until fb_deferred_io_cleanup(). */
+		fbs.defio_size = info->fix.smem_len;
+	}
+
 	err = register_framebuffer(info);
 	if (err) {
 		pr_err("soct-dp: registering the framebuffer failed (%d)\n", err);
+		if (fbs.mmap_ok)
+			fb_deferred_io_cleanup(info);
 		framebuffer_release(info);
 		return err;
 	}

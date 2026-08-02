@@ -75,11 +75,18 @@ trait SOCTVivadoSystemDTS {
   protected val chosenDev: Device = new Device {
     def describe(resources: ResourceBindings): Description = {
       val bootargs = resources("bootargs").map(_.value)
+      // The design's identity, for userspace: the board this bitstream targets and the
+      // workspace it came from (init sets the hostname from the board, so the shell
+      // prompt names the machine). Both fall out of the workspace path - the generator
+      // writes <config-with-suffixes>/<board>/.
+      val systemDir = p(HasSOCTPaths).systemDir
       Description("chosen", Map(
         // Cells + ranges for the framebuffer child's reg; harmless when only bootargs bind.
         "#address-cells" -> Seq(ResourceInt(2)),
         "#size-cells" -> Seq(ResourceInt(2)),
-        "ranges" -> Nil
+        "ranges" -> Nil,
+        "soct,board" -> Seq(ResourceString(systemDir.getFileName.toString)),
+        "soct,design" -> Seq(ResourceString(systemDir.getParent.getFileName.toString))
       ) ++ (if (bootargs.nonEmpty) Map("bootargs" -> bootargs) else Map.empty))
     }
   }

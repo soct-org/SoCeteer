@@ -16,6 +16,11 @@
 //     registers are narrower than 32 bits (25 for cmd) with ZERO meaning "watchdog
 //     off", so at card clocks >= ~34 MHz the driver's overflow fallback silently
 //     disarmed the one mechanism that bounds a command to a vanished card.
+//   - the full controller reset runs on every power-down (set_ios MMC_POWER_OFF), not
+//     just at probe: the mmc core power-cycles the slot around card re-initialization
+//     and expects a clean host, but the controller kept the previous epoch's state -
+//     a re-inserted card enumerated against stale command/data engines and then
+//     failed every data transfer.
 
 #include <linux/version.h>
 #include <linux/delay.h>
@@ -311,22 +316,9 @@ static void sdc_request(struct mmc_host * mmc, struct mmc_request * mrq) {
     spin_unlock_irq(&host->lock);
 }
 
-static void sdc_set_ios(struct mmc_host * mmc, struct mmc_ios * ios) {
-    struct sdc_host * host = mmc_priv(mmc);
-
-    spin_lock_irq(&host->lock);
-
-    sdc_set_clock(host, ios->clock);
-    host->regs->control = ios->bus_width == MMC_BUS_WIDTH_4 ? SDC_CONTROL_SD_4BIT : 0;
-
-    spin_unlock_irq(&host->lock);
-}
-
-static void sdc_reset(struct mmc_host * mmc) {
-    struct sdc_host * host = mmc_priv(mmc);
+/* Full controller reset; the caller holds host->lock. */
+static void sdc_reset_locked(struct sdc_host * host) {
     uint32_t card_detect = 0;
-
-    spin_lock_irq(&host->lock);
 
     sdc_set_clock(host, 400000);
 
@@ -356,7 +348,36 @@ static void sdc_reset(struct mmc_host * mmc) {
         host->regs->card_detect = SDC_CARD_INSERT_INT_EN;
     }
     sdc_wait_sw_reset(host, false);
+}
 
+static void sdc_set_ios(struct mmc_host * mmc, struct mmc_ios * ios) {
+    struct sdc_host * host = mmc_priv(mmc);
+
+    spin_lock_irq(&host->lock);
+
+    /* The mmc core raises POWER_UP immediately before it first talks to a
+     * (re)inserted card: a full reset here hands every enumeration a clean
+     * controller. Without it, a card pulled mid-transfer leaves its aborted
+     * command/data engines behind and the next card enumerates against them -
+     * a "stuck busy" first attempt, then a data engine that fails every read.
+     * POWER_UP, not POWER_OFF: the reset must be the last thing before the
+     * card is spoken to, with no power sequencing in between (a power-down
+     * reset left the controller unable to DMA on the following boot-time
+     * enumeration - command path unaffected, every data read failing). */
+    if (ios->power_mode == MMC_POWER_UP)
+        sdc_reset_locked(host);
+
+    sdc_set_clock(host, ios->clock);
+    host->regs->control = ios->bus_width == MMC_BUS_WIDTH_4 ? SDC_CONTROL_SD_4BIT : 0;
+
+    spin_unlock_irq(&host->lock);
+}
+
+static void sdc_reset(struct mmc_host * mmc) {
+    struct sdc_host * host = mmc_priv(mmc);
+
+    spin_lock_irq(&host->lock);
+    sdc_reset_locked(host);
     spin_unlock_irq(&host->lock);
 }
 

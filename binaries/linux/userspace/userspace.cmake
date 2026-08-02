@@ -15,6 +15,7 @@ get_filename_component(SOCT_PROGRAM ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 
 add_executable(${SOCT_PROGRAM} ${CMAKE_C_SRCS})
 add_dependencies(${SOCT_PROGRAM} linux-sysroot)
+target_compile_options(${SOCT_PROGRAM} PRIVATE -O2)
 message(STATUS "Adding Linux userspace program ${SOCT_PROGRAM}")
 
 add_custom_command(TARGET ${SOCT_PROGRAM} POST_BUILD
