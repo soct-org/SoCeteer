@@ -13,6 +13,8 @@
   <p class="lead">From nothing to a generated design and working IDE projects. Follow it top
   to bottom once; every other guide assumes it. No prior experience with sbt, CMake or
   projects of this size is assumed.</p>
+  <div class="note">On Windows, read <a href="windows.html">SoCeteer on Windows</a> first:
+  it lists what differs, what is limited, and the steps to take before cloning.</div>
 
   <h2>1. Install the tools</h2>
   <p>In a terminal (all of this is on your own computer):</p>
@@ -25,7 +27,9 @@
     <li><strong>CLion</strong> &mdash; for the software side (everything that runs on the
       generated SoC is C, built with CMake).</li>
   </ul>
-  <div class="hint">JetBrains IDEs are free for students
+  <div class="hint">Both IDEs are
+  <a href="https://www.jetbrains.com/legal/docs/toolbox/license_non-commercial/">free for
+  non-commercial use</a>, and students get the whole JetBrains toolbox free
   (<a href="https://www.jetbrains.com/community/education/">jetbrains.com/community/education</a>).
   The IDEs are optional &mdash; every step below also has a terminal form.</div>
 
@@ -102,12 +106,10 @@ git clone --depth 1 https://github.com/riscv-software-src/opensbi.git binaries/l
   tool still missing (LLVM, GNU make, host tools) with the install command for each &mdash;
   details on the <a href="../systems/linux.html">Booting Linux</a> page.</div>
 
-  <div class="note">Platform notes: the <code>firtool</code> binary Chisel needs is
+  <div class="note">Platform note: the <code>firtool</code> binary Chisel needs is
   x86_64-only &mdash; on Apple-silicon macOS install Rosetta first
-  (<code>softwareupdate --install-rosetta --agree-to-license</code>). On Windows, Verilator
-  needs Visual Studio and the simulator build needs MinGW; command-length errors during
-  Verilator builds are avoided by a shorter project path or
-  <code>--single-verilog-file</code>.</div>
+  (<code>softwareupdate --install-rosetta --agree-to-license</code>). Windows specifics are
+  in <a href="windows.html">SoCeteer on Windows</a>.</div>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>

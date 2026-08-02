@@ -114,7 +114,7 @@ object SOCTReadmeBuilder {
        ||----|----|
        || **Simulation** | The design runs under [Verilator](https://www.veripool.org/wiki/verilator): host-bridged syscalls, waveform tracing, and live GDB debugging of the simulated SoC |
        || **FPGA builds** | The launcher drives Vivado from project generation to the finished bitstream, locally or on a remote build server |
-       || **Runs anywhere** | Docker images for x86_64 and ARM64; native on Linux, macOS and Windows |
+       || **Runs anywhere** | Docker images for x86_64 and ARM64; native on Linux, macOS and ${guide("docs/guides/windows.html", "Windows")} |
        |
        |#### Linux
        |
