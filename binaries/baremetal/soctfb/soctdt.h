@@ -6,8 +6,8 @@
  * happens; the time base is header-only because its callers sit in tight
  * sampling loops that must not pay for a call.
  */
-#ifndef DP_TEST_DPTEST_H
-#define DP_TEST_DPTEST_H
+#ifndef SOCTFB_SOCTDT_H
+#define SOCTFB_SOCTDT_H
 
 #include <stdint.h>
 
@@ -55,4 +55,4 @@ static inline unsigned long cycles_to_us(unsigned long cycles) {
     return cycles / SoctXil_GetCyclesPerUs();
 }
 
-#endif /* DP_TEST_DPTEST_H */
+#endif /* SOCTFB_SOCTDT_H */

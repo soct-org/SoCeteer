@@ -10,7 +10,7 @@
  * start it stage by stage, then run the demo. The stages themselves live next
  * door:
  *
- *   dptest.h   device-tree accessors (implemented here) and the time base
+ *   soctdt.h   device-tree accessors (implemented here) and the time base
  *   video.h    framebuffers, VDMA, timing generator - the whole PL side
  *   dp.h       PS window probe, AVBuf routing, DP link and stream
  *   render.h   the test pattern and the teapot
@@ -31,50 +31,13 @@
 
 #include "diag.h"
 #include "dp.h"
-#include "dptest.h"
+#include "soctdt.h"
 #include "render.h"
 #include "sleep.h"
 #include "video.h"
 
-/* =========================================================================
- * Device-tree accessors (declared in dptest.h)
- * ========================================================================= */
-
-dtb_node *dt_require_compatible(const char *compat) {
-    dtb_node *node = dtb_find_compatible(NULL, compat);
-    if (!node) {
-        printf("FATAL: no device-tree node with compatible \"%s\" - was the "
-               "design built with --with-config soct.WithVideoStream?\n", compat);
-        abort();
-    }
-    return node;
-}
-
-void dt_require_reg(dtb_node *node, uintptr_t *base, uintptr_t *size) {
-    dtb_prop *reg = dtb_find_prop(node, "reg");
-    if (!reg) {
-        printf("FATAL: device-tree node has no reg property\n");
-        abort();
-    }
-    dtb_pair layout = {dtb_get_addr_cells_for(node), dtb_get_size_cells_for(node)};
-    dtb_pair val = {0, 0};
-    if (dtb_read_prop_2(reg, layout, &val) < 1) {
-        printf("FATAL: could not read device-tree reg property\n");
-        abort();
-    }
-    *base = (uintptr_t) val.a;
-    if (size) *size = (uintptr_t) val.b;
-}
-
-unsigned long dt_require_u32(dtb_node *node, const char *name) {
-    dtb_prop *prop = dtb_find_prop(node, name);
-    uintmax_t val = 0;
-    if (!prop || dtb_read_prop_1(prop, 1, &val) < 1) {
-        printf("FATAL: could not read device-tree property \"%s\"\n", name);
-        abort();
-    }
-    return (unsigned long) val;
-}
+/* The device-tree accessors declared in soctdt.h are implemented by the soctfb
+ * library (soctfb.c), which this test links. */
 
 /* Map the window through which the vendored Xilinx sources reach the PS
  * registers (see xil_io.h), then prove the path actually responds. */

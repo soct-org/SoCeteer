@@ -207,6 +207,22 @@ target_compile_options(${SOCT_PROGRAM} PRIVATE -std=gnu11 -O2)</code></pre>
   <p>Browse <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/baremetal"><code>binaries/baremetal</code></a>
   for the bundled examples and hardware-validation tools.</p>
 
+  <h3>Drawing to the monitor (soctfb)</h3>
+  <p>On video designs, <code>binaries/baremetal/soctfb</code> is the framebuffer library:
+  <code>soctfb_init()</code> brings the whole DisplayPort pipeline up from the device tree,
+  then drawing is primitives (<code>fill</code>, <code>rect</code>, <code>text</code>,
+  grayscale blits) plus a flush of what was drawn. The flush is what makes one program
+  correct on coherent and incoherent designs alike &mdash; it pushes the region through the
+  L2's Flush64 register where the frame fetch bypasses the caches, and costs nothing where
+  it does not. A directory without a <code>CMakeLists.txt</code> under
+  <code>baremetal/</code> is such a source-template library, consumed via its
+  <code>.cmake</code> include; see
+  <a href="https://github.com/soct-org/SoCeteer/tree/main/binaries/baremetal/fb-template"><code>fb-template</code></a>
+  for the minimal program (copy it to start your own),
+  <code>gemmini-detect</code> for a full application (digit detection with bounding
+  boxes, the classifier's matmuls on Gemmini), and <code>dp-test</code> &mdash; which
+  builds on the same library &mdash; for pipeline diagnostics.</p>
+
   <h3>C++ programs</h3>
   <p>List sources in <code>CMAKE_CXX_SRCS</code> instead of (or in addition to)
   <code>CMAKE_C_SRCS</code>. The template detects the presence of C++ sources and links

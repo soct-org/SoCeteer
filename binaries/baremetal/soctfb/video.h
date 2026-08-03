@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "dptest.h"
+#include "soctdt.h"
 #include "xvidc.h"
 
 /* ---------------------------------------------------------------------------

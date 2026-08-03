@@ -5,7 +5,7 @@
 
 #include "diag.h"
 #include "dp.h"
-#include "dptest.h"
+#include "soctdt.h"
 #include "sleep.h"
 #include "video.h"
 #include "xil_io.h"

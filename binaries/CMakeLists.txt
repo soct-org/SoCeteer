@@ -60,10 +60,12 @@ endforeach()
 add_link_options(${_link_defs})
 
 
-# Add each program and bootrom as a subdirectory
+# Add each program and bootrom as a subdirectory. A directory without a
+# CMakeLists.txt is a source-template library (e.g. baremetal/soctfb), consumed
+# by programs through its .cmake include - not a program itself.
 foreach (ENTRY ${ALL_ENTRIES})
     set(ENTRY_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/${ENTRY}")
-    if (IS_DIRECTORY "${ENTRY_SOURCE_DIR}")
+    if (IS_DIRECTORY "${ENTRY_SOURCE_DIR}" AND EXISTS "${ENTRY_SOURCE_DIR}/CMakeLists.txt")
         add_subdirectory("${ENTRY_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/${ENTRY}")
     endif ()
 endforeach ()
