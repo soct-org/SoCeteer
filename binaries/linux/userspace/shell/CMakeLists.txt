@@ -25,6 +25,11 @@ set(FBIMG_BIN "${CMAKE_BINARY_DIR}/userspace/fbimg/fbimg")
 set(DOOM_BIN "${CMAKE_BINARY_DIR}/userspace/doom/doom")
 configure_file(initramfs.desc.in "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc" @ONLY)
 
+if (EXISTS "${CMAKE_BINARY_DIR}/kernel/initramfs.desc")
+    file(COPY_FILE "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc"
+            "${CMAKE_BINARY_DIR}/kernel/initramfs.desc")
+endif ()
+
 soct_linux_add_boot_image(shell
         DESC "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc"
         DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}" "${PROFILE_SH}" "${SOCT_SH}" "${QUIRKS_SH}")
