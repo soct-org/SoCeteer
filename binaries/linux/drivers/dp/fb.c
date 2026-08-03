@@ -25,6 +25,13 @@
  * refused as before. Reads, writes and the console's drawing operations
  * damage-track correctly regardless of mmap.
  *
+ * When the carve-out holds two frames of the active mode, the fbdev exposes
+ * them as a double-height virtual screen and whole-frame panning
+ * (FBIOPAN_DISPLAY) becomes page flipping: render into the back frame, pan,
+ * and the flush worker pushes the frame's damage out before parking the VDMA
+ * on it at a frame boundary - tear-free presentation over the plain fbdev
+ * UAPI. The console stays on frame 0 and never pans.
+ *
  * On designs with a retunable pixel clock the fbdev also switches resolutions:
  * check_var accepts ANY complete timing whose pixel clock dp-main.c can solve
  * within the design's budget - there is no mode list; whether a monitor takes a
@@ -45,6 +52,7 @@
 #include <linux/pfn.h>
 #include <linux/printk.h>
 #include <linux/spinlock.h>
+#include <linux/uaccess.h>
 #include <linux/workqueue.h>
 
 #include "dp.h"
@@ -66,14 +74,23 @@ static struct {
 	resource_size_t carveout_size;
 	struct soct_dp_mode mode;
 	u32 width, height, stride;
+	u32 frames; /* 2 when the carve-out holds a second frame: panning flips */
 	bool mmap_ok; /* carve-out has struct pages; fb_deferred_io can track it */
 	u32 defio_size; /* frame size fb_deferred_io was sized for, set at registration */
 	spinlock_t lock;
 	bool dirty;
 	u32 x0, y0, x1, y1; /* dirty rectangle, inclusive; valid while dirty */
+	bool park_req;  /* a pan asked for a flip; the flush worker applies it */
+	u32 park_frame; /* ...to this frame, after pushing the damage out */
 	struct delayed_work flush_work;
 	u32 palette[16];
 } fbs;
+
+/* Whether a second frame of this geometry fits behind the first. */
+static u32 fb_nframes(u32 stride, u32 height)
+{
+	return 2ull * stride * height <= fbs.carveout_size ? 2 : 1;
+}
 
 static void flush_range(phys_addr_t start, size_t len)
 {
@@ -101,35 +118,44 @@ static void soct_dp_fb_flush_now(void)
 static void soct_dp_fb_flush_work(struct work_struct *work)
 {
 	unsigned long flags;
-	u32 x0, y0, x1, y1, y;
+	u32 x0, y0, x1, y1, y, park_frame;
+	bool dirty, park_req;
 
 	spin_lock_irqsave(&fbs.lock, flags);
-	if (!fbs.dirty) {
-		spin_unlock_irqrestore(&fbs.lock, flags);
-		return;
-	}
+	dirty = fbs.dirty;
 	x0 = fbs.x0;
 	y0 = fbs.y0;
 	x1 = fbs.x1;
 	y1 = fbs.y1;
 	fbs.dirty = false;
+	park_req = fbs.park_req;
+	park_frame = fbs.park_frame;
+	fbs.park_req = false;
 	spin_unlock_irqrestore(&fbs.lock, flags);
 
-	for (y = y0; y <= y1; y++)
-		flush_range(fbs.phys + (phys_addr_t)y * fbs.stride + x0 * BYTES_PER_PIXEL,
-			    (size_t)(x1 - x0 + 1) * BYTES_PER_PIXEL);
+	if (dirty)
+		for (y = y0; y <= y1; y++)
+			flush_range(fbs.phys + (phys_addr_t)y * fbs.stride + x0 * BYTES_PER_PIXEL,
+				    (size_t)(x1 - x0 + 1) * BYTES_PER_PIXEL);
+	/* Damage first, park second: by the time the scanout moves to the other
+	 * frame, everything rendered into it is in DRAM. */
+	if (park_req)
+		soct_dp_set_scanout_frame(park_frame);
 }
 
-/* Callable from any context: the console draws from wherever printk runs. */
+/* Callable from any context: the console draws from wherever printk runs. The
+ * y range spans all frames of the carve-out - writes into the back frame (rows
+ * height..2*height-1 of the virtual screen) damage-track like any others. */
 static void soct_dp_fb_damage_area(struct fb_info *info, u32 x, u32 y, u32 w, u32 h)
 {
 	unsigned long flags;
+	u32 vh = fbs.height * fbs.frames;
 	u32 x1, y1;
 
-	if (!w || !h || x >= fbs.width || y >= fbs.height)
+	if (!w || !h || x >= fbs.width || y >= vh)
 		return;
 	x1 = min(x + w - 1, fbs.width - 1);
-	y1 = min(y + h - 1, fbs.height - 1);
+	y1 = min(y + h - 1, vh - 1);
 
 	spin_lock_irqsave(&fbs.lock, flags);
 	if (fbs.dirty) {
@@ -167,14 +193,76 @@ static void soct_dp_fb_damage_range(struct fb_info *info, off_t off, size_t len)
 	soct_dp_fb_damage_area(info, 0, y0, fbs.width, y1 - y0 + 1);
 }
 
-FB_GEN_DEFAULT_DEFERRED_IOMEM_OPS(soct_dp_fb, soct_dp_fb_damage_range,
-				  soct_dp_fb_damage_area)
+/* read()/write() copy directly between user memory and the carve-out. The
+ * generic fb_io_* helpers bounce every page through a kmalloc buffer - twice
+ * the memory traffic - and streaming bandwidth is this platform's frame-rate
+ * ceiling for full-screen writers (the bounce costs ~60 ms on a 720p frame).
+ * The carve-out is ordinary cacheable RAM, so no iomem accessors are needed. */
+static ssize_t soct_dp_fb_read(struct fb_info *info, char __user *buf,
+			       size_t count, loff_t *ppos)
+{
+	loff_t pos = *ppos;
+	size_t total = info->fix.smem_len;
+
+	if (pos < 0)
+		return -EFBIG;
+	if ((size_t)pos >= total || !count)
+		return 0;
+	if (count > total - pos)
+		count = total - pos;
+	if (copy_to_user(buf, (u8 *)fbs.virt + pos, count))
+		return -EFAULT;
+	*ppos = pos + count;
+	return count;
+}
+
+static ssize_t soct_dp_fb_write(struct fb_info *info, const char __user *buf,
+				size_t count, loff_t *ppos)
+{
+	loff_t pos = *ppos;
+	size_t total = info->fix.smem_len;
+
+	if (pos < 0 || (size_t)pos > total)
+		return -EFBIG;
+	if (count > total - pos)
+		count = total - pos;
+	if (!count)
+		return -ENOSPC;
+	if (copy_from_user((u8 *)fbs.virt + pos, buf, count))
+		return -EFAULT;
+	*ppos = pos + count;
+	soct_dp_fb_damage_range(info, pos, count);
+	return count;
+}
+
+/* Slow-path drawing: the iomem helpers draw, the touched area becomes damage. */
+static void soct_dp_fb_defio_fillrect(struct fb_info *info,
+				      const struct fb_fillrect *rect)
+{
+	cfb_fillrect(info, rect);
+	soct_dp_fb_damage_area(info, rect->dx, rect->dy, rect->width, rect->height);
+}
+
+static void soct_dp_fb_defio_copyarea(struct fb_info *info,
+				      const struct fb_copyarea *area)
+{
+	cfb_copyarea(info, area);
+	soct_dp_fb_damage_area(info, area->dx, area->dy, area->width, area->height);
+}
+
+static void soct_dp_fb_defio_imageblit(struct fb_info *info,
+				       const struct fb_image *image)
+{
+	cfb_imageblit(info, image);
+	soct_dp_fb_damage_area(info, image->dx, image->dy, image->width, image->height);
+}
 
 /* The generic drawing helpers have no 24bpp fast path - every pixel goes
  * through their bit-shifting slow loop, and with fbcon hardwired to
  * SCROLL_REDRAW (no legacy acceleration) a single console scroll redraws the
  * whole screen through imageblit. The two ops the console actually leans on
- * get fast paths here; everything else falls back to the generated defaults.
+ * get fast paths here; everything else falls back to the damage-tracking cfb
+ * wrappers above.
  *
  * Glyphs are 1-bit bitmaps: each source byte selects one of 256 precomputed
  * 8-pixel patterns, so a glyph row is one small memcpy instead of eight
@@ -314,12 +402,39 @@ static int soct_dp_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	return -ENODEV;
 }
 
+/* Whole-frame panning = page flipping: yoffset selects which frame the
+ * scanout parks on (fix.ypanstep is the frame height, so nothing finer ever
+ * validates). The pan returns immediately; the flush worker pushes the
+ * frame's damage to DRAM and only then moves the park pointer, which the
+ * VDMA applies at the next frame boundary - a flip can never show a torn or
+ * stale frame. Rendering into the back frame while the front one is scanned
+ * out is what makes the write path tear-free end to end. */
+static int soct_dp_fb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
+{
+	unsigned long flags;
+
+	if (var->xoffset || var->yoffset % fbs.height)
+		return -EINVAL;
+	if (var->yoffset / fbs.height >= fbs.frames)
+		return -EINVAL;
+	spin_lock_irqsave(&fbs.lock, flags);
+	fbs.park_frame = var->yoffset / fbs.height;
+	fbs.park_req = true;
+	spin_unlock_irqrestore(&fbs.lock, flags);
+	/* Zero delay: the frame is finished - push it now, not a frame later.
+	 * system_percpu_wq is the queue schedule_delayed_work() puts this work
+	 * on - a work item must not move between workqueues. */
+	mod_delayed_work(system_percpu_wq, &fbs.flush_work, 0);
+	return 0;
+}
+
 static void soct_dp_fb_fill_var(struct fb_var_screeninfo *var, const struct soct_dp_mode *m)
 {
 	var->xres = m->hactive;
 	var->yres = m->vactive;
 	var->xres_virtual = m->hactive;
-	var->yres_virtual = m->vactive;
+	var->yres_virtual = m->vactive *
+			    fb_nframes(m->hactive * BYTES_PER_PIXEL, m->vactive);
 	var->xoffset = 0;
 	var->yoffset = 0;
 	var->bits_per_pixel = 24;
@@ -393,8 +508,11 @@ static int soct_dp_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *i
 	 * cannot grow later. The registration-time mode is therefore the real
 	 * ceiling under mmap, tighter than the carve-out itself; real designs
 	 * never hit this since they only ever run the one mode they were
-	 * timing-closed for. */
-	if (fbs.mmap_ok && frame_size > fbs.defio_size)
+	 * timing-closed for. Both frames count: mmap covers the whole virtual
+	 * screen. */
+	if (fbs.mmap_ok &&
+	    frame_size * fb_nframes(m.hactive * BYTES_PER_PIXEL, m.vactive) >
+		    fbs.defio_size)
 		return -EINVAL;
 	if (soct_dp_validate_mode(&m))
 		return -EINVAL;
@@ -418,6 +536,7 @@ static int soct_dp_fb_set_par(struct fb_info *info)
 	cancel_delayed_work_sync(&fbs.flush_work);
 	spin_lock_irqsave(&fbs.lock, flags);
 	fbs.dirty = false;
+	fbs.park_req = false; /* the mode switch restarts the scanout on frame 0 */
 	spin_unlock_irqrestore(&fbs.lock, flags);
 
 	err = soct_dp_switch_mode(&m);
@@ -428,14 +547,16 @@ static int soct_dp_fb_set_par(struct fb_info *info)
 	fbs.width = m.hactive;
 	fbs.height = m.vactive;
 	fbs.stride = m.hactive * BYTES_PER_PIXEL;
+	fbs.frames = fb_nframes(fbs.stride, fbs.height);
 	size = (size_t)fbs.stride * fbs.height;
 	info->fix.line_length = fbs.stride;
-	info->fix.smem_len = size;
+	info->fix.smem_len = size * fbs.frames;
+	info->fix.ypanstep = fbs.frames == 2 ? fbs.height : 0;
 
-	/* The old frame's bytes are garbage under the new stride: present black,
+	/* The old frames' bytes are garbage under the new stride: present black,
 	 * pushed out to where the scanout reads. fbcon repaints on top. */
-	memset(fbs.virt, 0, size);
-	flush_range(fbs.phys, size);
+	memset(fbs.virt, 0, size * fbs.frames);
+	flush_range(fbs.phys, size * fbs.frames);
 	return 0;
 }
 
@@ -458,11 +579,12 @@ static const struct fb_ops soct_dp_fb_ops = {
 	.owner = THIS_MODULE,
 	.fb_check_var = soct_dp_fb_check_var,
 	.fb_set_par = soct_dp_fb_set_par,
-	.fb_read = soct_dp_fb_defio_read,
-	.fb_write = soct_dp_fb_defio_write,
+	.fb_read = soct_dp_fb_read,
+	.fb_write = soct_dp_fb_write,
 	.fb_fillrect = soct_dp_fb_fillrect,
 	.fb_copyarea = soct_dp_fb_defio_copyarea,
 	.fb_imageblit = soct_dp_fb_imageblit,
+	.fb_pan_display = soct_dp_fb_pan_display,
 	.fb_mmap = soct_dp_fb_mmap,
 	.fb_setcolreg = soct_dp_fb_setcolreg,
 	.fb_destroy = soct_dp_fb_destroy,
@@ -510,12 +632,13 @@ int soct_dp_fb_prepare(phys_addr_t fb, resource_size_t fb_size,
 	fbs.width = mode->hactive;
 	fbs.height = mode->vactive;
 	fbs.stride = mode->hactive * BYTES_PER_PIXEL;
+	fbs.frames = fb_nframes(fbs.stride, fbs.height);
 	spin_lock_init(&fbs.lock);
 	INIT_DELAYED_WORK(&fbs.flush_work, soct_dp_fb_flush_work);
 
 	/* The scanout must never fetch what DRAM held before: clear, then push it out. */
-	memset(fbs.virt, 0, size);
-	flush_range(fbs.phys, size);
+	memset(fbs.virt, 0, size * fbs.frames);
+	flush_range(fbs.phys, size * fbs.frames);
 	return 0;
 
 err_unmap_l2:
@@ -536,8 +659,11 @@ int soct_dp_fb_register(void)
 		.type = FB_TYPE_PACKED_PIXELS,
 		.visual = FB_VISUAL_TRUECOLOR,
 		.smem_start = fbs.phys,
-		.smem_len = fbs.stride * fbs.height,
+		.smem_len = fbs.stride * fbs.height * fbs.frames,
 		.line_length = fbs.stride,
+		/* Panning granularity = a whole frame: yoffset picks a frame,
+		 * nothing finer ever validates (and fbcon never pan-scrolls). */
+		.ypanstep = fbs.frames == 2 ? fbs.height : 0,
 		.accel = FB_ACCEL_NONE,
 	};
 	strscpy(info->fix.id, "soct-dp", sizeof(info->fix.id));

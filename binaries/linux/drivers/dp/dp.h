@@ -43,4 +43,9 @@ int soct_dp_validate_mode(struct soct_dp_mode *m);
  * caller repaints for the new geometry. */
 int soct_dp_switch_mode(const struct soct_dp_mode *m);
 
+/* Park the scanout on frame 0 or 1 of the carve-out (fb.c's panning). Applied
+ * by the VDMA at the next frame boundary. Frame 1 exists only when the
+ * carve-out holds two frames of the current mode; the caller ensures that. */
+void soct_dp_set_scanout_frame(unsigned int frame);
+
 #endif

@@ -114,7 +114,11 @@ object SOCTRemote {
     val dirName = localDir.getFileName.toString
     val remoteSrc = s"$sshHost:$remoteRoot/$dirName/"
     val localDst = s"${localDir.toAbsolutePath}/"
-    rsync(Seq("rsync", "-az", "--progress", "--stats", remoteSrc, localDst), s"pull $remoteSrc -> $localDst")
+    // --update: a pull must never overwrite local files that are newer than the remote
+    // copy - regenerated or hand-fixed workspace sources (DTS, headers) would silently
+    // revert to the stale remote state otherwise. -a preserves mtimes in both transfer
+    // directions, so the comparison is between generation times, not transfer times.
+    rsync(Seq("rsync", "-az", "--update", "--progress", "--stats", remoteSrc, localDst), s"pull $remoteSrc -> $localDst")
   }
 }
 

@@ -2,12 +2,28 @@
  * doom on the framebuffer console - the soct platform layer under doomgeneric
  * (GPL-2, like the engine it drives; fetched by the build, see CMakeLists.txt).
  *
- * The engine renders its native 320x200 into DG_ScreenBuffer as 32-bit pixels
- * whose in-memory byte order (B,G,R,A) is a prefix of the framebuffer's 24bpp
- * (B,G,R) - the blit is a 4-to-3 byte copy, integer-upscaled to the largest
+ * The engine renders its native 320x200 into DG_ScreenBuffer as 8-bit palette
+ * indices (CMAP256); each index expands to its scale-repeated 24bpp pixels
+ * through a palette-derived pattern table, integer-upscaled to the largest
  * factor the active mode fits and centered. Frames go through write(): the
  * framebuffer driver damage-tracks written lines on every design variant, so
  * this port needs no knowledge of the display's coherence story.
+ *
+ * The blit is pipelined off the engine: DG_DrawFrame diffs the engine frame
+ * against the previous one, snapshots the changed rows, and returns; worker
+ * threads (one per hart, up to two) expand and write them while the engine
+ * ticks the next frame. Streaming bandwidth is this platform's ceiling and
+ * one hart cannot saturate the memory system - two concurrent streams come
+ * close to doubling it. The changed rows are split evenly between the
+ * workers and all writes start together behind a barrier: the driver's
+ * deferred flush then pushes one whole frame per cycle. Unevenly timed
+ * writes would flush as two half-frames a cycle apart - a standing tear at
+ * the split line.
+ *
+ * Where the fbdev exposes two frames (yres_virtual >= 2*yres, the incoherent
+ * designs' driver when the carve-out fits both), the workers render into the
+ * back frame and a whole-frame pan flips it in at a frame boundary -
+ * tear-free presentation; otherwise frames write in place as above.
  *
  * Like fbimg, the game takes the screen via KD_GRAPHICS (fbcon stops painting)
  * and restores KD_TEXT on any exit; the keyboard is read as evdev events and
@@ -21,6 +37,7 @@
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/kd.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -44,9 +61,9 @@ static struct fb_fix_screeninfo fix;
 static unsigned int scale, x0, y0;
 /* The scaled frame, staged as full framebuffer lines (borders pre-blacked), so
  * any contiguous run of game rows is one contiguous pwrite; prev holds the last
- * engine frame to skip rows that did not change (the status bar, most of a
- * menu). One write per frame instead of one per line keeps the deferred flush
- * from scanning out half-written frames. */
+ * pushed engine frame, diffed against to skip rows that did not change (the
+ * status bar, most of a menu). Every staged row keeps its latest content, so a
+ * write may span unchanged rows without pushing stale pixels. */
 static uint8_t *framebuf;
 static uint8_t *prev;
 /* Palette index -> its scale-repeated 24bpp pixels, rebuilt when the engine
@@ -57,12 +74,48 @@ static uint8_t pat[256][8 * 3];
  * incoherent fbdev - its page tracking re-protects every page each flush
  * cycle, so every frame re-faults the whole game area and each fault
  * serializes against the in-flight flush (measured: ~125 ms/frame of draw
- * time, vs ~20 ms through write()). NULL means the write() path is in use. */
+ * time). NULL means the write() path is in use. */
 static uint8_t *fbmap;
 static int want_mmap;
 
+/* The blit pipeline: the engine's changed rows at the moment DG_DrawFrame
+ * ran, the workers that expand and push them, and the barriers that hand a
+ * frame over (start), separate expanding from writing (mid), and report it
+ * done (done). Main touches shared state - snap, changed_rows, pat - only
+ * between the done and start barriers, when every worker is parked. */
+static uint8_t snap[DOOMGENERIC_RESY][DOOMGENERIC_RESX];
+static unsigned short write_rows[DOOMGENERIC_RESY];
+static unsigned n_write;
+static uint8_t expand_row[DOOMGENERIC_RESY];  /* changed this frame: re-expand */
+static uint8_t was_changed[DOOMGENERIC_RESY]; /* changed last frame */
+static struct {
+    pthread_t thread;
+    uint64_t blit_us; /* last frame's expand+write time */
+} wk[2];
+static unsigned nworkers;
+static pthread_barrier_t bar_start, bar_mid, bar_done;
+/* Page flipping on an fbdev whose virtual screen holds two frames
+ * (yres_virtual >= 2*yres): the workers write into the back frame and a
+ * whole-frame pan flips it in at a frame boundary - tear-free. A row must
+ * reach the back frame if it changed this frame OR the previous one (that
+ * buffer last saw the frame before last); rows changed only last frame need
+ * no re-expanding, the staging slab already holds their current pixels. */
+static int flip;
+static unsigned back;
+static volatile int quitting; /* exit path: stop flipping away from frame 0 */
+
 static void restore_console(void) {
+    quitting = 1;
     soct_evdev_close();
+    /* Show frame 0 again - the console lives there. A worker mid-flip can
+     * lose this race in a microsecond window; the fbcon takeover below pans
+     * back to 0 itself, so the console never stays hidden. */
+    if (flip && fb_fd >= 0) {
+        struct fb_var_screeninfo pv = var;
+
+        pv.yoffset = 0;
+        ioctl(fb_fd, FBIOPAN_DISPLAY, &pv);
+    }
     if (vt_fd >= 0) {
         ioctl(vt_fd, KDSETMODE, KD_TEXT); /* fbcon repaints the console */
         close(vt_fd);
@@ -73,6 +126,94 @@ static void restore_console(void) {
 static void on_signal(int sig) {
     (void)sig;
     exit(1); /* runs the atexit restore */
+}
+
+static uint64_t now_us(void) {
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+}
+
+/* Expand and push this worker's share of the frame's rows. All expanding
+ * finishes before any writing starts (mid barrier): the writes then cover
+ * near-equal spans and start together, so their damage lands in the same
+ * flush cycle and the deferred flush pushes one whole frame. When flipping,
+ * a second rendezvous on the same barrier lets one worker pan only after
+ * every write has landed. */
+static void blit_band(unsigned wi) {
+    unsigned per = n_write / nworkers;
+    unsigned from = wi * per;
+    unsigned to = (wi == nworkers - 1) ? n_write : from + per;
+    unsigned scale3 = scale * 3;
+
+    for (unsigned i = from; i < to; i++) {
+        unsigned y = write_rows[i];
+        const uint8_t *row = snap[y];
+        uint8_t *line = fbmap
+                ? fbmap + (size_t)(y0 + y * scale) * fix.line_length + x0 * 3
+                : framebuf + (size_t)y * scale * fix.line_length + x0 * 3;
+        uint8_t *dst = line;
+
+        if (!expand_row[y])
+            continue; /* staged already, only the pwrite below must cover it */
+        memcpy(prev + (size_t)y * DOOMGENERIC_RESX, row, DOOMGENERIC_RESX);
+        for (unsigned x = 0; x < DOOMGENERIC_RESX; x++) {
+            const uint8_t *p = pat[row[x]];
+
+            for (unsigned b = 0; b < scale3; b++)
+                dst[b] = p[b];
+            dst += scale3;
+        }
+        for (unsigned r = 1; r < scale; r++)
+            memcpy(line + (size_t)r * fix.line_length, line,
+                   (size_t)DOOMGENERIC_RESX * scale3);
+    }
+    pthread_barrier_wait(&bar_mid);
+    if (!fbmap && from < to) {
+        unsigned r0 = write_rows[from], r1 = write_rows[to - 1];
+
+        /* Unchanged rows inside the span still hold current content in the
+         * staging slab; rewriting them costs a few bytes, not correctness. */
+        pwrite(fb_fd, framebuf + (size_t)r0 * scale * fix.line_length,
+               (size_t)(r1 - r0 + 1) * scale * fix.line_length,
+               (off_t)((size_t)back * var.yres + y0 + r0 * scale) * fix.line_length);
+    }
+    if (flip) {
+        pthread_barrier_wait(&bar_mid); /* all writes landed */
+        if (wi == 0 && !quitting) {
+            struct fb_var_screeninfo pv = var;
+
+            pv.yoffset = back * var.yres;
+            ioctl(fb_fd, FBIOPAN_DISPLAY, &pv);
+            back ^= 1u;
+        }
+    }
+}
+
+static void *worker_main(void *arg) {
+    unsigned wi = (unsigned)(uintptr_t)arg;
+
+    for (;;) {
+        pthread_barrier_wait(&bar_start);
+        uint64_t t0 = now_us();
+
+        blit_band(wi);
+        wk[wi].blit_us = now_us() - t0;
+        pthread_barrier_wait(&bar_done);
+    }
+    return NULL;
+}
+
+static void spawn_workers(void) {
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+
+    nworkers = ncpu >= 2 ? 2 : 1;
+    pthread_barrier_init(&bar_start, NULL, nworkers + 1);
+    pthread_barrier_init(&bar_mid, NULL, nworkers);
+    pthread_barrier_init(&bar_done, NULL, nworkers + 1);
+    for (unsigned i = 0; i < nworkers; i++)
+        pthread_create(&wk[i].thread, NULL, worker_main, (void *)(uintptr_t)i);
 }
 
 void DG_Init() {
@@ -110,9 +251,15 @@ void DG_Init() {
         fprintf(stderr, "doom: out of memory\n");
         exit(1);
     }
-    /* Letterbox to black once; the game only repaints its own rectangle. */
-    for (uint32_t y = 0; y < var.yres; y += DOOMGENERIC_RESY * scale) {
-        size_t lines = var.yres - y;
+    /* Flip when the fbdev exposes a second frame behind the visible one (the
+     * incoherent designs' driver does when the carve-out fits two). */
+    flip = !want_mmap && var.yres_virtual >= 2 * var.yres;
+    back = flip ? 1 : 0;
+
+    /* Letterbox to black once (both frames when flipping); the game only
+     * repaints its own rectangle. */
+    for (uint32_t y = 0; y < var.yres * (flip ? 2u : 1u); y += DOOMGENERIC_RESY * scale) {
+        size_t lines = var.yres * (flip ? 2u : 1u) - y;
 
         if (lines > DOOMGENERIC_RESY * scale)
             lines = DOOMGENERIC_RESY * scale;
@@ -140,23 +287,29 @@ void DG_Init() {
     if (soct_evdev_open() != 0)
         fprintf(stderr, "doom: no keyboard found (evdev) - demo playback only\n");
 
-    printf("doom: %ux%u at (%u,%u), scale %ux, on %ux%u, %s (built %s %s)\n",
+    spawn_workers();
+    printf("doom: %ux%u at (%u,%u), scale %ux, on %ux%u, %s, %u blit worker%s "
+           "(built %s %s)\n",
            DOOMGENERIC_RESX * scale, DOOMGENERIC_RESY * scale, x0, y0, scale,
-           var.xres, var.yres, fbmap ? "mmap" : "write()", __DATE__, __TIME__);
-}
-
-static uint64_t now_us(void) {
-    struct timespec ts;
-
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+           var.xres, var.yres,
+           fbmap ? "mmap" : (flip ? "write()+flip" : "write()"), nworkers,
+           nworkers > 1 ? "s" : "", __DATE__, __TIME__);
 }
 
 void DG_DrawFrame() {
-    const uint8_t *src = (const uint8_t *)DG_ScreenBuffer;
-    unsigned int first = DOOMGENERIC_RESY, last = 0;
-    unsigned int scale3 = scale * 3;
-    uint64_t t0 = now_us();
+    static int primed;
+    static uint64_t stall_us, blit_acc_us, t_last;
+    static uint32_t frames;
+    uint64_t t0 = now_us(), blit_prev = 0;
+
+    /* Collect the previous frame before touching anything the workers read. */
+    if (primed) {
+        pthread_barrier_wait(&bar_done);
+        for (unsigned i = 0; i < nworkers; i++)
+            if (wk[i].blit_us > blit_prev)
+                blit_prev = wk[i].blit_us;
+    }
+
     int force = 0;
 
     if (palette_changed) {
@@ -170,58 +323,42 @@ void DG_DrawFrame() {
         palette_changed = false;
         force = 1; /* same indices, new colors: every row must repaint */
     }
-
+    n_write = 0;
     for (unsigned int y = 0; y < DOOMGENERIC_RESY; y++) {
-        const uint8_t *row = src + (size_t)y * DOOMGENERIC_RESX;
-        uint8_t *line = fbmap
-                ? fbmap + (size_t)(y0 + y * scale) * fix.line_length + x0 * 3
-                : framebuf + (size_t)y * scale * fix.line_length + x0 * 3;
-        uint8_t *dst = line;
+        const uint8_t *row =
+                (const uint8_t *)DG_ScreenBuffer + (size_t)y * DOOMGENERIC_RESX;
+        int changed = force ||
+                      memcmp(row, prev + (size_t)y * DOOMGENERIC_RESX,
+                             DOOMGENERIC_RESX) != 0;
 
-        if (!force &&
-            memcmp(row, prev + (size_t)y * DOOMGENERIC_RESX, DOOMGENERIC_RESX) == 0)
-            continue;
-        memcpy(prev + (size_t)y * DOOMGENERIC_RESX, row, DOOMGENERIC_RESX);
-        if (y < first)
-            first = y;
-        last = y;
-
-        for (unsigned int x = 0; x < DOOMGENERIC_RESX; x++) {
-            const uint8_t *p = pat[row[x]];
-
-            for (unsigned int b = 0; b < scale3; b++)
-                dst[b] = p[b];
-            dst += scale3;
-        }
-        for (unsigned int r = 1; r < scale; r++)
-            memcpy(line + (size_t)r * fix.line_length, line,
-                   (size_t)DOOMGENERIC_RESX * scale3);
+        if (changed)
+            memcpy(snap[y], row, DOOMGENERIC_RESX);
+        expand_row[y] = (uint8_t)changed;
+        if (changed || (flip && was_changed[y]))
+            write_rows[n_write++] = (unsigned short)y;
+        was_changed[y] = (uint8_t)changed;
     }
+    pthread_barrier_wait(&bar_start); /* the workers own this frame now */
+    primed = 1;
 
-    if (!fbmap && first <= last)
-        pwrite(fb_fd, framebuf + (size_t)first * scale * fix.line_length,
-               (size_t)(last - first + 1) * scale * fix.line_length,
-               (off_t)(y0 + first * scale) * fix.line_length);
-
-    /* Frame rate and the engine/draw split on stderr once a second - it lands
-     * on the serial console, live while the monitor shows the game. */
-    {
-        static uint64_t draw_us, t_last;
-        static uint32_t frames;
-        uint64_t now = now_us();
-
-        draw_us += now - t0;
-        frames++;
-        if (t_last == 0)
-            t_last = now;
-        if (now - t_last >= 1000000 && frames) {
-            fprintf(stderr, "doom: %u fps, draw %u ms/frame\n",
-                    (uint32_t)(frames * 1000000ull / (now - t_last)),
-                    (uint32_t)(draw_us / frames / 1000));
-            frames = 0;
-            draw_us = 0;
-            t_last = now;
-        }
+    /* Frame rate on stderr once a second - it lands on the serial console,
+     * live while the monitor shows the game. The stall is what the engine
+     * pays (waiting out the previous frame, then the snapshot); the blit is
+     * the workers' expand+write time, overlapped with the engine's tick. */
+    stall_us += now_us() - t0;
+    blit_acc_us += blit_prev;
+    frames++;
+    if (t_last == 0)
+        t_last = now_us();
+    if (now_us() - t_last >= 1000000 && frames) {
+        fprintf(stderr, "doom: %u fps, stall %u ms, blit %u ms/frame\n",
+                (uint32_t)(frames * 1000000ull / (now_us() - t_last)),
+                (uint32_t)(stall_us / frames / 1000),
+                (uint32_t)(blit_acc_us / frames / 1000));
+        frames = 0;
+        stall_us = 0;
+        blit_acc_us = 0;
+        t_last = now_us();
     }
 }
 

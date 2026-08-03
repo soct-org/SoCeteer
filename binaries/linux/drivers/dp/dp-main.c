@@ -106,6 +106,7 @@ static struct {
 	void __iomem *window;
 	void __iomem *pixclk; /* reconfigurable pixel MMCM; NULL on static designs */
 	phys_addr_t fb;
+	resource_size_t fb_size;
 	struct soct_dp_mode cur;         /* what the pipeline is scanning */
 	bool retunable;
 	struct soct_clk_wzrd_limits lim; /* the MMCM budget, from the device tree */
@@ -175,13 +176,18 @@ static int vdma_start(phys_addr_t fb, u32 width, u32 height)
 		return err;
 
 	/* Keep the reset defaults EXCEPT Circular_Park, whose reset value is 1: cleared, the
-	 * engine parks on the store PARK_PTR selects instead of cycling all of them. All
-	 * stores carry the one framebuffer - there is nothing to flip to. */
+	 * engine parks on the store PARK_PTR selects instead of cycling all of them. Store 1
+	 * is the second frame when the carve-out holds two (the fbdev then offers panning,
+	 * soct_dp_set_scanout_frame flips); otherwise every store carries the one frame. */
 	writel((readl(s.vdma + VDMA_MM2S_DMACR) | VDMA_DMACR_RS) & ~VDMA_DMACR_CIRCULAR,
 	       s.vdma + VDMA_MM2S_DMACR);
 	writel(0, s.vdma + VDMA_PARK_PTR);
-	for (i = 0; i < VDMA_NUM_FSTORES; i++)
-		writel(lower_32_bits(fb), s.vdma + VDMA_MM2S_START_ADDR1 + 4 * i);
+	for (i = 0; i < VDMA_NUM_FSTORES; i++) {
+		size_t frame = (size_t)width * 3 * height;
+		phys_addr_t store = (i == 1 && 2 * frame <= s.fb_size) ? fb + frame : fb;
+
+		writel(lower_32_bits(store), s.vdma + VDMA_MM2S_START_ADDR1 + 4 * i);
+	}
 	writel(width * 3, s.vdma + VDMA_MM2S_HSIZE);
 	writel(width * 3, s.vdma + VDMA_MM2S_FRMDLY_STRIDE);
 	writel(height, s.vdma + VDMA_MM2S_VSIZE); /* written last: starts the transfers */
@@ -193,6 +199,15 @@ static int vdma_start(phys_addr_t fb, u32 width, u32 height)
 		return -EIO;
 	}
 	return 0;
+}
+
+/* Park the scanout on frame 0 or 1; the VDMA applies a new park pointer at the
+ * next frame boundary, so the switch itself can never tear. Only meaningful
+ * when vdma_start pointed store 1 at a second frame - the fbdev offers panning
+ * exactly then (same carve-out arithmetic on both sides). */
+void soct_dp_set_scanout_frame(unsigned int frame)
+{
+	writel(frame & 0x1fu, s.vdma + VDMA_PARK_PTR);
 }
 
 static void vtc_start(const struct soct_dp_mode *m)
@@ -539,6 +554,7 @@ static void soct_dp_work(struct work_struct *work)
 	}
 
 	s.fb = fb_res.start;
+	s.fb_size = resource_size(&fb_res);
 	parse_pixclk();
 	if (s.retunable && soct_dp_validate_mode(&s.cur)) {
 		/* Normalizes the boot clock to the solver's achieved value, so later

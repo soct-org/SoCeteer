@@ -43,7 +43,7 @@ struct mode {
 /* Exact standard structures (CEA-861 / VESA DMT): what monitors expect for these
  * geometries, byte for byte - including the standard clocks (800x600@60 really
  * refreshes at 60.317 Hz; the structure, not the label, is the standard). */
-static const struct mode well_known[] = {
+static const struct mode standard[] = {
     { "640x480@60 (DMT)",     640,  480, 60,  25175000,  16,  96,  48, 10, 2, 33, 0, 0 },
     { "800x600@60 (DMT)",     800,  600, 60,  40000000,  40, 128,  88,  1, 4, 23, 1, 1 },
     { "1024x768@60 (DMT)",   1024,  768, 60,  65000000,  24, 136, 160,  3, 6, 29, 0, 0 },
@@ -52,7 +52,14 @@ static const struct mode well_known[] = {
     { "1920x1080@30 (CEA)",  1920, 1080, 30,  74250000,  88,  44, 148,  4, 5, 36, 1, 1 },
     { "1920x1080@60 (CEA)",  1920, 1080, 60, 148500000,  88,  44, 148,  4, 5, 36, 1, 1 },
 };
-#define NUM_WELL_KNOWN (sizeof(well_known) / sizeof(well_known[0]))
+#define NUM_STANDARD (sizeof(standard) / sizeof(standard[0]))
+
+/* The presented list: every geometry at both 30 and 60 Hz. A standard structure
+ * where one exists; CVT reduced blanking computed for the rest, the same timing
+ * --custom produces. Built once at startup. */
+static struct mode modes[2 * 6];
+static char mode_names[2 * 6][28];
+static unsigned int n_modes;
 
 /*
  * VESA CVT 1.2 reduced blanking v1 for an arbitrary active area and refresh:
@@ -100,6 +107,36 @@ static int cvt_rb(unsigned int w, unsigned int h, unsigned int fps, struct mode 
     return 0;
 }
 
+static void build_modes(void) {
+    static const struct { unsigned int w, h; } geo[] = {
+        { 640, 480 }, { 800, 600 }, { 1024, 768 },
+        { 1280, 720 }, { 1280, 1024 }, { 1920, 1080 },
+    };
+    unsigned int g, fps, k;
+
+    for (g = 0; g < sizeof(geo) / sizeof(geo[0]); g++) {
+        for (fps = 30; fps <= 60; fps += 30) {
+            struct mode *m = &modes[n_modes];
+            const struct mode *std = NULL;
+
+            for (k = 0; k < NUM_STANDARD; k++)
+                if (standard[k].w == geo[g].w && standard[k].h == geo[g].h &&
+                    standard[k].fps == fps)
+                    std = &standard[k];
+            if (std) {
+                *m = *std;
+            } else {
+                if (cvt_rb(geo[g].w, geo[g].h, fps, m))
+                    continue;
+                snprintf(mode_names[n_modes], sizeof(mode_names[n_modes]),
+                         "%ux%u@%u (CVT-RB)", geo[g].w, geo[g].h, fps);
+                m->name = mode_names[n_modes];
+            }
+            n_modes++;
+        }
+    }
+}
+
 static unsigned int refresh_mhz1000(const struct fb_var_screeninfo *v) {
     unsigned long long htotal = v->xres + v->left_margin + v->right_margin + v->hsync_len;
     unsigned long long vtotal = v->yres + v->upper_margin + v->lower_margin + v->vsync_len;
@@ -112,6 +149,11 @@ static unsigned int refresh_mhz1000(const struct fb_var_screeninfo *v) {
 static void report(const char *prefix, const struct fb_var_screeninfo *v) {
     unsigned int mhz1000 = refresh_mhz1000(v);
 
+    /* No pixclock: the driver knows geometry but not timing (simplefb). */
+    if (!mhz1000) {
+        printf("%s%ux%u (refresh unknown)\n", prefix, v->xres, v->yres);
+        return;
+    }
     printf("%s%ux%u@%u.%03u\n", prefix, v->xres, v->yres, mhz1000 / 1000, mhz1000 % 1000);
 }
 
@@ -137,16 +179,19 @@ static void list_modes(const struct fb_var_screeninfo *cur) {
 
     printf("fbmode built %s %s\n", __DATE__, __TIME__);
     report("current mode: ", cur);
+    if (!cur->pixclock)
+        printf("this framebuffer carries no timing and cannot switch modes - the mode\n"
+               "is fixed by the design (coherent designs serve the console via simplefb)\n");
     printf("well-known modes (fbmode <n> to switch):\n");
-    for (i = 0; i < NUM_WELL_KNOWN; i++) {
-        const struct mode *m = &well_known[i];
+    for (i = 0; i < n_modes; i++) {
+        const struct mode *m = &modes[i];
         /* Geometry alone is ambiguous (1080p30 vs 1080p60); the dot period breaks
          * the tie - the kernel reports the exactly-achieved clock, which for the
-         * standard clocks is the standard value this table carries. */
+         * clocks in this list is the value the table carries. */
         int is_cur = m->w == cur->xres && m->h == cur->yres &&
                      cur->pixclock == (2000000000000ULL / m->clock_hz + 1) / 2;
 
-        printf(" %s%zu) %-19s %3llu.%03llu MHz pixel clock\n", is_cur ? "*" : " ",
+        printf(" %s%zu) %-21s %3llu.%03llu MHz pixel clock\n", is_cur ? "*" : " ",
                i + 1, m->name, m->clock_hz / 1000000, m->clock_hz % 1000000 / 1000);
     }
     printf("anything else: fbmode --custom <width> <height> <fps>\n");
@@ -204,6 +249,16 @@ static int apply(int fd, const struct mode *m, int yes) {
     }
     if (ioctl(fd, FBIOGET_VSCREENINFO, &var) != 0) {
         perror("FBIOGET_VSCREENINFO");
+        return 1;
+    }
+    /* A driver without a mode-set path accepts the ioctl and changes nothing
+     * (simplefb: no check_var/set_par). Silence here would fake a switch and
+     * then "revert" it. */
+    if (var.xres != m->w || var.yres != m->h || !var.pixclock) {
+        fprintf(stderr,
+                "fbmode: the driver ignored the request - this framebuffer cannot switch\n"
+                "        modes (coherent designs serve the console via simplefb; the mode\n"
+                "        is fixed by the design)\n");
         return 1;
     }
     report("switched to ", &var);
@@ -265,6 +320,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    build_modes();
     fd = open(fb_dev, O_RDWR);
     if (fd < 0) {
         perror(fb_dev);
@@ -288,11 +344,11 @@ int main(int argc, char **argv) {
         w = arg_num(args[1]);
         h = arg_num(args[2]);
         fps = arg_num(args[3]);
-        /* A geometry the standards define gets its exact standard structure -
+        /* A geometry the list carries gets its exact listed structure -
          * monitors identify modes by their timing, not by the label. */
-        for (k = 0; k < NUM_WELL_KNOWN; k++)
-            if (well_known[k].w == w && well_known[k].h == h && well_known[k].fps == fps)
-                m = &well_known[k];
+        for (k = 0; k < n_modes; k++)
+            if (modes[k].w == w && modes[k].h == h && modes[k].fps == fps)
+                m = &modes[k];
         if (!m) {
             if (cvt_rb(w, h, fps, &custom))
                 return 2;
@@ -304,12 +360,12 @@ int main(int argc, char **argv) {
         if (n != 1)
             usage();
         idx = arg_num(args[0]);
-        if (idx > NUM_WELL_KNOWN) {
-            fprintf(stderr, "fbmode: no mode %lu (the list has %zu entries)\n",
-                    idx, NUM_WELL_KNOWN);
+        if (idx > n_modes) {
+            fprintf(stderr, "fbmode: no mode %lu (the list has %u entries)\n",
+                    idx, n_modes);
             return 2;
         }
-        m = &well_known[idx - 1];
+        m = &modes[idx - 1];
     }
     return apply(fd, m, yes);
 }
