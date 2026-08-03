@@ -18,7 +18,10 @@ add_dependencies(${SOCT_PROGRAM} linux-sysroot)
 target_compile_options(${SOCT_PROGRAM} PRIVATE -O2)
 message(STATUS "Adding Linux userspace program ${SOCT_PROGRAM}")
 
+# BYPRODUCTS makes the installed copy an output of the link edge: deleting it
+# from SOCT_ELFS_DIR re-runs the copy on the next build instead of "up to date".
 add_custom_command(TARGET ${SOCT_PROGRAM} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${SOCT_PROGRAM}>" "${SOCT_ELFS_DIR}/${SOCT_PROGRAM}"
+        BYPRODUCTS "${SOCT_ELFS_DIR}/${SOCT_PROGRAM}"
         COMMENT "Installing ${SOCT_PROGRAM} to ${SOCT_ELFS_DIR}"
         VERBATIM)

@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
     if (optind != argc - 1) {
     usage:
         fprintf(stderr,
-                "usage: %s [-d <fbdev>] <image>\n"
+                "usage: %s [-d <fbdev>] <image>   (built " __DATE__ " " __TIME__ ")\n"
                 "  image: PNG, JPEG, BMP, GIF, TGA, PPM/PGM - held until a key or Ctrl-C\n"
                 "  fbdev: framebuffer device (default /dev/fb0)\n",
                 argv[0]);

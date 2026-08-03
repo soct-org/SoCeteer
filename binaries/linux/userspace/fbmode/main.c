@@ -135,6 +135,7 @@ static void mode_to_var(const struct mode *m, struct fb_var_screeninfo *var) {
 static void list_modes(const struct fb_var_screeninfo *cur) {
     size_t i;
 
+    printf("fbmode built %s %s\n", __DATE__, __TIME__);
     report("current mode: ", cur);
     printf("well-known modes (fbmode <n> to switch):\n");
     for (i = 0; i < NUM_WELL_KNOWN; i++) {

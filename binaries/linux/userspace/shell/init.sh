@@ -15,11 +15,23 @@ export PATH=/bin
 _printk="$(cut -f1 /proc/sys/kernel/printk)"
 dmesg -n 1
 
-# The out-of-tree drivers baked into this image - the SD controller first: it hands the
-# boot medium to Linux as /dev/mmcblk0 (mount the FAT partition from the shell, e.g.
-# `mount -t vfat /dev/mmcblk0p1 /mnt` - or /dev/mmcblk0 when the card has no table).
+# Hardware knowledge: which driver belongs to which device-tree hardware, and
+# which quirks the running system has (the banner prints them).
+. /etc/soct-quirks.sh
+
+# The out-of-tree drivers baked into this image, each loaded only when the
+# device tree carries its hardware - the same image boots designs and boards
+# without that subsystem. The SD controller hands the boot medium to Linux as
+# /dev/mmcblk0 (mount the FAT partition from the shell, e.g.
+# `mount -t vfat /dev/mmcblk0p1 /mnt`).
 for m in /lib/modules/*.ko; do
-    [ -e "$m" ] && insmod "$m"
+    [ -e "$m" ] || continue
+    _mod="${m##*/}"
+    _gate="$(module_gate "${_mod%.ko}")"
+    if [ -n "$_gate" ] && ! dt_has "$_gate"; then
+        continue
+    fi
+    insmod "$m"
 done
 
 # The machine's name comes from the design (/chosen/soct,board in the DTS); prompts
@@ -40,13 +52,18 @@ done
 
 echo
 echo "==============================================================================="
-echo "  SoCeteer v${SOCT_VERSION:-?} on $(hostname)"
+echo "  SoCeteer v${SOCT_VERSION:-?} on $(hostname)  -  build ${SOCT_BUILD:-?}"
 echo "  $(uname -sr)  -  $(busybox | busybox head -1 | busybox cut -d' ' -f1-2)"
 echo "  Tools:$_tools"
 echo "  This shell is a ramdisk - nothing persists. 'soct' lists the SD/USB"
 echo "  devices and enters (or creates) the persistent environment there;"
 echo "  leaving it (exit) unmounts, so the medium can be pulled."
 echo "  Kernel messages: dmesg"
+_quirks="$(known_quirks)"
+if [ -n "$_quirks" ]; then
+    echo "  Known quirks of this hardware:"
+    echo "$_quirks" | sed 's/^/    /'
+fi
 echo "==============================================================================="
 dmesg -n "${_printk:-7}"
 

@@ -65,11 +65,19 @@
 
   <h2>3. Program the board</h2>
   <p>Open the workspace's Vivado project and program the bitstream with the Hardware
-  Manager (or your usual <code>xsdb</code> flow). From here on it is software: the boot ROM
-  inside the bitstream loads <code>BOOT.ELF</code> from the SD card, and JTAG can load ELFs
-  directly &mdash; the <a href="../systems/binaries.html">Binaries page</a> covers both,
-  and <a href="linux-monitor.html">Monitor &amp; Linux Programs</a> is the full worked
-  run.</p>
+  Manager (or your usual <code>xsdb</code> flow).</p>
+  <div class="note">On MPSoC boards (ZCU104), one more step after <em>every power-up</em>,
+  <em>before</em> booting software: run the <code>psu_init</code> initialization (a TCL
+  script executed through <code>xsdb</code>). It configures the processing system &mdash;
+  DisplayPort and USB live there and stay dead without it. The script is produced by the
+  Vivado project's hardware export, so after a remote build it sits on the build server;
+  copy it somewhere a regeneration will not delete. Flash preludes run it automatically
+  with every JTAG load &mdash; see the
+  <a href="../systems/binaries.html">Binaries page</a>.</div>
+  <p>From here on it is software: the boot ROM inside the bitstream loads
+  <code>BOOT.ELF</code> from the SD card, and JTAG can load ELFs directly &mdash; the
+  <a href="../systems/binaries.html">Binaries page</a> covers both, and
+  <a href="linux-monitor.html">Monitor &amp; Linux Programs</a> is the full worked run.</p>
 
   <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
 </main>

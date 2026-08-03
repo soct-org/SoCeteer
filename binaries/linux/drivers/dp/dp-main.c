@@ -547,6 +547,22 @@ static void soct_dp_work(struct work_struct *work)
 		pr_warn("soct-dp: the retune budget cannot reproduce the synthesized pixel clock - resolution switching disabled\n");
 		s.retunable = false;
 	}
+	if (s.retunable) {
+		/* The MMCM's programmed dividers survive a warm reboot, so after a
+		 * kept mode switch the pixel clock still ticks at the OLD mode while
+		 * everything downstream gets configured for the boot mode - the
+		 * screen shows the mismatch as tearing/striping until something
+		 * retunes. Never trust the inherited clock: program it. Nothing
+		 * downstream runs yet, so no halt/restart dance is needed. */
+		struct soct_clk_wzrd_setting set;
+
+		if (soct_clk_wzrd_solve(&s.lim, s.cur.pixel_clock_hz, &set) ||
+		    pixclk_retune(&set))
+			pr_warn("soct-dp: cannot program the boot pixel clock - scanout may run off-frequency\n");
+		else
+			pr_info("soct-dp: boot pixel clock programmed to %u Hz (inherited state discarded)\n",
+				set.achieved_hz);
+	}
 
 	pr_info("soct-dp: scanout %ux%u@%u from the console framebuffer at %pa%s\n",
 		s.cur.hactive, s.cur.vactive, s.cur.fps, &fb_res.start,

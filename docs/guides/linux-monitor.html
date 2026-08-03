@@ -63,11 +63,19 @@ cmake --build build-linux --target shell-boot-elf</code></pre>
   <code>udevadm trigger</code> re-creates a vanished device.</div>
 
   <h2>4. Boot</h2>
+  <div class="note">After a power-up, the processing system must be initialized
+  (<code>psu_init</code>) <em>before</em> Linux boots &mdash; without it the monitor and
+  USB stay dead. <a href="bitstream.html">From Design to Bitstream</a>, step 3, covers
+  it.</div>
   <p>Power-cycle the board (or press its reset button). The boot ROM loads
   <code>BOOT.ELF</code> from the card; boot ends in a banner on <em>both</em> consoles: the
   serial terminal, and the monitor, which renders the Linux console. The USB keyboard types
   into its own independent shell on the monitor. The prompt reads
   <code>ramdisk@ZCU104</code>: the system is RAM-only, nothing survives a reboot yet.</p>
+  <div class="note">Warm reboots (<code>reboot</code>, the reset button) reset the SoC but
+  <em>not</em> the processing system, which keeps running with live state &mdash; USB may
+  come back dead, and a power cycle plus <code>psu_init</code> is the cure. The boot
+  banner lists the known quirks of whatever hardware the image finds itself on.</div>
   <p>The shell is BusyBox &mdash; the usual commands (<code>ls</code>, <code>mount</code>,
   <code>vi</code>, <code>dmesg</code>) &mdash; plus SoCeteer's own helper programs; the
   banner lists them. Steps 5&ndash;7 are those helpers.</p>

@@ -79,6 +79,11 @@ static void flush_range(phys_addr_t start, size_t len)
 {
 	phys_addr_t a = start & ~(phys_addr_t)(CACHE_LINE - 1);
 
+	/* writeq, never a raw-write loop: a trigger that arrives while the
+	 * previous line's flush is still in flight is dropped, and the dropped
+	 * lines scan out as cache-line-striped columns of stale DRAM. The
+	 * per-write fence spaces the triggers far enough apart that each one
+	 * lands on an idle flush engine - it is pacing as much as ordering. */
 	for (; a < start + len; a += CACHE_LINE)
 		writeq(a, fbs.l2_ctrl + L2_FLUSH64_OFFSET);
 }
@@ -164,6 +169,89 @@ static void soct_dp_fb_damage_range(struct fb_info *info, off_t off, size_t len)
 
 FB_GEN_DEFAULT_DEFERRED_IOMEM_OPS(soct_dp_fb, soct_dp_fb_damage_range,
 				  soct_dp_fb_damage_area)
+
+/* The generic drawing helpers have no 24bpp fast path - every pixel goes
+ * through their bit-shifting slow loop, and with fbcon hardwired to
+ * SCROLL_REDRAW (no legacy acceleration) a single console scroll redraws the
+ * whole screen through imageblit. The two ops the console actually leans on
+ * get fast paths here; everything else falls back to the generated defaults.
+ *
+ * Glyphs are 1-bit bitmaps: each source byte selects one of 256 precomputed
+ * 8-pixel patterns, so a glyph row is one small memcpy instead of eight
+ * bit-tested pixel writes. The pattern table depends only on the fg/bg pair,
+ * which the console changes rarely; it is rebuilt on change. fbcon serializes
+ * drawing, so the table needs no locking. */
+static struct {
+	u32 fg, bg;
+	bool valid;
+	u8 pat[256][8 * BYTES_PER_PIXEL];
+} glyph;
+
+static void soct_dp_fb_imageblit(struct fb_info *info, const struct fb_image *image)
+{
+	const u32 *pal = info->pseudo_palette;
+	const u8 *src = image->data;
+	u32 spitch = (image->width + 7) / 8;
+	u32 fg, bg, y;
+
+	if (image->depth != 1) {
+		soct_dp_fb_defio_imageblit(info, image);
+		return;
+	}
+	fg = pal[image->fg_color];
+	bg = pal[image->bg_color];
+	if (!glyph.valid || glyph.fg != fg || glyph.bg != bg) {
+		for (u32 b = 0; b < 256; b++) {
+			for (u32 bit = 0; bit < 8; bit++) {
+				u32 c = (b & (0x80u >> bit)) ? fg : bg;
+				u8 *p = &glyph.pat[b][bit * BYTES_PER_PIXEL];
+
+				p[0] = c & 0xff;
+				p[1] = (c >> 8) & 0xff;
+				p[2] = (c >> 16) & 0xff;
+			}
+		}
+		glyph.fg = fg;
+		glyph.bg = bg;
+		glyph.valid = true;
+	}
+
+	for (y = 0; y < image->height; y++) {
+		u8 *dst = (u8 *)fbs.virt +
+			  (size_t)(image->dy + y) * fbs.stride +
+			  (size_t)image->dx * BYTES_PER_PIXEL;
+		u32 rem = image->width;
+
+		for (u32 i = 0; i < spitch; i++) {
+			u32 px = min(rem, 8u);
+
+			memcpy(dst, glyph.pat[src[i]], (size_t)px * BYTES_PER_PIXEL);
+			dst += px * BYTES_PER_PIXEL;
+			rem -= px;
+		}
+		src += spitch;
+	}
+	soct_dp_fb_damage_area(info, image->dx, image->dy, image->width, image->height);
+}
+
+/* Console clears are solid black (and cursors invert to greys): any color whose
+ * three bytes are equal is a plain memset per line. */
+static void soct_dp_fb_fillrect(struct fb_info *info, const struct fb_fillrect *rect)
+{
+	const u32 *pal = info->pseudo_palette;
+	u32 c = pal[rect->color];
+	u8 b = c & 0xff;
+
+	if (rect->rop != ROP_COPY || b != ((c >> 8) & 0xff) || b != ((c >> 16) & 0xff)) {
+		soct_dp_fb_defio_fillrect(info, rect);
+		return;
+	}
+	for (u32 y = 0; y < rect->height; y++)
+		memset((u8 *)fbs.virt + (size_t)(rect->dy + y) * fbs.stride +
+			       (size_t)rect->dx * BYTES_PER_PIXEL,
+		       b, (size_t)rect->width * BYTES_PER_PIXEL);
+	soct_dp_fb_damage_area(info, rect->dx, rect->dy, rect->width, rect->height);
+}
 
 static int soct_dp_fb_setcolreg(u_int regno, u_int red, u_int green, u_int blue,
 				u_int transp, struct fb_info *info)
@@ -372,9 +460,9 @@ static const struct fb_ops soct_dp_fb_ops = {
 	.fb_set_par = soct_dp_fb_set_par,
 	.fb_read = soct_dp_fb_defio_read,
 	.fb_write = soct_dp_fb_defio_write,
-	.fb_fillrect = soct_dp_fb_defio_fillrect,
+	.fb_fillrect = soct_dp_fb_fillrect,
 	.fb_copyarea = soct_dp_fb_defio_copyarea,
-	.fb_imageblit = soct_dp_fb_defio_imageblit,
+	.fb_imageblit = soct_dp_fb_imageblit,
 	.fb_mmap = soct_dp_fb_mmap,
 	.fb_setcolreg = soct_dp_fb_setcolreg,
 	.fb_destroy = soct_dp_fb_destroy,
@@ -482,6 +570,9 @@ int soct_dp_fb_register(void)
 		return err;
 	}
 	fbs.info = info;
+	/* No build stamp here: kbuild forbids __DATE__ (-Werror=date-time). The
+	 * modules travel inside the boot image, whose identity /etc/soct-release
+	 * carries - the banner and `soct` print it. */
 	pr_info("soct-dp: fb%d: console framebuffer, dirty rectangles flushed through the L2\n",
 		info->node);
 	return 0;

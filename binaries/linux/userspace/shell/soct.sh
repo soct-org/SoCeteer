@@ -148,12 +148,22 @@ enter_or_create() {
     fi
     echo "soct: environment at $SOCT_FS (also reachable from this shell)"
 
+    # The environment carries copies of the tools from whatever image populated
+    # it; a differing build identity means those copies are stale.
+    if [ -f "$SOCT_FS/etc/soct-release" ] && ! cmp -s /etc/soct-release "$SOCT_FS/etc/soct-release"; then
+        echo "soct: NOTE - this environment was created from a different image build:"
+        echo "soct:   image:       $(grep SOCT_BUILD /etc/soct-release)"
+        echo "soct:   environment: $(grep SOCT_BUILD "$SOCT_FS/etc/soct-release" || echo 'SOCT_BUILD=unknown')"
+        echo "soct:   refresh its tools:  cp /bin/fbmode /bin/fbimg /bin/doom $SOCT_FS/bin/ && cp /etc/soct-release $SOCT_FS/etc/"
+        echo "soct:   or recreate it:     exit, then  rm $_mnt/$IMG_REL  and re-run soct"
+    fi
+
     if [ -n "$_fresh" ] || [ ! -x "$SOCT_FS/bin/busybox" ]; then
         echo "soct: populating the environment"
         mkdir -p "$SOCT_FS/bin" "$SOCT_FS/etc" "$SOCT_FS/proc" "$SOCT_FS/sys" \
                  "$SOCT_FS/dev" "$SOCT_FS/tmp" "$SOCT_FS/media" "$SOCT_FS/home/soct"
         cp /bin/busybox "$SOCT_FS/bin/"
-        for _t in fbmode fbimg; do
+        for _t in fbmode fbimg doom; do
             [ -x "/bin/$_t" ] && cp "/bin/$_t" "$SOCT_FS/bin/"
         done
         [ -f /etc/soct-release ] && cp /etc/soct-release "$SOCT_FS/etc/"
