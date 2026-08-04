@@ -78,6 +78,12 @@ class UsbHostFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator, reser
       "dr_mode" -> Seq(ResourceString("host")),
       "maximum-speed" -> Seq(ResourceString("high-speed")),
       "snps,hsphy_interface" -> Seq(ResourceString("ulpi")),
+      // The dwc3 tuning mainline's zynqmp.dtsi ships for this silicon: the frame
+      // length adjustment trims the SOF interval the controller times against the
+      // ULPI clock, and resuming with HS terminations keeps resume signalling in
+      // spec - both matter for device compatibility on this PHY.
+      "snps,quirk-frame-length-adjustment" -> Seq(ResourceInt(0x20)),
+      "snps,resume-hs-terminations" -> Nil,
       // Named rather than left to position: the driver asks for "host" first and only falls
       // back to the first interrupt, so naming it states which line this is instead of
       // relying on there being exactly one.

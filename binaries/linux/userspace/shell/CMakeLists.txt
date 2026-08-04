@@ -7,7 +7,6 @@
 set(INIT_SH "${CMAKE_CURRENT_SOURCE_DIR}/init.sh")
 set(PROFILE_SH "${CMAKE_CURRENT_SOURCE_DIR}/profile.sh")
 set(SOCT_SH "${CMAKE_CURRENT_SOURCE_DIR}/soct.sh")
-set(QUIRKS_SH "${CMAKE_CURRENT_SOURCE_DIR}/quirks.sh")
 
 # /etc/soct-release: version plus build identity, regenerated at BUILD time so
 # the running system can always say which build it is (see gen-release.cmake).
@@ -32,7 +31,7 @@ endif ()
 
 soct_linux_add_boot_image(shell
         DESC "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc"
-        DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}" "${PROFILE_SH}" "${SOCT_SH}" "${QUIRKS_SH}")
+        DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}" "${PROFILE_SH}" "${SOCT_SH}")
 # The initramfs packs the SD-controller module; the kernel's initramfs rules track the
 # packed files themselves, so the always-run chain just needs the build order.
 add_dependencies(shell-boot-elf sdc-driver dp-driver fbmode fbimg doom soct-release-gen)

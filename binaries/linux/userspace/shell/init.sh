@@ -15,22 +15,12 @@ export PATH=/bin
 _printk="$(cut -f1 /proc/sys/kernel/printk)"
 dmesg -n 1
 
-# Hardware knowledge: which driver belongs to which device-tree hardware, and
-# which quirks the running system has (the banner prints them).
-. /etc/soct-quirks.sh
-
-# The out-of-tree drivers baked into this image, each loaded only when the
-# device tree carries its hardware - the same image boots designs and boards
-# without that subsystem. The SD controller hands the boot medium to Linux as
-# /dev/mmcblk0 (mount the FAT partition from the shell, e.g.
-# `mount -t vfat /dev/mmcblk0p1 /mnt`).
+# The out-of-tree drivers baked into this image. Each probes against the device
+# tree and stays inert where its hardware is absent. The SD controller hands the
+# boot medium to Linux as /dev/mmcblk0 (mount the FAT partition from the shell,
+# e.g. `mount -t vfat /dev/mmcblk0p1 /mnt`).
 for m in /lib/modules/*.ko; do
     [ -e "$m" ] || continue
-    _mod="${m##*/}"
-    _gate="$(module_gate "${_mod%.ko}")"
-    if [ -n "$_gate" ] && ! dt_has "$_gate"; then
-        continue
-    fi
     insmod "$m"
 done
 
@@ -59,19 +49,21 @@ echo "  This shell is a ramdisk - nothing persists. 'soct' lists the SD/USB"
 echo "  devices and enters (or creates) the persistent environment there;"
 echo "  leaving it (exit) unmounts, so the medium can be pulled."
 echo "  Kernel messages: dmesg"
-_quirks="$(known_quirks)"
-if [ -n "$_quirks" ]; then
-    echo "  Known quirks of this hardware:"
-    echo "$_quirks" | sed 's/^/    /'
-fi
 echo "==============================================================================="
 dmesg -n "${_printk:-7}"
+
+# Stop USB before the reset, like the unmounts: DMA cut off mid-flight wedges
+# the controller until a power cycle. A design without the controller skips it.
+usb_stop() {
+    [ -e /sys/bus/platform/drivers/dwc3/7e200000.usb ] || return 0
+    echo 7e200000.usb > /sys/bus/platform/drivers/dwc3/unbind 2>/dev/null
+}
 
 # reboot(1) without -f never calls the kernel: it signals PID 1 (busybox convention:
 # TERM = reboot, USR1 = halt, USR2 = poweroff) and expects init to finish the job.
 # reboot -f syncs and makes the real syscall, which lands in the SBI SRST reset; the
 # FPGA has no software power control, so halt/poweroff can only say so.
-trap 'umount -a -r 2>/dev/null; reboot -f' TERM
+trap 'usb_stop; umount -a -r 2>/dev/null; reboot -f' TERM
 trap 'echo "init: no power control on this SoC - use reboot"' USR1 USR2
 
 # setsid + cttyhack give the shell a session and the real console tty (found via
