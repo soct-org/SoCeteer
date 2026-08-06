@@ -31,18 +31,24 @@
       (hart id in <code>a0</code>) &mdash; the RISC-V boot convention every later stage speaks
       as well. Bare-metal programs consume this ROM copy directly (see
       <a href="baremetal.html">Bare-Metal Programs &amp; soctglue</a>).</li>
-    <li><strong>BOOT.ELF ignores the ROM copy.</strong> The boot image embeds its own DTB,
-      compiled from the design's DTS at build time (OpenSBI's <code>FW_FDT_PATH</code>) with
-      slack space added (<code>dtc -p</code>). Two reasons: the ROM copy is not writable, and
-      the next stage <em>must write</em> to the tree; and the boot image becomes self-contained
-      &mdash; it does not care which ROM DTB the flashed bitstream carries, only that the
-      embedded one matches the flashed <em>hardware</em>.</li>
+    <li><strong>BOOT.ELF comes in two flavors that differ only here.</strong>
+      <code>&lt;name&gt;.BOOT.ELF</code> ignores the ROM copy and embeds its own DTB, compiled
+      from the design's DTS at image build time (OpenSBI's <code>FW_FDT_PATH</code>) with slack
+      space added (<code>dtc -p</code>): a freshly generated DTS reaches the board without a
+      bitstream rebuild &mdash; the development flavor, at the price of trusting that the
+      flashed bitstream matches the tree. <code>&lt;name&gt;.board.BOOT.ELF</code> embeds no
+      tree at all and boots with the ROM copy from step 1 &mdash; the tree baked into the
+      bitstream, which cannot disagree with the hardware it boots on. Because the ROM is not
+      writable and the later stages <em>must write</em> to the tree,
+      <code>sd-boot</code> places a copy in DRAM (above everything it loaded, with headroom
+      grown into the blob) and passes that address instead.</li>
     <li><strong>OpenSBI reads it&hellip;</strong> The firmware's own drivers are device-tree
       probed exactly like Linux's: the CLINT it uses for timers and IPIs and the UART behind
       its banner output come from the same nodes Linux will bind later &mdash; one description
       serving two consumers.</li>
-    <li><strong>&hellip;then relocates and fixes it up.</strong> OpenSBI copies the tree to a
-      configured DRAM address (<code>FW_PAYLOAD_FDT_ADDR</code>) and edits it in place: it
+    <li><strong>&hellip;then fixes it up.</strong> The embedded flavor first copies the tree
+      to a configured DRAM address (<code>FW_PAYLOAD_FDT_ADDR</code>); the board flavor edits
+      <code>sd-boot</code>'s DRAM copy where it lies. Either way OpenSBI edits in place: it
       inserts <code>reserved-memory</code> nodes covering its own footprint &mdash; the memory
       it shields with PMP so the OS can never touch machine-mode firmware. These appear in a
       boot log as <code>mmode_resv*</code> regions. This is the closest thing to a

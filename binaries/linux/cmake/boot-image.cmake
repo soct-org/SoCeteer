@@ -51,8 +51,18 @@ set(_sbibuild "${CMAKE_BINARY_DIR}/opensbi")
 # soct_kbuild pool so two images never build concurrently (honored by Ninja).
 set_property(GLOBAL PROPERTY JOB_POOLS soct_kbuild=1)
 
-# Create the boot-image target chain for a userspace program: <name>.BOOT.ELF in
-# SOCT_ELFS_DIR, a kernel with the program as /init, wrapped in OpenSBI fw_payload.
+# Create the boot-image target chain for a userspace program: two flavors of
+# <name>.BOOT.ELF in SOCT_ELFS_DIR, a kernel with the program as /init, wrapped in
+# OpenSBI fw_payload.
+#
+# <name>.BOOT.ELF embeds the workspace DTS: the kernel sees the tree this build saw -
+# the development loop, where a freshly generated DTS must reach the board without a
+# bitstream rebuild. <name>.board.BOOT.ELF carries no FDT at all: OpenSBI passes the
+# device tree the bootrom hands over in a1 - the tree baked into the bitstream, which
+# cannot disagree with the hardware it boots on. Flash the board flavor whenever the
+# bitstream/image pairing is uncertain; a mismatched embedded tree makes drivers
+# trust hardware that is not there.
+#
 # Called by initram.cmake from the program's directory scope. By default the initramfs is
 # the standard description with the program's executable as /init; DESC substitutes an
 # already-configured description of the caller's own (with DEPENDS naming the files and
@@ -71,6 +81,7 @@ function(soct_linux_add_boot_image name)
     endif ()
 
     set(_out "${SOCT_ELFS_DIR}/${name}.BOOT.ELF")
+    set(_out_board "${SOCT_ELFS_DIR}/${name}.board.BOOT.ELF")
     # An always-run custom TARGET, deliberately not a file-dated custom command: kernel
     # SOURCE changes (or the patches applied at configure) are invisible to the build
     # system's dependency graph, and a dated command would happily declare a stale image
@@ -81,10 +92,12 @@ function(soct_linux_add_boot_image name)
             COMMAND ${_kenv} ${_boot_make} -C "${SOCT_BOOT_LINUX_DIR}" ARCH=riscv
             ${_kllvm} O=${_kbuild} ${_khostflags} -j${_ncpu} Image
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_sbibuild}"
-            COMMAND ${CMAKE_COMMAND} -E rm -f
-            "${_sbibuild}/platform/generic/firmware/fw_payload.o"
-            "${_sbibuild}/platform/generic/firmware/fw_payload.elf"
-            "${_sbibuild}/platform/generic/firmware/fw_payload.bin"
+            # The firmware objects change with the FW_* flags (fw_base.o embeds the
+            # FDT), which make's dependency tracking cannot see: clear them so each
+            # flavor links from objects built with its own flags. The SBI library
+            # above them is flag-independent and stays.
+            COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "${_sbibuild}/platform/generic/firmware"
             COMMAND ${_boot_make} -C "${SOCT_BOOT_OPENSBI_DIR}" O=${_sbibuild}
             LLVM=${_llvm_bindir}/ "USE_LD_FLAG=--ld-path=${_llvm_lld}"
             PLATFORM=generic PLATFORM_RISCV_XLEN=64 READLINK=readlink
@@ -94,10 +107,23 @@ function(soct_linux_add_boot_image name)
             FW_FDT_PATH=${_boot_dtb} FW_PAYLOAD_FDT_ADDR=${_fw_fdt_addr} -j${_ncpu}
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${_sbibuild}/platform/generic/firmware/fw_payload.elf" "${_out}"
-            COMMAND ${CMAKE_COMMAND} -E echo "${name}-boot-elf: ${_out} - copy to the SD card FAT root (as BOOT.ELF)"
+            # The board flavor: the same payload with no FDT configured, so OpenSBI
+            # passes the bootrom's a1 (the bitstream's own tree) through to the kernel.
+            # Only the firmware objects rebuild - the SBI library and kernel are shared.
+            COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "${_sbibuild}/platform/generic/firmware"
+            COMMAND ${_boot_make} -C "${SOCT_BOOT_OPENSBI_DIR}" O=${_sbibuild}
+            LLVM=${_llvm_bindir}/ "USE_LD_FLAG=--ld-path=${_llvm_lld}"
+            PLATFORM=generic PLATFORM_RISCV_XLEN=64 READLINK=readlink
+            FW_PIC=n FW_TEXT_START=${_fw_text_start} FW_JUMP=n FW_DYNAMIC=n
+            FW_PAYLOAD=y FW_PAYLOAD_OFFSET=0x200000
+            FW_PAYLOAD_PATH=${_kbuild}/arch/riscv/boot/Image -j${_ncpu}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_sbibuild}/platform/generic/firmware/fw_payload.elf" "${_out_board}"
+            COMMAND ${CMAKE_COMMAND} -E echo "${name}-boot-elf: ${_out} (workspace DTS embedded) and ${_out_board} (trusts the board's own device tree) - copy one to the SD card FAT root as BOOT.ELF"
             DEPENDS ${_bi_DEPENDS} "${_desc}"
             JOB_POOL soct_kbuild
-            COMMENT "Building boot image ${name}.BOOT.ELF (kernel + ${name} as /init + OpenSBI)"
+            COMMENT "Building boot images ${name}.BOOT.ELF + ${name}.board.BOOT.ELF (kernel + ${name} as /init + OpenSBI)"
             VERBATIM)
     add_dependencies(${name}-boot-elf kernel-config boot-dtb)
 endfunction()

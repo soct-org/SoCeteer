@@ -417,6 +417,8 @@ static int download(void) {
     const char * fnm = "BOOT.ELF";
     uint8_t buf[0x10];
     uintptr_t entry_addr = 0;
+    uintptr_t load_end = 0;
+    uintptr_t dtb_addr = 0;
     uint64_t phoff = 0;
     uint16_t phentsize = 0;
     uint16_t phnum = 0;
@@ -477,6 +479,7 @@ static int download(void) {
             errno = ERR_SEGMENT_ADDR;
             return -1;
         }
+        if (p_vaddr + p_memsz > load_end) load_end = p_vaddr + p_memsz;
         errno = f_lseek(&fd, p_offset);
         if (errno) return -1;
         addr = p_vaddr;
@@ -521,8 +524,47 @@ static int download(void) {
     errno = f_close(&fd);
     if (errno) return -1;
 
+    /* The ELF gets the ROM device tree in a1 (the RISC-V boot convention): the
+     * tree baked into this bitstream, which cannot disagree with the hardware.
+     * Firmware patches the FDT in place, which ROM cannot take, so a copy lands
+     * in RAM above everything loaded, with headroom grown into its totalsize
+     * (the ROM blob is packed tight). Images carrying their own embedded FDT
+     * ignore a1. */
+    {
+        extern char _dtb[], _dtb_end[];
+        size_t dtb_size = (size_t)(_dtb_end - _dtb);
+        size_t dtb_slack = 0x1000;
+        uintptr_t dst = (load_end + 0x1FFFFF) & ~(uintptr_t)0x1FFFFF;
+        uint8_t * h;
+        uint32_t total;
+        size_t n;
+
+        if (dst + dtb_size + dtb_slack >
+            (uint64_t)SOCT_MEM_BASE_ADDR + SOCT_EXT_MEM_SIZE) {
+            errno = ERR_SEGMENT_ADDR;
+            return -1;
+        }
+        for (n = 0; n < dtb_size; n++) ((char *)dst)[n] = _dtb[n];
+        /* FDT totalsize, big-endian at byte offset 4. */
+        h = (uint8_t *)dst + 4;
+        total = ((uint32_t)h[0] << 24) | ((uint32_t)h[1] << 16) |
+                ((uint32_t)h[2] << 8) | h[3];
+        for (n = total; n < total + dtb_slack; n++) ((uint8_t *)dst)[n] = 0;
+        total += dtb_slack;
+        h[0] = (uint8_t)(total >> 24);
+        h[1] = (uint8_t)(total >> 16);
+        h[2] = (uint8_t)(total >> 8);
+        h[3] = (uint8_t)total;
+        dtb_addr = dst;
+        kprintf("DTB at 0x%lx\n", (unsigned long)dtb_addr);
+    }
+
     asm volatile ("li  a0, 0"); // Hart No
-    asm volatile ("la a1, _dtb" ::: "a1"); // Device Tree
+#if __riscv_xlen == 32
+    asm volatile ("lw a1, %0" :: "m" (dtb_addr) : "a1"); // Device Tree
+#else
+    asm volatile ("ld a1, %0" :: "m" (dtb_addr) : "a1"); // Device Tree
+#endif
     if (alt_mem) {
 #if __riscv_xlen <= 32 || (BOOTROM_MEM_END < 0x80000000 && BOOTROM_MEM_ALT < 0x80000000)
         asm volatile ("li  t0, %0" :: "n" (SOCT_MEM_BASE_ADDR));
