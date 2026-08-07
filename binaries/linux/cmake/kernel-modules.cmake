@@ -23,6 +23,7 @@ foreach (_drv ${_driver_dirs})
     # sources vendored elsewhere in the repo (the DP module compiles shared/vendor/xilinx-dp)
     # without a second in-tree copy of them.
     set(_drv_copy_cmds "")
+    set(_drv_extra_incs "")
     if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/extra-sources.txt")
         # The list is baked into the target's commands at configure time; without this,
         # editing it would silently not reach the build until an unrelated reconfigure.
@@ -39,7 +40,14 @@ foreach (_drv ${_driver_dirs})
                 message(FATAL_ERROR "linux: drivers/${_drv}/extra-sources.txt names a missing file: ${_src}")
             endif ()
             list(APPEND _drv_copy_cmds COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_abs}" "${_drv_bld}/")
+            # The originals' directories, for the index target below: kbuild resolves the
+            # module's quoted includes of these files because everything is copied into ONE
+            # directory, but the index target compiles the ORIGINAL sources, where the
+            # copies do not sit alongside - it must search where the extras really live.
+            get_filename_component(_src_dir "${_abs}" DIRECTORY)
+            list(APPEND _drv_extra_incs "${_src_dir}")
         endforeach ()
+        list(REMOVE_DUPLICATES _drv_extra_incs)
     endif ()
     add_custom_target(${_drv}-driver
             COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -111,6 +119,13 @@ foreach (_drv ${_driver_dirs})
         file(GLOB _drv_srcs "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}/*.c")
         add_library(${_drv}-index OBJECT EXCLUDE_FROM_ALL ${_drv_srcs})
         target_compile_options(${_drv}-index PRIVATE ${_drv_flags})
+        if (_drv_extra_incs)
+            # The module's own directory too: extras include the module's shim headers by
+            # quoted name, which only resolves from a vendored directory through a search
+            # path (kbuild sees one merged directory, the index the scattered originals).
+            target_include_directories(${_drv}-index PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/drivers/${_drv}" ${_drv_extra_incs})
+        endif ()
     else ()
         message(STATUS "linux: driver ${_drv} not indexed yet - build ${_drv}-driver once and reconfigure to get IDE language support. After that, sync CMake changes")
     endif ()
