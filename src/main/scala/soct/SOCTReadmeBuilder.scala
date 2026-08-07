@@ -156,6 +156,7 @@ object SOCTReadmeBuilder {
        |**Guides** - step-by-step example runs:
        |
        |* ${guide("docs/guides/setup.html", "Setting up SoCeteer")} - from the clone to the IDE projects and a first generated design
+       |* ${guide("docs/guides/simulation.html", "Running a Design in Simulation")} - the design in Verilator: no board needed, console on the terminal, waveforms on demand
        |* ${guide("docs/guides/bitstream.html", "From Design to Bitstream")} - generate a design and let the launcher drive Vivado to a bitstream
        |* ${guide("docs/guides/remote.html", "Remote Development")} - build and flash through a server that has Vivado and the board
        |* ${guide("docs/guides/linux-monitor.html", "Monitor & Linux Programs")} - the full run: Linux from SD, a DisplayPort console, persistent storage on the card

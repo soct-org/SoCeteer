@@ -33,6 +33,11 @@ trait SOCTVivadoSystemDTS {
     throw new VivadoDesignException("SOCTVivadoSystemBase requires a PLIC to be present in the system for interrupt wiring.")
   ).device
 
+  /** The MMIO port's bus device - the device-tree parent of every fabric peripheral. */
+  private val mmioBus: Device = mmioBusDevice.getOrElse(
+    throw new VivadoDesignException("SOCTVivadoSystemBase requires the AXI4 MMIO port (WithDefaultMMIOPort) to hang its peripherals off.")
+  )
+
   /** INTC input allocator: every bound MMIO device that raises interrupts claims its
    * input here, in construction order. */
   protected val irqs = new IrqAllocator
@@ -46,7 +51,7 @@ trait SOCTVivadoSystemDTS {
    * emission when every input is claimed.
    */
   protected val intcDev: SimpleDevice = new SimpleDevice("interrupt-controller", Seq("xlnx,xps-intc-1.00.a")) {
-    override def parent: Some[Device] = Some(mmioBusDevice.get)
+    override def parent: Some[Device] = Some(mmioBus)
     override def describe(resources: ResourceBindings): Description = {
       val Description(name, mapping) = super.describe(resources)
       Description(name, mapping ++ Map(
@@ -63,7 +68,7 @@ trait SOCTVivadoSystemDTS {
   /** The console UART, if the design has one ([[HasUART]]); constructing it binds its
    * device-tree resources and claims INTC input 0. */
   protected val uartFeature: Option[UartFeature] =
-    UartFeature.ifPresent(mmioBusDevice.get, intcDev, irqs)
+    UartFeature.ifPresent(mmioBus, intcDev, irqs)
 
   /**
    * The /chosen node: what the boot environment tells an operating system, as opposed to what
@@ -108,14 +113,14 @@ trait SOCTVivadoSystemDTS {
   /** The SD-card controller, if the design has one ([[HasSDCardPMOD]]); constructing it
    * binds its device-tree resources and claims the next INTC input. */
   protected val sdFeature: Option[SdCardFeature] =
-    SdCardFeature.ifPresent(mmioBusDevice.get, intcDev, irqs)
+    SdCardFeature.ifPresent(mmioBus, intcDev, irqs)
 
   /** The DisplayPort video pipeline, if the design has one ([[HasVideoStream]]);
    * constructing it binds its device-tree resources (VDMA, timing controller, status
    * GPIO, the framebuffer carve-out and - on coherent designs - the /chosen
    * framebuffer node) and claims the next INTC input. */
   protected val videoFeature: Option[VideoStreamFeature] =
-    VideoStreamFeature.ifPresent(mmioBusDevice.get, intcDev, irqs, chosenDev, reservedMemoryDev)
+    VideoStreamFeature.ifPresent(mmioBus, intcDev, irqs, chosenDev, reservedMemoryDev)
 
   /** True when the board's FPGA carries a Zynq UltraScale+ processing system. Read from the
    * parameters rather than the builder: this trait runs before `bd.init`. */
@@ -125,13 +130,13 @@ trait SOCTVivadoSystemDTS {
    * processing system; constructing it binds its device-tree node (it claims no
    * interrupt). */
   protected val psWindowFeature: Option[PsWindowFeature] =
-    PsWindowFeature.ifPresent(hasZynqPs, mmioBusDevice.get)
+    PsWindowFeature.ifPresent(hasZynqPs, mmioBus)
 
   /** The PS USB host controller, on boards whose FPGA carries a processing system;
    * constructing it binds its device-tree resources (bus node with `dma-ranges`,
    * restricted DMA pool, controller node) and claims the next INTC input. */
   protected val usbFeature: Option[UsbHostFeature] =
-    UsbHostFeature.ifPresent(hasZynqPs, mmioBusDevice.get, intcDev, irqs, reservedMemoryDev)
+    UsbHostFeature.ifPresent(hasZynqPs, mmioBus, intcDev, irqs, reservedMemoryDev)
 
   /** All present features. Seq order = INTC input claim order; the wiring order differs
    * (see `wireFeatureMains`) because SmartConnect ports and reset slices are allocated
@@ -176,7 +181,7 @@ trait SOCTVivadoSystemDTS {
    */
   protected val intcDTSOpt: Option[DTSInfo] = if (irqs.count > 0) {
     val dts = DTSInfo(
-      parent = mmioBusDevice.get,
+      parent = mmioBus,
       regs = Seq(("reg", VivadoMmioMap.IntcBase, VivadoMmioMap.RegionSize)),
       compatibles = Seq("xlnx,xps-intc-1.00.a")
     )
@@ -205,7 +210,7 @@ trait SOCTVivadoSystemDTS {
    */
   protected val sysResetDTS: DTSInfo = {
     val dts = DTSInfo(
-      parent = mmioBusDevice.get,
+      parent = mmioBus,
       regs = Seq(("reg", VivadoMmioMap.SysResetBase, VivadoMmioMap.RegionSize)),
       compatibles = Seq("syscon")
     )

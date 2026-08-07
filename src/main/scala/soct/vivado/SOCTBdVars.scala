@@ -47,6 +47,7 @@ class SOCTBdVars {
   }
 }
 
+/** The TCL variable names used across the generated scripts. */
 object SOCTBdVars {
 
   // Keys for TCL variables

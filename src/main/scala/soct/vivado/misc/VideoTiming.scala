@@ -24,6 +24,7 @@ case class VideoTiming(hActive: Int, hFrontPorch: Int, hSyncLen: Int, hBackPorch
   def pixelClock: Freq = Freq(hTotal.toDouble * vTotal * fps)
 }
 
+/** The timing sources: the canonical CEA-861 table and the CVT reduced-blanking computation. */
 object VideoTiming {
 
   /** The CEA-861 modes this pipeline treats as canonical: exact standard timings, byte

@@ -34,9 +34,15 @@ int soct_clk_wzrd_solve(const struct soct_clk_wzrd_limits *lim, u32 target_hz,
 		    (u64)lim->pfd_max_hz * div < lim->input_hz)
 			continue;
 		for (o8 = 8; o8 <= 128 * 8; o8++) {
+			/* The MMCM's fractional output divide starts at 2.000 (UG572);
+			 * only the integer divide reaches down to 1. */
+			u64 m8_floor;
+
+			if (o8 < 16 && (o8 & 7))
+				continue;
 			/* The mult that hits the target exactly, rounded down to
 			 * eighths; it and its neighbor bracket the target. */
-			u64 m8_floor = div64_u64((u64)target_hz * div * o8, lim->input_hz);
+			m8_floor = div64_u64((u64)target_hz * div * o8, lim->input_hz);
 
 			for (i = 0; i < 2; i++) {
 				u64 m8 = m8_floor + i;

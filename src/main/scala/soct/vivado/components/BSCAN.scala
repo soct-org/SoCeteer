@@ -41,6 +41,7 @@ case class BSCAN(debugMode: Int = 7)(implicit bd: SOCTBdBuilder, p: Parameters) 
   }
 }
 
+/** Implicit connect rules: `<->` hooks the first BSCAN master to a [[BSCAN2JTAG]]. */
 object BSCAN {
   implicit val bscanToBscan2Jtag: AutoConnect[BSCAN, BSCAN2JTAG] = (comp: BSCAN, sink: BSCAN2JTAG, bd: SOCTBdBuilder) =>
     bd.addEdge(comp.M_BSCAN.getOrElseInit(0), sink.S_BSCAN) // By default, only connect the first BSCAN port

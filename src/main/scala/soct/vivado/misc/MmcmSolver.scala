@@ -57,20 +57,24 @@ object MmcmSolver {
       val pfd = inHz / div
       if (pfd >= PfdMin.toHz && pfd <= PfdMax.toHz) {
         // For each odiv, the mult that would hit the target exactly, rounded to eighths.
+        // The MMCM's fractional output divide starts at 2.000 (UG572); only the integer
+        // divide reaches down to 1, so non-integer eighths below 2.000 are skipped.
         var odivEighths = 8 // 1.000
         while (odivEighths <= 128 * 8) {
-          val odiv = odivEighths / 8.0
-          val exactMult = targetHz * div * odiv / inHz
-          Seq(math.floor(exactMult * 8).toInt, math.ceil(exactMult * 8).toInt).foreach { multEighths =>
-            if (multEighths >= 2 * 8 && multEighths <= 128 * 8) {
-              val mult = multEighths / 8.0
-              val vco = inHz * mult / div
-              if (vco >= VcoMin.toHz && vco <= VcoMax.toHz) {
-                val achieved = vco / odiv
-                val err = math.abs(achieved - targetHz) / targetHz
-                if (err < bestErr) {
-                  bestErr = err
-                  best = Some(MmcmSetting(div, multEighths, odivEighths, Freq(achieved)))
+          if (odivEighths >= 16 || odivEighths % 8 == 0) {
+            val odiv = odivEighths / 8.0
+            val exactMult = targetHz * div * odiv / inHz
+            Seq(math.floor(exactMult * 8).toInt, math.ceil(exactMult * 8).toInt).foreach { multEighths =>
+              if (multEighths >= 2 * 8 && multEighths <= 128 * 8) {
+                val mult = multEighths / 8.0
+                val vco = inHz * mult / div
+                if (vco >= VcoMin.toHz && vco <= VcoMax.toHz) {
+                  val achieved = vco / odiv
+                  val err = math.abs(achieved - targetHz) / targetHz
+                  if (err < bestErr) {
+                    bestErr = err
+                    best = Some(MmcmSetting(div, multEighths, odivEighths, Freq(achieved)))
+                  }
                 }
               }
             }

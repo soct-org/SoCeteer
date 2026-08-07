@@ -49,6 +49,9 @@
   disconnecting locally does not kill the run. When the log reports the bitstream done,
   pull the results back into the local workspace by re-running the same command with
   <code>--sfr</code> (sync-from-remote) in place of the build target.</p>
+  <div class="hint">A pull never overwrites files that are newer on your machine: regenerating
+  locally and pulling afterwards is safe in either order &mdash; fresh local sources survive,
+  while the build results still come back.</div>
 
   <h2>3. Flash binaries remotely</h2>
   <p>When the board is connected to the server, programs are flashed through it too. This

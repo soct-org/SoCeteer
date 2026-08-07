@@ -57,6 +57,7 @@ trait ToSourceConnect[-C, -T] {
   def apply(sink: C, source: T, bd: SOCTBdBuilder): Unit
 }
 
+/** The connect operators (`-->`, `<--`, `<->`), resolved through the type classes above. */
 trait ConnectOps {
   this: AnyRef =>
 

@@ -4,8 +4,10 @@ import chisel3.Data
 import soct.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommand, TCLCommands, VivadoDesignException}
 
 
+/** How an endpoint is retrieved in TCL (`get_bd_pins`, `get_bd_ports`, ...). */
 sealed trait VivadoHandleKind
 
+/** The four [[VivadoHandleKind]] values. */
 object VivadoHandleKind {
   case object ScalarPin extends VivadoHandleKind // get_bd_pins
 
@@ -63,6 +65,10 @@ trait BdPinPort extends ConnectOps {
 }
 
 
+/**
+ * The generic connect rules between pins, ports and Chisel data (by direction traits),
+ * plus the TCL emission of connections.
+ */
 object BdPinPort {
 
   // -------------------------------------------------

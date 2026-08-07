@@ -87,6 +87,7 @@ case class AXIAddrDeinterleaver(mAxi: AXI4BusInfo, geometry: AXIAddrDeinterleave
 }
 
 
+/** Interleave-geometry derivation and factory of [[AXIAddrDeinterleaver]]. */
 object AXIAddrDeinterleaver {
 
   /**

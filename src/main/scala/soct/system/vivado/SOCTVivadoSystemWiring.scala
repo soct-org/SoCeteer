@@ -182,9 +182,10 @@ trait SOCTVivadoSystemWiring {
   /**
    * Wire the interrupt cascade: the concatenated peripheral interrupts feed the AXI INTC,
    * whose single level output is the core's one external interrupt (or a tie-off when no
-   * device raises interrupts); then connect the UART interrupt to its INTC input.
-   * See [[soct.vivado.components.AXIIntc]] for why the PLIC never takes the
-   * peripherals directly.
+   * device raises interrupts); then each feature connects its claimed concat inputs
+   * ([[soct.system.vivado.features.VivadoFeature.wireIrq]]). See
+   * [[soct.vivado.components.AXIIntc]] for why the PLIC never takes the peripherals
+   * directly.
    *
    * @param c the common design
    */

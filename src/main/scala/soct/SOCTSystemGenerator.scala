@@ -113,6 +113,7 @@ object DTSExtractor {
   }
 }
 
+/** Generates the workspace's `SOCTSystem.cmake` - the design facts the software builds read. */
 object SOCTSystemGenerator {
 
   /**

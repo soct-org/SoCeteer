@@ -27,6 +27,11 @@ object LastRocketSystem {
 }
 
 
+/**
+ * The Rocket subsystem every SOCT design builds on: tiles, buses, CLINT/PLIC/debug, the
+ * external AXI4 ports, the compiled-in boot ROM ([[SOCTBootROM]]) and - on the simulation
+ * target - the HTIF device-tree node. Target-specific tops (Verilator, Vivado) extend it.
+ */
 class SOCTSystem(implicit p: Parameters) extends BaseSubsystem
   with HasAsyncExtInterrupts
   with CanHaveMasterAXI4MemPort
@@ -58,6 +63,7 @@ class SOCTSystem(implicit p: Parameters) extends BaseSubsystem
   LastRocketSystem.instance = Some(this)
 }
 
+/** Module implementation of [[SOCTSystem]]. */
 class SOCTSystemModuleImp[+L <: SOCTSystem](_outer: L) extends BaseSubsystemModuleImp(_outer)
   with HasHierarchicalElementsRootContextModuleImp
   with HasRTCModuleImp
@@ -111,6 +117,11 @@ abstract class BaseSubsystem(val location: HierarchicalLocation = InSubsystem)
   }
 }
 
+/**
+ * Module implementation of [[BaseSubsystem]]: emits the elaboration artefacts (device
+ * tree, JSON, memory map) and warns when the DTS description and the physical address
+ * map disagree.
+ */
 abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends LazyRawModuleImp(_outer) {
   def dtsLM: L = _outer
 
@@ -165,6 +176,12 @@ abstract class BaseSubsystemModuleImp[+L <: BaseSubsystem](_outer: L) extends La
 }
 
 
+/**
+ * Attaches the boot ROM whose image is COMPILED DURING ELABORATION: generation first
+ * writes the design's device tree, its C header mirror and `SOCTSystem.cmake` into the
+ * workspace, then builds the configured bootrom target against them and bakes the binary
+ * into the ROM - so the ROM in the bitstream always matches the generated design.
+ */
 object SOCTBootROM {
   /**
    * SOCTBootROM ignores most of the params - it compiles the bootrom image when invoked.

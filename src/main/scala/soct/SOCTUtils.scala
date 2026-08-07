@@ -20,6 +20,7 @@ object PathSerializer extends CustomSerializer[Path](_ => ( {
 }
 ))
 
+/** JSON4S serializer for [[Targets]] (by target name; null falls back to Verilator). */
 object TargetsSerializer extends CustomSerializer[Targets](_ => ( {
   case JString(s) => Targets.parse(s)
   case JNull => Targets.Verilator
@@ -123,6 +124,7 @@ object SOCTRemote {
 }
 
 
+/** Shared launcher utilities: config instantiation, process running, remote sync. */
 object SOCTUtils {
   /**
    * The maximum memory size for 32-bit address space, which is 2 GiB. This is used to ensure that the memory size does not exceed the addressable range for 32-bit systems.

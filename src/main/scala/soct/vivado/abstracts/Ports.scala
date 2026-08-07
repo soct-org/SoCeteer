@@ -72,16 +72,19 @@ sealed abstract class BdVirtualPort(implicit bd: SOCTBdBuilder, p: Parameters) e
 }
 
 
+/** An input board port: drives nets inside the design. */
 abstract class BdVirtualPortI(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with DrivesNet {
   final override def dir: String = "I"
 }
 
 
+/** An output board port: driven by a net inside the design. */
 abstract class BdVirtualPortO(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with DrivenByNet {
   final override def dir: String = "O"
 }
 
 
+/** A bidirectional board port. */
 abstract class BdVirtualPortIO(implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPort with BiDirNet {
   final override def dir: String = "IO"
 }
@@ -92,6 +95,7 @@ abstract class BdVirtualPortIO(implicit bd: SOCTBdBuilder, p: Parameters) extend
  */
 sealed abstract class PortMode(private[vivado] val tcl: String)
 
+/** The two [[PortMode]] values. */
 object PortMode {
   case object Master extends PortMode("Master")
 
@@ -104,6 +108,7 @@ object PortMode {
  */
 sealed trait PortCreation
 
+/** The [[PortCreation]] strategies. */
 object PortCreation {
 
   /**
@@ -186,6 +191,7 @@ abstract class BdIntfPort(implicit bd: SOCTBdBuilder, p: Parameters) extends BdP
   override val vivadoKind: VivadoHandleKind = VivadoHandleKind.IntfPort
 }
 
+/** Factory for plain interface ports. */
 object BdIntfPort {
 
   /**

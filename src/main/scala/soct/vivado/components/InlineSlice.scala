@@ -32,6 +32,7 @@ case class InlineSlice(dinWidth: Int, dinFrom: Int, dinTo: Int, doutWidth: Int)
 
 }
 
+/** Implicit connect rules: `Dout` drives sinks and sources drive `Din` via `-->`. */
 object InlineSlice {
   implicit val doutIsDefaultSrcBdPinPort: ToSinkConnect[InlineSlice, BdPinPort] = (comp: InlineSlice, sink: BdPinPort, bd: SOCTBdBuilder) =>
     bd.addEdge(comp.DOUT, sink)

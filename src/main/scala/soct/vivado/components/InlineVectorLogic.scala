@@ -49,6 +49,7 @@ abstract class InlineVectorLogic(op: String, width: Int, connectOnInit: Boolean 
 
 }
 
+/** Implicit connect rules: the gate's `Res` drives sinks via `-->`. */
 object InlineVectorLogic {
   implicit def resIsDefaultSrcChisel[T <: chisel3.Data]: ToSinkConnect[InlineVectorLogic, T] = (comp: InlineVectorLogic, sink: T, bd: SOCTBdBuilder) => {
     bd.addEdge(comp.RES, portToBdPin(sink)(bd))

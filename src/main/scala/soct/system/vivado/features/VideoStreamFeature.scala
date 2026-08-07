@@ -224,7 +224,9 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     val peripheryClock = ctx.peripheryClock
     val ps = bd.fpgaInstance() match {
       case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
-      case _ => return
+      case fpga => throw VivadoDesignException(
+        s"Video stream requires a Zynq UltraScale+ PS (the pipeline drives its DisplayPort " +
+          s"controller), but board ${fpga.friendlyName} has none.")
     }
 
     // Incoherent frame fetch: the VDMA masters the memory-side SmartConnect directly, so it
@@ -383,6 +385,7 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
   }
 }
 
+/** Presence decision and mode-timing helpers of [[VideoStreamFeature]]. */
 object VideoStreamFeature {
   /**
    * The timing of a configured video mode: exact CEA-861 for the modes that standard

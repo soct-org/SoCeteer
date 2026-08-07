@@ -93,6 +93,10 @@ case class FPGAPMODPin(packagePin: String, ioStandard: String, pin: Int) extends
   }
 }
 
+/**
+ * Trait for board ports whose package pins live on a PMOD connector: emits their
+ * PACKAGE_PIN/IOSTANDARD constraints, resolved through the board's PMOD pin tables.
+ */
 trait WantsPMODPins extends EmitsConstraint {
   this: BdPinPort =>
 

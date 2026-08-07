@@ -93,6 +93,12 @@ case class ZynqUltraPS()(implicit bd: SOCTBdBuilder, p: Parameters)
   object DP_LIVE_VIDEO_IN_DE extends BdPinIn("dp_live_video_in_de", ZynqUltraPS.this)
 }
 
+/**
+ * The PS-side address-map facts: fixed addresses of the PS ports and peripherals this
+ * design touches, plus the DRAM carve-outs derived from them (USB DMA pool, video
+ * framebuffer). Hardware address assignment, device-tree nodes and drivers all read
+ * these values, so they cannot disagree.
+ */
 object ZynqUltraPS {
   /**
    * Base of the `M_AXI_HPM0_LPD` window in the PS address map. A PS master issuing an address

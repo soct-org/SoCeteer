@@ -43,6 +43,7 @@ case class BSCAN2JTAG()(implicit bd: SOCTBdBuilder, p: Parameters)
   object JTAG extends BdIntfPin("JTAG", BSCAN2JTAG.this)
 }
 
+/** Implicit connect rules: `<->` hooks the bridge's JTAG side to a [[soct.vivado.intf.JTAGIntf]]. */
 object BSCAN2JTAG {
   implicit val bscan2jtagToJtag: AutoConnect[BSCAN2JTAG, JTAGIntf] = (comp: BSCAN2JTAG, port: JTAGIntf, bd: SOCTBdBuilder) =>
     bd.addEdge(comp.JTAG, port)

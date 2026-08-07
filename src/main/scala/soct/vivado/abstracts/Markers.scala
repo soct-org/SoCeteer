@@ -125,6 +125,9 @@ trait Finalizable {
 }
 
 
+/**
+ * Trait for components that carry a device-tree description ([[soct.vivado.misc.DTSInfo]])
+ */
 trait HasDTSInfo {
   /**
    * The DTSInfo describing how this component should appear in the generated device tree.

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running a Design in Simulation — SoCeteer</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<main>
+  <p class="crumb"><a href="../docs.html">Documentation</a> / Guides / Running a Design in Simulation</p>
+  <h1>Running a Design in Simulation</h1>
+  <p class="lead">Run the exact generated SoC as a <em>Verilator</em> simulation &mdash; a
+  cycle-accurate model of the design's Verilog, no board required. The program's console
+  I/O appears on your terminal, and the simulator can record waveforms of every signal.
+  Needs <a href="setup.html">Setting up SoCeteer</a>; launcher commands run as described
+  there.</p>
+
+  <h2>1. Generate the design and build the simulator</h2>
+  <p>One target does both &mdash; it emits the design for simulation, then configures and
+  builds the <code>sim/</code> CMake project against it:</p>
+<pre><code>sbt "runMain soct.SOCTLauncher --target verilator.build"</code></pre>
+  <p>The result is <code>workspace/&lt;design&gt;/sim/build/sim-build/simulator</code>, an
+  executable containing the whole SoC. Without options the default design is generated;
+  <code>--config</code> and <code>--with-config</code> choose others, exactly as in
+  <a href="bitstream.html">From Design to Bitstream</a>.</p>
+  <div class="opt">The two steps also run separately: <code>--target verilator</code> emits
+  only, and the <code>sim/</code> project configures like any other software project
+  (<a href="setup.html">Setting up SoCeteer</a>, step 4) &mdash; with
+  <code>-DCMAKE_BUILD_TYPE=Release</code>, which the combined target uses as well. A debug
+  simulator runs many times slower.</div>
+
+  <h2>2. Build a program to run</h2>
+  <p>The simulator runs the same bare-metal ELFs a board would. Point the
+  <code>binaries/</code> project at the generated system and build one &mdash;
+  <code>hello-hart</code> is the smallest:</p>
+<pre><code>cmake -S binaries -B &lt;build-dir&gt; -DSOCT_SYSTEM=workspace/&lt;design&gt;/sim/SOCTSystem.cmake
+cmake --build &lt;build-dir&gt; --target hello-hart</code></pre>
+  <p>Built ELFs land in the workspace's <code>elfs/</code> directory.</p>
+
+  <h2>3. Run</h2>
+<pre><code>workspace/&lt;design&gt;/sim/build/sim-build/simulator workspace/&lt;design&gt;/sim/elfs/hello-hart.elf</code></pre>
+  <p>The simulated SoC boots the way the hardware does &mdash; through the boot ROM, with
+  the design's own device tree &mdash; then loads and runs the ELF. The program's output
+  prints to the terminal, and when it exits, the simulator reports the exit code and
+  finishes. Expect seconds for a hello-world: simulation runs at a tiny fraction of
+  hardware speed, so it suits programs and system bring-up, not long workloads.
+  <code>--help</code> lists the simulator's options (logging, reset cycles).</p>
+  <div class="hint">After <em>regenerating</em> a design, rebuild the simulator
+  (re-run <code>--target verilator.build</code>) before simulating again: the boot ROM and
+  its device tree are compiled into the simulator binary, and a stale one boots the old
+  design's ROM &mdash; typically hanging early in boot.</div>
+
+  <h2>4. Waveforms</h2>
+  <div class="opt">Only when you want to inspect signals; tracing slows the simulation
+  considerably and the files grow large quickly.</div>
+  <p>Tracing is a build-time switch of the <code>sim/</code> project: configure it with
+  <code>-DVL_TRACE=1</code> (optionally <code>-DVL_TRACE_DEPTH=&lt;n&gt;</code> to limit the
+  hierarchy depth) and rebuild. The simulator then writes <code>dump.vcd</code> next to
+  where it runs &mdash; <code>--vcd-file=&lt;path&gt;</code> chooses another location &mdash;
+  and any VCD viewer (for example <a href="https://surfer-project.org/">Surfer</a>)
+  opens it.</p>
+
+  <p>For what the simulator models and how the boot flow works, see the
+  <a href="../systems/baremetal.html">Bare-Metal Programs</a> and
+  <a href="../systems/linux.html">Linux</a> system pages.</p>
+
+  <footer><a href="../docs.html">&larr; Back to documentation</a></footer>
+</main>
+<script src="../glossary.js" defer></script>
+<script src="../sections.js" defer></script>
+</body>
+</html>

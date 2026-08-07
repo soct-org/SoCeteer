@@ -6,6 +6,10 @@ import soct.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.vivado.misc.{FPGAPMODPin, RawPMODPin}
 
 
+/**
+ * The AMD/Xilinx ZCU104 evaluation board: Zynq UltraScale+ MPSoC (so DisplayPort and USB
+ * are available through the PS), one DDR4 SODIMM channel, two usable PMOD ports.
+ */
 object ZCU104 extends FPGA with HasZynqUltraPS {
   override val friendlyName: String = "ZCU104"
 

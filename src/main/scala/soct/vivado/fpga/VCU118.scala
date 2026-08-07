@@ -6,6 +6,10 @@ import soct.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.vivado.misc.{FPGAPMODPin, RawPMODPin}
 import soct.SOCTBytes._
 
+/**
+ * The AMD/Xilinx VCU118 evaluation board: Virtex UltraScale+ (pure PL - no processing
+ * system, so no DisplayPort or USB), two DDR4 DIMM channels.
+ */
 object VCU118 extends FPGA {
   override val friendlyName: String = "VCU118"
 

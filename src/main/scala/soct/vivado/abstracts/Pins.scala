@@ -27,6 +27,7 @@ trait PinCtor[T <: BdPinBase] {
 }
 
 
+/** Implicit [[PinCtor]] instances for the concrete pin types. */
 object PinCtor {
   implicit val inCtor: PinCtor[BdPinIn] = (pin, inst) => new BdPinIn(pin, inst)
 

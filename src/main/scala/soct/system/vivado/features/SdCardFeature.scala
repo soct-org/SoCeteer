@@ -82,6 +82,7 @@ class SdCardFeature(pmodPort: Int, mmioBus: Device, intcDev: Device, irqs: IrqAl
   }
 }
 
+/** Presence decision of [[SdCardFeature]]. */
 object SdCardFeature {
   /** The single presence decision: `Some` iff the design has an SD PMOD ([[HasSDCardPMOD]]). */
   def ifPresent(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)

@@ -9,7 +9,9 @@ import soct.vivado.{SOCTBdBuilder, StringToTCLCommand, TCLCommands, VivadoDesign
 /**
  * Xilinx AXI Video DMA in read-only (MM2S) configuration: fetches frames from memory and
  * streams them out as AXI4-Stream video. Control registers via AXI4-Lite; the frame reads go
- * through the design's DMA path so they hit DRAM coherently.
+ * through the design's coherent DMA path by default, while the incoherent video variant
+ * passes no slave pins and maps the read master straight onto the DDR4 controller instead
+ * (see [[soct.system.vivado.features.VideoStreamFeature]]).
  * Documentation: https://docs.amd.com/r/en-US/pg020_axi_vdma
  *
  * @param dtsInfo         device-tree description (control registers, interrupt)
@@ -107,6 +109,7 @@ case class AXIVideoDMA(override val dtsInfo: DTSInfo, override val getAxiMasterP
   }
 }
 
+/** VDMA parameters that the hardware configuration and the device tree must agree on. */
 object AXIVideoDMA {
   /** Frame-store count (`c_num_fstores`): three, the classic frame-buffer triple, giving
    * a Linux driver tear-free page flipping without over-provisioning registers. The DTS

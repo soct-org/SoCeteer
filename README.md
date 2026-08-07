@@ -79,6 +79,7 @@ docker run --rm -it -u $(id -u):$(id -g) -v "$PWD":/soceteer -w /soceteer ghcr.i
 **Guides** - step-by-step example runs:
 
 * [Setting up SoCeteer](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/setup.html) - from the clone to the IDE projects and a first generated design
+* [Running a Design in Simulation](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/simulation.html) - the design in Verilator: no board needed, console on the terminal, waveforms on demand
 * [From Design to Bitstream](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/bitstream.html) - generate a design and let the launcher drive Vivado to a bitstream
 * [Remote Development](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/remote.html) - build and flash through a server that has Vivado and the board
 * [Monitor & Linux Programs](https://htmlpreview.github.io/?https://github.com/soct-org/SoCeteer/blob/main/docs/guides/linux-monitor.html) - the full run: Linux from SD, a DisplayPort console, persistent storage on the card

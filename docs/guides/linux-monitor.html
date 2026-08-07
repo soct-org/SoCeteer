@@ -42,6 +42,11 @@ cmake --build build-linux --target shell-boot-elf</code></pre>
   workspace's <code>elfs/</code> directory: firmware, kernel, the design's device tree,
   drivers and a BusyBox userspace in one file. It must match the flashed bitstream &mdash;
   rebuild it whenever the design changes.</p>
+  <div class="hint">Next to it lies <code>shell.board.BOOT.ELF</code>: the same image without
+  an embedded device tree &mdash; it boots with the description baked into the bitstream,
+  which cannot disagree with the flashed hardware. Prefer it whenever you are unsure the
+  board's bitstream matches your current workspace; the embedded flavor is for iterating on
+  the device tree itself.</div>
 
   <h2>3. Prepare the SD card and cables</h2>
   <ul>

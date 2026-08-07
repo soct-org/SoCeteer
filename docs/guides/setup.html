@@ -66,6 +66,13 @@ cd SoCeteer</code></pre>
   repository. The file to remember in there is <code>SOCTSystem.cmake</code>: it describes
   the generated system (memory map, cores, devices), and every software build in the next
   step is pointed at it. <code>--help</code> lists all launcher options.</p>
+  <div class="hint">Two launcher behaviors worth knowing before you rely on the workspace.
+  Every run also refreshes <code>SOCTSystem-latest.cmake</code> at the repository root, a
+  link to the system file it just generated &mdash; the software projects fall back to it
+  when no <code>-DSOCT_SYSTEM</code> is given, so with a single design you can skip that
+  option entirely. And a run <em>regenerates</em> its workspace directory: files you placed
+  there by hand (scripts, notes) do not survive the next generation &mdash; keep your own
+  files outside <code>workspace/</code>.</div>
 
   <h2>4. Open the software projects</h2>
   <p>The software side is <em>not</em> one big project &mdash; it is separate CMake projects,
@@ -92,8 +99,10 @@ cd SoCeteer</code></pre>
   <div class="hint"><code>&lt;workspace&gt;</code> is the directory step 3 created:
   <code>workspace/&lt;design&gt;/&lt;target&gt;/</code> under the repo root. Each generated
   design has its own, so the software projects follow whichever design you point them at.
-  Avoid build-directory paths containing spaces or commas &mdash; the Linux project refuses
-  them at configure time.</div>
+  With several designs generated, prefer the explicit option over the
+  <code>SOCTSystem-latest.cmake</code> fallback &mdash; the fallback silently follows
+  whichever design was generated last. Avoid build-directory paths containing spaces or
+  commas &mdash; the Linux project refuses them at configure time.</div>
 
   <h2>5. Linux development</h2>
   <div class="opt">Only needed when you build Linux things (the kernel, drivers, Linux

@@ -26,6 +26,7 @@ sealed trait BuildStage {
   val name: String
 }
 
+/** The [[BuildStage]] values. */
 object BuildStage {
   /** Run synthesis only (`launch_runs synth_1`). */
   case object Synthesis extends BuildStage {
@@ -98,6 +99,7 @@ sealed trait VerilatorTarget extends Targets {
   val build: Boolean
 }
 
+/** The concrete `--target` values, in declaration order (which the help output follows). */
 object Targets {
   /**
    * Legacy Vivado target: generate the project and block design only (kept for backwards
@@ -235,6 +237,7 @@ case class SOCTArgs(
                      wtf: Boolean = false, // What the firtool - for debugging
                    )
 
+/** The scopt command-line parser producing a [[SOCTArgs]]. */
 object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
 
   /**

@@ -6,7 +6,7 @@ import soct.vivado.abstracts.BdPinPort.portToBdPin
 import soct.vivado.components.ZynqUltraPS
 import soct.vivado.fpga.HasZynqUltraPS
 import soct.vivado.misc.{AddressSets, AxiSlaveBinder, DTSInfo, Irq}
-import soct.vivado.{SOCTBdBuilder, StringToTCLCommand}
+import soct.vivado.{SOCTBdBuilder, StringToTCLCommand, VivadoDesignException}
 
 /**
  * The PS USB host controller: its DMA master on the coherent DMA path, its interrupt
@@ -99,7 +99,10 @@ class UsbHostFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator, reser
     val c = ctx.c
     val ps = bd.fpgaInstance() match {
       case fpga: HasZynqUltraPS => fpga.getZynqUltraPS()
-      case _ => return
+      // Presence is gated on hasZynqPs, so this means the parameter view and the
+      // builder's board disagree - never wire around that silently.
+      case fpga => throw VivadoDesignException(
+        s"UsbHostFeature exists but board ${fpga.friendlyName} has no Zynq UltraScale+ PS.")
     }
     ctx.peripheryClock --> ps.MAXI_HPM0_LPD_ACLK
     c.dmaSMC.S_AXI.next() <-> ps.M_AXI_HPM0_LPD
@@ -119,6 +122,7 @@ class UsbHostFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator, reser
   }
 }
 
+/** Presence decision of [[UsbHostFeature]]. */
 object UsbHostFeature {
   /** The single presence decision, passed in as `hasZynqPs`: the system computes it once
    * from the parameters (this runs before `bd.init`, so the builder cannot be asked). */

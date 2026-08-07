@@ -14,10 +14,11 @@ import soct.vivado.fpga.FPGAClockDomain
 /**
  * Top-level module for synthesis of the RocketSystem within SOCT using Vivado, with one DDR4
  * controller per memory channel (one channel being the common case). The shared structure
- * (buses, clock domains, UART, SD card, debug/JTAG) comes from [[SOCTVivadoSystemBase]]; this
- * class adds the memory topology - one board clock and a dedicated DDR reset domain per
- * channel, address deinterleavers when the channels are cache-line interleaved - and the
- * system clock synthesis (see the companion's `SysClkWizTapFreq` documentation).
+ * (buses, clock domains, the optional features - UART, SD card, video, PS window, USB - and
+ * debug/JTAG) comes from [[SOCTVivadoSystemBase]]; this class adds the memory topology - one
+ * board clock and a dedicated DDR reset domain per channel, address deinterleavers when the
+ * channels are cache-line interleaved - and the system clock synthesis (see the companion's
+ * `SysClkWizTapFreq` documentation).
  */
 class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with SupportsMultiMem {
   InModuleBody {
@@ -187,6 +188,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
   }
 }
 
+/** System-clock facts of [[SOCTVivadoSystem]]. */
 object SOCTVivadoSystem {
   /**
    * Nominal frequency of the DDR4 additional clock output that feeds the system clock wizard.

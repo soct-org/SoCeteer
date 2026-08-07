@@ -71,6 +71,7 @@ class UartFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
     uart.foreach(u => c.mmioSMC.M_AXI.next() <-> u.S_AXI)
 }
 
+/** Presence decision and synthesis-time constants of [[UartFeature]]. */
 object UartFeature {
   /** Fixed at synthesis; flows into the IP's C_BAUDRATE, the device tree and the boot arguments. */
   val Baud: Int = 115200

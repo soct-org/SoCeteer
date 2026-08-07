@@ -15,6 +15,7 @@ trait SDCardConstraints extends WantsPMODPins {
   override def xdcName()(implicit bd: SOCTBdBuilder): String = "SDCardPMOD"
 }
 
+/** The SDIO card-detect input port (the PMOD's active-low slot switch). */
 case class SDIOCDPort(override val pmodPort: Int)
                      (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortI with SDCardConstraints {
   override def portName: String = "sdio_cd"
@@ -24,6 +25,7 @@ case class SDIOCDPort(override val pmodPort: Int)
   override def pmodPins: Seq[BasePMODPin] = Seq(DigilentPMODPin(9))
 }
 
+/** The SDIO clock output port towards the card. */
 case class SDIOClkPort(override val pmodPort: Int)
                       (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortO with SDCardConstraints {
   override def portName: String = "sdio_clk"
@@ -33,6 +35,7 @@ case class SDIOClkPort(override val pmodPort: Int)
   override def pmodPins: Seq[BasePMODPin] = Seq(DigilentPMODPin(4))
 }
 
+/** The bidirectional SDIO command line. */
 case class SDIOCmdPort(override val pmodPort: Int)
                       (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDCardConstraints {
   override def portName: String = "sdio_cmd"
@@ -42,6 +45,7 @@ case class SDIOCmdPort(override val pmodPort: Int)
   override def pmodPins: Seq[BasePMODPin] = Seq(DigilentPMODPin(2))
 }
 
+/** The bidirectional 4-bit SDIO data bus. */
 case class SDIODataPort(override val pmodPort: Int)
                        (implicit bd: SOCTBdBuilder, p: Parameters) extends BdVirtualPortIO with SDCardConstraints {
   override def portName: String = "sdio_data"
@@ -165,6 +169,7 @@ case class SDCardPMOD(
 }
 
 
+/** Implicit connect rules of [[SDCardPMOD]]. */
 object SDCardPMOD {
   /** Connects the controller's SDIO pins to their matching PMOD ports (by port type). */
   implicit val sdcardToPmodPort: AutoConnect[SDCardPMOD, BdVirtualPort] = (comp: SDCardPMOD, port: BdVirtualPort, bd: SOCTBdBuilder) =>

@@ -14,6 +14,7 @@ import java.nio.file.{Files, Paths, StandardCopyOption}
 import scala.annotation.unused
 
 
+/** One big Rocket core with an FP32 4x4 Gemmini accelerator and an L2. */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4Fp extends Config(
   new WithGemminiFp(4, 64).orElse(
@@ -22,6 +23,7 @@ class RocketB1Gem4Fp extends Config(
 )
 
 
+/** One big Rocket core with an int8 4x4 Gemmini accelerator and an L2. */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4 extends Config(
   new WithGemmini(4, 64).orElse(
@@ -30,8 +32,16 @@ class RocketB1Gem4 extends Config(
 )
 
 
+/** Workspace plumbing shared by the Gemmini config fragments. */
 object GemminiUtils {
 
+  /**
+   * Copy the gemmini-rocc-tests headers into the workspace and write the generated
+   * `gemmini_params.h` over the stock one - the workspace copy is the datatype contract
+   * software builds against (it reflects THIS design's mesh size and datatypes).
+   *
+   * @param header the `gemmini_params.h` content generated from the accelerator config
+   */
   def copyRoCCTests(header: String)(implicit p: Parameters): Unit = {
     val soctPath = p(HasSOCTPaths)
     val srcDir = Paths.get(gemminiDir).resolve("software").resolve("gemmini-rocc-tests")
@@ -64,6 +74,10 @@ object GemminiUtils {
 }
 
 
+/**
+ * Adds an integer (int8) Gemmini RoCC accelerator with the given mesh size, and widens
+ * the system bus to the accelerator's DMA width.
+ */
 class WithGemmini(mesh_size: Int, bus_bits: Int) extends Config((site, here, up) => {
   case BuildRoCC => up(BuildRoCC) ++ Seq(
     (p: Parameters) => {
@@ -77,6 +91,10 @@ class WithGemmini(mesh_size: Int, bus_bits: Int) extends Config((site, here, up)
   case SystemBusKey => up(SystemBusKey).copy(beatBytes = bus_bits / 8)
 })
 
+/**
+ * Adds an FP32 Gemmini RoCC accelerator with the given mesh size, and widens the system
+ * bus to the accelerator's DMA width.
+ */
 class WithGemminiFp(mesh_size: Int, bus_bits: Int) extends Config((site, here, up) => {
   case BuildRoCC => up(BuildRoCC) ++ Seq(
     (p: Parameters) => {

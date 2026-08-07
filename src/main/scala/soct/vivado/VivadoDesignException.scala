@@ -15,6 +15,7 @@ package soct.vivado
 class VivadoDesignException(message: String = "", cause: Throwable = None.orNull)
   extends Exception(message, cause)
 
+/** Factories mirroring the two constructors. */
 object VivadoDesignException {
 
   /**

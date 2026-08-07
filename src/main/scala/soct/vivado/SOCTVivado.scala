@@ -10,6 +10,10 @@ import scala.reflect.io.Path.jfile2path
 import scala.util.matching.Regex
 
 
+/**
+ * The Vivado backend of the launcher: writes the generated sources and TCL scripts into
+ * the workspace and drives (local or remote, foreground or detached) Vivado builds.
+ */
 object SOCTVivado {
 
   /**

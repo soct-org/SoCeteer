@@ -93,6 +93,7 @@ class RocketVivadoBaseConfig extends Config(
 /** Field holding the resolved output paths of the current run. */
 case object HasSOCTPaths extends Field[SOCTPaths]
 
+/** Sets [[HasSOCTPaths]] to the run's resolved output paths. */
 class WithSOCTPaths(paths: SOCTPaths) extends Config((_, _, _) => {
   case HasSOCTPaths => paths
 }
@@ -101,6 +102,7 @@ class WithSOCTPaths(paths: SOCTPaths) extends Config((_, _, _) => {
 /** Field holding the launcher's resolved SOCT configuration. */
 case object HasSOCTConfig extends Field[SOCTConfig]
 
+/** Sets [[HasSOCTConfig]] to the launcher's resolved configuration. */
 class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
   case HasSOCTConfig => config
 }
@@ -114,6 +116,7 @@ class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
  */
 case object FastPnR extends Field[Boolean](false)
 
+/** Sets [[FastPnR]] (currently consumed by nothing - see the field's doc). */
 @unused // reserved: no generator code consumes FastPnR at present (see the field's doc)
 class WithFastPnR extends Config((_, _, _) => {
   case FastPnR => true
@@ -159,12 +162,15 @@ case object HasSDCardPMOD extends Field[Option[Int]](None)
  */
 case object HasHTIF extends Field[Boolean](false)
 
+/** Sets [[HasHTIF]]: syscalls can be served over HTIF (the simulation target). */
 class WithHTIF extends Config((_, _, _) => {
   case HasHTIF => true
 })
 
+/** Field: whether the software builds need FatFs (set by storage-bearing features). */
 case object NeedsFatFS extends Field[Boolean](false)
 
+/** Adds the SD-card controller on the given PMOD port (see [[HasSDCardPMOD]]). */
 class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((site, here, up) => {
   case HasSDCardPMOD => Some(pmodIdx)
   case NeedsFatFS => true
@@ -221,7 +227,8 @@ case class VideoStreamParams(width: Int = 1280, height: Int = 720, fps: Int = 60
 case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
 
 /**
- * Adds the DisplayPort video pipeline (see [[HasVideoStream]]) with the default 720p60 timing.
+ * Adds the DisplayPort video pipeline (see [[HasVideoStream]]) with a coherent frame fetch
+ * at its default 640x480@30 mode (the inline comment explains the small default).
  * Select via `--with-config soct.WithVideoStream`; the design's outputs land in a
  * `-video`-suffixed workspace (see [[SOCTFeatureConfig]]).
  */
@@ -285,8 +292,10 @@ class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc", new Conf
 class WithL2Cache() extends SOCTFeatureConfig("l2", new WithInclusiveCache())
 
 
+/** Field: whether the design has the AXI UART Lite console. */
 case object HasUART extends Field[Boolean](false)
 
+/** Adds the AXI UART Lite console (see [[HasUART]]). */
 class WithUART extends Config((site, here, up) => {
   case HasUART => true
 })

@@ -30,6 +30,7 @@ case class InlineConcat(nPorts: Int) (implicit bd: SOCTBdBuilder, p: Parameters)
 }
 
 
+/** Implicit connect rules: the concat's `dout` drives sinks via `-->`. */
 object InlineConcat {
   implicit def doutIsDefaultSrcChisel[T <: chisel3.Data]: ToSinkConnect[InlineConcat, T] = (comp: InlineConcat, sink: T, bd: SOCTBdBuilder) => {
     bd.addEdge(comp.DOUT, portToBdPin(sink)(bd))

@@ -12,6 +12,11 @@ import scala.collection.mutable
 import scala.util.matching.Regex
 
 
+/**
+ * The mutable build context of one block design: components, pins and connection edges
+ * register themselves here while the system elaborates, and the TCL/XDC emission of
+ * [[SOCTBd]] reads the finished graph back out.
+ */
 class SOCTBdBuilder extends SOCTBd {
 
   /**

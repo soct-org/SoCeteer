@@ -10,6 +10,11 @@ import java.nio.file.Files
 import scala.reflect.io.Path.jfile2path
 import scala.util.control.NonFatal
 
+/**
+ * The command-line entry point (`runMain soct.SOCTLauncher`): parses the arguments,
+ * resolves configs and paths into a [[SOCTLauncher.SOCTConfig]] and dispatches to the
+ * selected target's generation and build flow.
+ */
 object SOCTLauncher {
 
   // JSON formats for serializing/deserializing

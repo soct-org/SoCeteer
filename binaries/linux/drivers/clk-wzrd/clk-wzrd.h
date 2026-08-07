@@ -31,7 +31,8 @@ struct soct_clk_wzrd_setting {
 /*
  * Finds the divider setting closest to `target_hz` within the limits - the same
  * exhaustive search the generator runs for the synthesized clock (integer DIVCLK
- * 1..106, eighth-step mult 2..128 / odiv 1..128, VCO and PFD windows honored).
+ * 1..106, eighth-step mult 2..128 and odiv up to 128 - fractional odiv starts at
+ * 2.000, only integer values reach down to 1 - VCO and PFD windows honored).
  * Returns -EDOM when nothing lands within 0.5% (the slack CTA-861 sinks accept
  * on a pixel clock). Only CLKOUT0 divides fractionally, so this is only valid
  * for a wizard's first output clock.

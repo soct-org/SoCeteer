@@ -6,8 +6,6 @@ import soct.vivado.abstracts.BdPinPort.portToBdPin
 import soct.vivado.{SOCTBdBuilder, TCLCommands}
 import soct.vivado.abstracts._
 
-import scala.annotation.unused
-
 
 /**
  * Constant IP core for Xilinx FPGAs
@@ -44,7 +42,6 @@ object TieOff {
 }
 
 /** All-ones constant, for tying inputs high. */
-@unused // component library
 object TieHigh {
   /**
    * @param nBits the number of bits
@@ -56,6 +53,7 @@ object TieHigh {
   }
 }
 
+/** Chisel-literal factory and implicit connect rules (`dout` drives sinks via `-->`). */
 object InlineConstant {
 
   /**

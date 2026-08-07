@@ -5,6 +5,10 @@ import soct.vivado.VivadoDesignException
 import scala.collection.mutable
 import scala.reflect.ClassTag
 
+/**
+ * Trait for components with numbered pin families (`clk_out<i>`, `In<i>`, `M<i>_AXI`):
+ * provides the indexed factories that create each pin at most once.
+ */
 trait HasIndexedPins {
   self: BdComp =>
 
