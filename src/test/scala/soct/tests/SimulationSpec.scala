@@ -50,7 +50,7 @@ class SimulationSpec extends AnyFlatSpec {
     val paths = SOCTPathsBase(outDir)
 
     SOCTLauncher.main(Array(
-      "--ll", "error",
+      "--log-level", "error",
       "--config", s"soct.$config",
       "--xlen", xlen.toString,
       "--out-dir", outDir.toString,

@@ -297,9 +297,13 @@ reg [31:0] write_data;
 reg rd_req;
 reg [1:0] wr_req;
 
-assign s_axi_arready = !rd_req && !s_axi_rvalid;
-assign s_axi_awready = !wr_req[0] && !s_axi_bvalid;
-assign s_axi_wready = !wr_req[1] && !s_axi_bvalid;
+// Gated with reset: `reset` is resynchronized from async_resetn (3-FF), so it deasserts
+// a few cycles AFTER the fabric's reset - in that window the request registers are held
+// cleared, which would otherwise read as "idle" and assert READY. A handshake accepted
+// then is never registered and never answered, wedging the master; back-pressure instead.
+assign s_axi_arready = !reset && !rd_req && !s_axi_rvalid;
+assign s_axi_awready = !reset && !wr_req[0] && !s_axi_bvalid;
+assign s_axi_wready = !reset && !wr_req[1] && !s_axi_bvalid;
 
 always @(posedge clock) begin
     if (reset) begin

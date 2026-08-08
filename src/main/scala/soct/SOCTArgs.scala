@@ -91,7 +91,7 @@ sealed trait VivadoTarget extends Targets {
  */
 sealed trait VerilatorTarget extends Targets {
   override def systemName: String = "verilator"
-  val defaultBootrom: String = "testchipip-boot"
+  val defaultBootrom: String = "msip-boot"
   val defaultTop: ChiselTop = Left(classOf[SOCTSimSystem])
 
   /** Whether to configure and build the `sim` CMake project after emitting the design. */
@@ -281,7 +281,7 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
     .action((x, c) => c.copy(extraConfigs = c.extraConfigs :+ x))
     .text(wrap("Fully qualified name of an additional Config class mixed into the parameters (e.g. soct.WithVideoStream). Can be used multiple times; the leftmost occurrence has the highest priority, and all of them override the --config base. The class must have a zero-argument constructor."))
   opt[Int]("xlen").action((x, c) => c.copy(xlen = x)).text(wrap(s"The xlen to use. Default is ${defaultSOCTArgs.xlen}. Allowed values are 32 and 64 - 32 adds ${classOf[freechips.rocketchip.rocket.WithRV32].getName} to the config."))
-  opt[String]("ll")
+  opt[String]("log-level")
     .action((x, c) => c.copy(logLevel = x))
     .validate(x =>
       if (logLevels.contains(x.toLowerCase)) success

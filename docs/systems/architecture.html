@@ -164,7 +164,7 @@
       string and CPU count from the DTS and records all paths, ABI and compile definitions),</li>
     <li>configures and builds the boot ROM CMake target in <code>binaries/</code> with Ninja - the
       target is <code>--bootrom</code> or the target default (<code>sd-boot</code> for Vivado,
-      <code>testchipip-boot</code> for Verilator). The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/bootroms/template.cmake"><code>bootrom template</code></a> compiles the DTS to a DTB
+      <code>msip-boot</code> for Verilator). The <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/bootroms/template.cmake"><code>bootrom template</code></a> compiles the DTS to a DTB
       (<code>dtc</code>) and embeds it via <code>-DDEVICE_TREE</code>, then objcopys the ELF to a
       raw <code>bootrom.img</code>,</li>
     <li>reads the image bytes back and bakes them into the <code>TLROM</code>.</li>

@@ -40,7 +40,7 @@ class VivadoGenerationSpec extends AnyFlatSpec {
 
   private def generate(board: String, withConfigs: Seq[String], extraArgs: Seq[String] = Seq.empty): Unit = {
     val args = Seq(
-      "--ll", "error",
+      "--log-level", "error",
       "--config", "soct.RocketB1",
       "-t", "vivado.bd",
       "--board", board,
@@ -56,8 +56,8 @@ class VivadoGenerationSpec extends AnyFlatSpec {
   }
 
   "VCU118" should "generate without the SD-card PMOD" in {
-    // No SD controller means no sd-boot ROM; testchipip-boot parks the harts for JTAG loading.
-    generate("VCU118", Seq("soct.tests.WithoutSdCard"), Seq("--bootrom", "testchipip-boot"))
+    // No SD controller means no sd-boot ROM; msip-boot parks the harts for JTAG loading.
+    generate("VCU118", Seq("soct.tests.WithoutSdCard"), Seq("--bootrom", "msip-boot"))
     assert(Files.exists(testWorkspace.resolve("RocketB1-64").resolve("VCU118").resolve("SOCTSystem.cmake")))
   }
 
@@ -68,7 +68,7 @@ class VivadoGenerationSpec extends AnyFlatSpec {
 
   it should "refuse a video stream without a Zynq PS" in {
     val e = designError(
-      generate("VCU118", Seq("soct.WithVideoStream", "soct.tests.WithoutSdCard"), Seq("--bootrom", "testchipip-boot")))
+      generate("VCU118", Seq("soct.WithVideoStream", "soct.tests.WithoutSdCard"), Seq("--bootrom", "msip-boot")))
     assert(e.getMessage.contains("Zynq UltraScale+ PS"))
   }
 }

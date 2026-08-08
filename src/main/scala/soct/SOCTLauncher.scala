@@ -89,7 +89,7 @@ object SOCTLauncher {
     if (bootrom == "sd-boot" && config.params(HasSDCardPMOD).isEmpty) {
       throw new IllegalArgumentException(
         "The default boot ROM 'sd-boot' loads BOOT.ELF from the SD card, which this design does not have " +
-          "(HasSDCardPMOD is unset). Pass --bootrom explicitly - e.g. 'testchipip-boot', which parks the " +
+          "(HasSDCardPMOD is unset). Pass --bootrom explicitly - e.g. 'msip-boot', which parks the " +
           "harts until an external loader (JTAG) starts them.")
     }
 
