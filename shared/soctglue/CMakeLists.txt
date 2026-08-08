@@ -4,9 +4,10 @@ cmake_minimum_required(VERSION 3.20)
 # This Project is a glue layer that provides common code for both the bootrom and the programs.
 # It is meant to be built from the binaries directory where you can find sensible defaults
 ###############################################################################################
-if(NOT DEFINED SOCETEER_VERSION)
-    message(FATAL_ERROR "SOCETEER_VERSION is not defined. You need to add a SOCT_SYSTEM file to build this project")
-endif()
+if (NOT COMMAND soct_minimum_required)
+    message(FATAL_ERROR "soctglue must be built from a project that included FindSOCTSystem.cmake and a SOCT_SYSTEM file (see binaries/)")
+endif ()
+soct_minimum_required(VERSION 0.9.0)
 
 project(soctglue C ASM)
 

@@ -19,7 +19,7 @@ import soct.SOCTPaths.projectRoot
  * How far the Vivado flow is driven past project/block-design creation. Carried by the
  * [[VivadoTarget]] family, so the stage is selected by choosing the target
  * (`vivado.syn`, `vivado.bs`) rather than a separate flag; it is orthogonal to the design's
- * core count. `None` (plain `vivado` / `vivado.bd`) means generate the project only.
+ * core count. `None` (`vivado.bd`) means generate the project only.
  */
 sealed trait BuildStage {
   /** Human-readable name used in logs and the launch banner. */
@@ -101,17 +101,7 @@ sealed trait VerilatorTarget extends Targets {
 
 /** The concrete `--target` values, in declaration order (which the help output follows). */
 object Targets {
-  /**
-   * Legacy Vivado target: generate the project and block design only (kept for backwards
-   * compatibility - identical to `vivado.bd`). Use `vivado.syn`/`vivado.bs` to also build.
-   */
-  case object Vivado extends VivadoTarget {
-    val name: String = "vivado"
-    val buildStage: Option[BuildStage] = None
-    val description: String = "Vivado project + block design, no build (legacy alias of vivado.bd)."
-  }
-
-  /** Vivado: generate the project and block design only (explicit spelling of the legacy `vivado`). */
+  /** Vivado: generate the project and block design only. */
   case object VivadoBd extends VivadoTarget {
     val name: String = "vivado.bd"
     val buildStage: Option[BuildStage] = None
@@ -173,7 +163,7 @@ object Targets {
   /**
    * All supported target values
    */
-  val values: Seq[Targets] = Seq(Vivado, VivadoBd, VivadoSyn, VivadoBs, Yosys, Verilator, VerilatorBuild)
+  val values: Seq[Targets] = Seq(VivadoBd, VivadoSyn, VivadoBs, Yosys, Verilator, VerilatorBuild)
 
   private def fromString(s: String): Option[Targets] = values.find(_.name == s.toLowerCase)
 }
@@ -220,7 +210,6 @@ case class SOCTArgs(
                      peripheryFreq: Freq = 100.MHz,
                      overrideVivadoProject: Boolean = true,
                      extMemParts: Seq[String] = Seq.empty,
-                     fastPnR: Boolean = false,
                      // Parallel Vivado jobs for an automatic synthesis/bitstream build (launch_runs -jobs /
                      // general.maxThreads). Only used by the vivado.syn/vivado.bs targets. The stage itself
                      // is the target's buildStage, not a separate field.
@@ -234,7 +223,6 @@ case class SOCTArgs(
                      // Terminating options
                      syncFromRemote: Boolean = false, // Whether to sync the remote directory to the local workspace directory
                      getVersion: Boolean = false, // Print the version of the tool
-                     wtf: Boolean = false, // What the firtool - for debugging
                    )
 
 /** The scopt command-line parser producing a [[SOCTArgs]]. */
@@ -293,8 +281,8 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
 
   help("help").text("Prints this usage text")
   // General options
-  opt[String]('w', "workspace").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(wrap(s"A custom workspace directory to use instead of the default ${defaultSOCTArgs.workspaceDir}. All generated files will be stored in a subdirectory of this directory based on the config and target. Superseded by --out-dir if both are provided."))
-  opt[String]('o', "out-dir").action((x, c) => c.copy(userOutDir = Some(Paths.get(x).toAbsolutePath))).text(wrap("The direct output directory to use for all generated files (Not based on target/config). If set, this overrides the default workspace directory and the --workspace option."))
+  opt[String]("workspace").action((x, c) => c.copy(workspaceDir = Paths.get(x).toAbsolutePath)).text(wrap(s"A custom workspace directory to use instead of the default ${defaultSOCTArgs.workspaceDir}. All generated files will be stored in a subdirectory of this directory based on the config and target. Superseded by --out-dir if both are provided."))
+  opt[String]("out-dir").action((x, c) => c.copy(userOutDir = Some(Paths.get(x).toAbsolutePath))).text(wrap("The direct output directory to use for all generated files (Not based on target/config). If set, this overrides the default workspace directory and the --workspace option."))
   opt[String]('c', "config")
     .action((x, c) => c.copy(baseConfig = SOCTUtils.instantiateConfig(x)))
     .text(wrap(s"The config that determines what system to build (Rocket-Chip, Boom, Gemmini etc). Default is ${defaultSOCTArgs.baseConfig.getClass.getName}."))
@@ -357,11 +345,11 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   // Firtool options
   opt[String]("firtool-path").action((x, c) => c.copy(firtoolPath = Some(Paths.get(x)))).text(s"The path to the firtool binary. Overrides the version. If not set, the version together with the firtool resolver will be used.")
   opt[String]("firtool-version").action((x, c) => c.copy(firtoolVersion = x)).text(s"The version of firtool to use. Only change if you encounter issues. Default is ${defaultSOCTArgs.firtoolVersion}.")
-  opt[String]('a', "firtool-arg").unbounded().action((x, c) => c.copy(userFirtoolArgs = c.userFirtoolArgs :+ x)).text(s"Additional arguments to pass to firtool. Is only applied in the last lowering stage. Can be used multiple times.")
+  opt[String]("firtool-arg").unbounded().action((x, c) => c.copy(userFirtoolArgs = c.userFirtoolArgs :+ x)).text(s"Additional arguments to pass to firtool. Is only applied in the last lowering stage. Can be used multiple times.")
 
   // Vivado specific options
   opt[String]("vivado").action((x, c) => c.copy(vivado = Some(Paths.get(x)))).text(s"The vivado executable script to use. Default is ${defaultSOCTArgs.vivado}.")
-  opt[String]('b', "board")
+  opt[String]("board")
     .action((x, c) => c.copy(board = FPGARegistry.n2bOpt(x)))
     .validate(x =>
       if (FPGARegistry.n2bOpt(x).isDefined) success
@@ -386,8 +374,6 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
     })
     .text(wrap("The Vivado DDR4 memory part name of the DIMM to use (e.g., MTA16ATF2G64HZ-2G3). Can be specified multiple times for multiple external memory ports (first occurrence configures the first external memory port, second occurrence the second one, etc.). The memory capacity is derived from the part name (see PartRegistry - unknown parts must be added there). If omitted, the board's preset part is used. A part differing from the board preset switches the port to a custom (non board-flow) DDR4 interface, which requires the board definition to provide the pin map and clock timing (the ZCU104 does)."))
 
-  opt[Unit]("fast-pnr").action((_, c) => c.copy(fastPnR = true)).text(wrap("Reserved: fast place&route mode. Currently a no-op - no generated logic is simplified; the flag is kept for future PnR-effort tradeoffs."))
-
   opt[Int]("vivado-parallel").valueName("<jobs>").action((x, c) => c.copy(vivadoParallel = x))
     .text(wrap(s"Number of parallel Vivado jobs (launch_runs -jobs / general.maxThreads) for an automatic build. Only used by the vivado.syn/vivado.bs targets. Default is ${defaultSOCTArgs.vivadoParallel}. The build runs detached: its log path and a follow command are printed. Works locally, or on the remote host with --use-remote-vivado (pull results back afterwards with --sfr)."))
 
@@ -399,7 +385,6 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
   // Terminating options
   opt[Unit]("sfr").action((_, c) => c.copy(syncFromRemote = true)).text(wrap("Sync from remote - Sync the remote directory to the local workspace directory. Files that are newer locally are left untouched, so a pull cannot revert freshly generated or fixed sources to a stale remote state. Only applicable if --remote-dir and --ssh-config are set."))
   opt[Unit]("version").action((_, c) => c.copy(getVersion = true)).text("Prints the version of the tool.")
-  opt[Unit]("wtf").action((_, c) => c.copy(wtf = true)).text("What the firtool -- Prints the firtool help.")
 
   checkConfig { c =>
     if (c.vivadoParallel < 1)

@@ -13,6 +13,7 @@ list(PREPEND CMAKE_MODULE_PATH ${SOCT_CMAKE_PATH})
 find_package(SOCTSystem REQUIRED) # Provides SOCT_SYSTEM variable pointing to the system file with important variables for the project
 message(STATUS "SOCT_SYSTEM: ${SOCT_SYSTEM}")
 include(${SOCT_SYSTEM}) # Include the system file to get important variables for the project
+soct_minimum_required(VERSION 0.9.0)
 
 if (NOT SOCT_TARGET STREQUAL "verilator")
     message(FATAL_ERROR "This CMakeLists.txt is only intended to be used for the verilator target. Current SOCT_TARGET: ${SOCT_TARGET}")

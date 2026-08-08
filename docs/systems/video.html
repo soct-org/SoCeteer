@@ -72,7 +72,7 @@
   and why the software contract below has a PS-side half at all.</p>
 
   <h2>Enabling the pipeline</h2>
-<pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bd --board ZCU104 \
   --with-config soct.WithIncoherentVideoStream --with-config soct.WithL2Cache"</code></pre>
   <p>This is the preferred video design (workspace suffix <code>-l2-video-nc</code>): the frame
   fetch bypasses the coherent fabric, so no amount of CPU traffic can starve the display, and

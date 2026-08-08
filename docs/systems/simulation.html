@@ -56,7 +56,8 @@
   DPI-C bridge, a disassembler for tracing) into one binary. It finds the design through the
   <code>SOCT_SYSTEM</code> variable &mdash; the <code>SOCTSystem.cmake</code> file every launcher
   run emits &mdash; or falls back to the <code>SOCTSystem-latest.cmake</code> symlink at the
-  project root. The quick-start commands are in the README.</p>
+  project root, warning with the system file it resolved to. The quick-start commands are in
+  the README.</p>
   <p>Build-time knobs worth knowing (see
   <a href="https://github.com/soct-org/SoCeteer/blob/main/sim/CMakeLists.txt"><code>sim/CMakeLists.txt</code></a>
   for the rest): <code>-DVL_TRACE=1</code> compiles in VCD waveform tracing

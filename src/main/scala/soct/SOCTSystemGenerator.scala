@@ -163,7 +163,6 @@ object SOCTSystemGenerator {
     // ---------------------------------------------------------------
     val commonVars = Seq(
       CMakeVar("SOCETEER_VERSION", version, "The version of soceteer used to generate this system"),
-      CMakeVar("SOCT_CONFIG_NAME", config.configName, "The name of the system configuration", compileDef = true, quoted = true),
       CMakeVar("SOCT_TARGET", config.args.target.systemName, "Whether this system was built for an FPGA board, Verilator simulation etc.", compileDef = true, quoted = true),
       CMakeVar("SOCT_ARCH", march, "The RISC-V architecture string extracted from the DTS", compileDef = true, quoted = true),
       CMakeVar("SOCT_ABI", config.mabi, "The RISC-V ABI to use for compiling binaries for this system", compileDef = true, quoted = true),
@@ -228,8 +227,6 @@ object SOCTSystemGenerator {
     val targetSpecific = config.args.target match {
       case _: VerilatorTarget =>
         val vars = Seq(
-          CMakeVar("SOCT_VERILATOR_TOP_MODULE", config.topModule.fold(_.getSimpleName, _.getSimpleName),
-            "The top-level module name for the Verilog design", compileDef = true, quoted = true),
           CMakeVar("SOCT_SIM_EXE", SOCT_SIMULATOR_EXE,
             "The name of the executable to build for simulating this system"),
         )
@@ -241,15 +238,11 @@ object SOCTSystemGenerator {
            |""".stripMargin
 
       case _: VivadoTarget =>
-        val vars = Seq(
-          CMakeVar("SOCT_VIVADO_BOARD", config.args.board.map(_.toString).getOrElse("unknown"),
-            "The name of the FPGA board this system is designed for", compileDef = true, quoted = true),
-        )
         s"""####################################################
            |# Additional information for Vivado synthesis target
            |####################################################
            |
-           |${CMakeVar.render(vars)}
+           |# (none for now)
            |""".stripMargin
 
       case Targets.Yosys =>

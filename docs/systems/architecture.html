@@ -102,8 +102,7 @@
   <ol>
     <li><strong>Launcher-argument fragments</strong> (from <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/SOCTLauncher.scala"><code>SOCTConfig.apply</code></a>):
       <code>WithPeripheryClockSpeed(--periphery-freq-mhz)</code>, plus
-      <code>WithSingleBusClockSpeed(--core-freq-mhz)</code>,
-      <code>WithFastPnR</code> (<code>--fast-pnr</code>) and RocketChip's
+      <code>WithSingleBusClockSpeed(--core-freq-mhz)</code> and RocketChip's
       <code>WithRV32</code> (<code>--xlen 32</code>) when requested.</li>
     <li><strong>Extra config fragments</strong> from <code>--with-config</code> (repeatable) -
       instantiated by reflection like the base config and inserted here, so they override the

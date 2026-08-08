@@ -15,6 +15,7 @@ list(PREPEND CMAKE_MODULE_PATH ${SOCT_CMAKE_PATH})
 find_package(SOCTSystem REQUIRED) # Provides SOCT_SYSTEM variable pointing to the system file with important variables for the project
 message(STATUS "SOCT_SYSTEM: ${SOCT_SYSTEM}")
 include(${SOCT_SYSTEM}) # Include the system file to get important variables for the project
+soct_minimum_required(VERSION 0.9.0)
 
 
 set(SOCT_TOOLCHAIN_FILE "${SOCETEER_ROOT}/shared/cmake/toolchain-riscv.cmake")

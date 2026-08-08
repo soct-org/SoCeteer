@@ -101,8 +101,12 @@ trait WantsPMODPins extends EmitsConstraint {
   this: BdPinPort =>
 
   private def toProperty(packagePin: String, ioStandard: String, indexOpt: Option[Int]): TCLCommands = {
+    // Braced: an XDC is Tcl, where an unbraced `port[0]` is command substitution - the
+    // index would be run as a command ("invalid command name 0") instead of naming a bit
+    // of the bus. Bracing is what the Xilinx constraint docs prescribe and is correct in
+    // any interpreter, so the constraint does not depend on the tool being lenient.
     val portRef = indexOpt match {
-      case Some(i) => s"${this.ref}[$i]"
+      case Some(i) => s"{${this.ref}[$i]}"
       case None => this.ref
     }
     Seq(

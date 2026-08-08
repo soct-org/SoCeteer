@@ -19,7 +19,7 @@
   <h2>1. Generate the design</h2>
   <p>A design is a core config plus additions, generated for a specific board and the
   memory module actually inserted in it:</p>
-<pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bd --board ZCU104 \
   --config soct.RocketB2 --with-config soct.WithIncoherentVideoStream --with-config soct.WithL2Cache \
   --ext-mem-part &lt;DIMM-part&gt; --vivado &lt;path-to&gt;/vivado"</code></pre>
   <div class="hint">Filling in the placeholders:
@@ -41,7 +41,7 @@
   <code>workspace/&lt;design&gt;/&lt;board&gt;/</code> &mdash; the design name encodes
   config and additions, e.g. <code>RocketB2-64-l2-video-nc</code> &mdash; holding the
   Vivado project, the device tree and the <code>SOCTSystem.cmake</code> the software builds
-  are pointed at. <code>--target vivado</code> generates the project <em>without</em>
+  are pointed at. <code>--target vivado.bd</code> generates the project <em>without</em>
   building it, useful for inspecting the design in the Vivado GUI first.</p>
 
   <h2>2. Build the bitstream</h2>

@@ -100,9 +100,10 @@ cd SoCeteer</code></pre>
   <code>workspace/&lt;design&gt;/&lt;target&gt;/</code> under the repo root. Each generated
   design has its own, so the software projects follow whichever design you point them at.
   With several designs generated, prefer the explicit option over the
-  <code>SOCTSystem-latest.cmake</code> fallback &mdash; the fallback silently follows
-  whichever design was generated last. Avoid build-directory paths containing spaces or
-  commas &mdash; the Linux project refuses them at configure time.</div>
+  <code>SOCTSystem-latest.cmake</code> fallback &mdash; the fallback follows whichever
+  design was generated last (the configure warning names the system file it resolved to).
+  Avoid build-directory paths containing spaces or commas &mdash; the Linux project refuses
+  them at configure time.</div>
 
   <h2>5. Linux development</h2>
   <div class="opt">Only needed when you build Linux things (the kernel, drivers, Linux

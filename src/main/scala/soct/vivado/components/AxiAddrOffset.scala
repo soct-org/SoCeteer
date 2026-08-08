@@ -29,6 +29,15 @@ case class AxiAddrOffset(getAxiMasterPin: BdIntfPin, windowBase: BigInt, windowS
   if (windowBase % windowSize != 0 || targetBase % windowSize != 0) {
     throw VivadoDesignException(s"AxiAddrOffset window (0x${windowBase.toString(16)}) and target (0x${targetBase.toString(16)}) bases must be aligned to the window size (0x${windowSize.toString(16)})")
   }
+  // The collateral adds only the low ADDR_WIDTH bits of OFFSET, so an aperture the
+  // address bus cannot express would be truncated into a valid-looking but wrong
+  // address - reads and writes landing somewhere else in DRAM with nothing to report it.
+  if (targetBase < windowBase) {
+    throw VivadoDesignException(s"AxiAddrOffset target (0x${targetBase.toString(16)}) must be at or above the window (0x${windowBase.toString(16)}): the offset is added, never subtracted")
+  }
+  if ((targetBase + windowSize) > (BigInt(1) << AxiAddrOffset.AddrWidth)) {
+    throw VivadoDesignException(s"AxiAddrOffset target 0x${targetBase.toString(16)}..0x${(targetBase + windowSize).toString(16)} does not fit in ${AxiAddrOffset.AddrWidth} address bits - the offset would be truncated and the window would point somewhere else")
+  }
 
   override def reference: String = "axi_addr_offset" // The module name inside the collateral file - DO NOT CHANGE
 
@@ -58,7 +67,7 @@ case class AxiAddrOffset(getAxiMasterPin: BdIntfPin, windowBase: BigInt, windowS
   }
 
   override def defaultProperties: Map[String, String] = Map(
-    "CONFIG.ADDR_WIDTH" -> "32",
+    "CONFIG.ADDR_WIDTH" -> AxiAddrOffset.AddrWidth.toString,
     "CONFIG.DATA_WIDTH" -> "32",
     "CONFIG.ID_WIDTH" -> "1",
     "CONFIG.OFFSET" -> s"0x${(targetBase - windowBase).toString(16).toUpperCase}"
@@ -71,4 +80,10 @@ case class AxiAddrOffset(getAxiMasterPin: BdIntfPin, windowBase: BigInt, windowS
   override def assignAddrTcl: TCLCommands = Seq(
     s"assign_bd_address -offset 0x${windowBase.toString(16).toUpperCase} -range 0x${windowSize.toString(16).toUpperCase} -target_address_space [get_bd_addr_spaces ${getAxiMasterPin.ref}] [get_bd_addr_segs ${S_AXI.ref}/reg0]".tcl,
   )
+}
+
+/** The address width the collateral is configured with; the constructor checks every
+ * window against it, since the RTL adds only this many bits of the offset. */
+object AxiAddrOffset {
+  val AddrWidth: Int = 32
 }

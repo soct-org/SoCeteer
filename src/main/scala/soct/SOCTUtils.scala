@@ -319,21 +319,6 @@ object SOCTUtils {
     }
   }
 
-  /**
-   * Print the help message of the firtool binary at the given path and exit with the same code as the firtool process.
-   *
-   * @param firtoolBinaryPath The path to the firtool binary to invoke with --help
-   */
-  def printFirtoolHelp(firtoolBinaryPath: String): Unit = {
-    log.info(s"Using firtool binary: $firtoolBinaryPath")
-    val code = new ProcessBuilder(firtoolBinaryPath, "--help")
-      .inheritIO()
-      .start()
-      .waitFor()
-    sys.exit(code)
-  }
-
-
   /** Returns true iff x is a positive power of two. */
   def isPowerOfTwo(x: Long): Boolean =
     x > 0 && (x & (x - 1)) == 0

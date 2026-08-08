@@ -1,5 +1,6 @@
 package soct.system.vivado
 
+import soct.RegisteredMems
 import soct.vivado._
 import soct.vivado.components.DDR4
 
@@ -74,8 +75,13 @@ trait SOCTVivadoSystemConstraints {
     }
     // -quiet throughout: a board without a UART, or a design built without one, simply has no
     // such port, and that is not an error here.
+    // Derived, not spelled: the reset output belongs to whichever DDR4 ports this design
+    // registered, and a board that names them differently (VCU118's per-channel
+    // ddr4_sdram_c1/c2) would otherwise be handed a port name that matches nothing -
+    // silently, since both the query and the constraint are -quiet.
+    val ddr4Resets = p(RegisteredMems).map(m => s"${m.portName}_reset_n")
     val inputs = Seq("reset") ++ uartPorts.filter(_.endsWith("_rxd"))
-    val outputs = Seq("ddr4_sdram_reset_n") ++ uartPorts.filter(_.endsWith("_txd"))
+    val outputs = ddr4Resets ++ uartPorts.filter(_.endsWith("_txd"))
     bd.addTimingConstraints(() => Seq(
       s"""# Asynchronous top-level ports: no clock relationship exists, so none is asserted.
          |# Declared rather than left unconstrained, so that check_timing reports only paths

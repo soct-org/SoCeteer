@@ -203,9 +203,6 @@ class SOCTBd {
   def predecessors(to: BdPinPort): Seq[BdPinPort] =
     inAdj.get(to).map(_.toSeq).getOrElse(Seq.empty)
 
-  /** Alias for [[successors]]. */
-  final def getSinks(source: BdPinPort): Seq[BdPinPort] = successors(source)
-
   // ----------------------------
   // Connector queries (union of in+out)
   // ----------------------------

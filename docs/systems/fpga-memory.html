@@ -68,7 +68,7 @@
   to the smaller of the two &mdash; which is why the part is a launcher argument.</p>
 
   <h2>Selecting a DIMM: <code>--ext-mem-part</code></h2>
-<pre><code>sbt "runMain soct.SOCTLauncher --target vivado --board ZCU104 \
+<pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bd --board ZCU104 \
   --ext-mem-part MTA16ATF2G64HZ-2G3 --vivado /path/to/vivado"</code></pre>
   <ul>
     <li>Pass it once per external DDR4 port (first occurrence configures the first port, and so on).</li>

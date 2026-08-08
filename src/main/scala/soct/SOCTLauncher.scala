@@ -49,9 +49,6 @@ object SOCTLauncher {
       if (args.coreFreq.isDefined) {
         params ++= new WithSingleBusClockSpeed(args.coreFreq.get)
       }
-      if (args.fastPnR) {
-        params ++= new soct.WithFastPnR
-      }
 
       if (args.xlen == 32) {
         params = params.alter(new freechips.rocketchip.rocket.WithRV32)
@@ -93,8 +90,8 @@ object SOCTLauncher {
 
     val success = SOCTVivado.prepareForVivado(boardPaths, config)
 
-    // The build stage rides on the target (vivado.syn/vivado.bs); plain vivado/vivado.bd only
-    // create the project.
+    // The build stage rides on the target (vivado.syn/vivado.bs); vivado.bd only creates
+    // the project.
     val stage = args.target match {
       case v: VivadoTarget => v.buildStage
       case _ => None
@@ -159,8 +156,8 @@ object SOCTLauncher {
   }
 
   /**
-   * Entry point: parses the arguments, handles the terminating options (--version, --wtf,
-   * --sfr), resolves paths and firtool, and dispatches to the selected target's generator.
+   * Entry point: parses the arguments, handles the terminating options (--version, --sfr),
+   * resolves paths and firtool, and dispatches to the selected target's generator.
    *
    * @param raw the raw command-line arguments
    * @throws IllegalArgumentException if required arguments for the selected mode are missing
@@ -181,11 +178,6 @@ object SOCTLauncher {
       // Modify the launcher args to include the firtool path
       args = args.copy(firtoolPath =
         Some(args.firtoolPath.getOrElse(SOCTUtils.findFirtool(args.firtoolVersion))))
-
-      if (args.wtf) {
-        SOCTUtils.printFirtoolHelp(args.firtoolPath.get.toString)
-        return
-      }
 
       if (args.syncFromRemote) {
         if (args.remoteDir.isEmpty) {

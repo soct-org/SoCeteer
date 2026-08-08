@@ -45,6 +45,7 @@ list(PREPEND CMAKE_MODULE_PATH ${SOCT_CMAKE_PATH})
 find_package(SOCTSystem REQUIRED) # Provides SOCT_SYSTEM pointing to the system file
 message(STATUS "SOCT_SYSTEM: ${SOCT_SYSTEM}")
 include(${SOCT_SYSTEM})
+soct_minimum_required(VERSION 0.9.0)
 
 if (NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     include(${SOCT_CMAKE_PATH}/toolchain-riscv-linux-musl.cmake)
