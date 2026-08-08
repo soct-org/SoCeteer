@@ -1,11 +1,11 @@
+// Component library: the gate types are offered for designs to use, so some have no
+// caller in this repository.
 package soct.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.vivado.abstracts.BdPinPort.portToBdPin
 import soct.vivado.abstracts._
-
-import scala.annotation.unused
 
 /**
  * Xilinx inline vector-logic gate (and/or/xor/not). Use the concrete [[AND]]/[[OR]]/[[XOR]]/
@@ -60,7 +60,6 @@ object InlineVectorLogic {
   }
 }
 
-
 // ---------------- Concrete Types ----------------
 
 /** 1-bit AND gate of the given drivers. */
@@ -70,7 +69,6 @@ final case class AND(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters)
 final case class OR(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("or", 1)
 
 /** 1-bit XOR gate of the given drivers. */
-@unused // component library
 final case class XOR(ops: DrivesNet*)(implicit bd: SOCTBdBuilder, p: Parameters) extends InlineVectorLogic("xor", 1)
 
 /** 1-bit inverter of the given driver. */

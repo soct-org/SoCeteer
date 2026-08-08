@@ -1,3 +1,5 @@
+// Several configs here are `--config`/`--with-config` entry points, named on the command
+// line and built by reflection (SOCTUtils.instantiateConfig) rather than referenced.
 package soct
 
 import chisel3.util.log2Up
@@ -11,8 +13,6 @@ import soct.SOCTFreq._
 import soct.SOCTLauncher.SOCTConfig
 import soct.vivado.SOCTBdBuilder
 import soct.vivado.fpga.{DDR4PortParams, FPGA}
-
-import scala.annotation.unused
 
 /*----------------- Base Configs ---------------*/
 
@@ -50,7 +50,6 @@ class BaseSubsystemConfig extends Config((site, here, up) => {
   case TilesLocated(InSubsystem) => Nil
   case PossibleTileLocations => Seq(InSubsystem)
 })
-
 
 /** Common Rocket setup shared by the simulation and Vivado base configs. */
 class RocketBaseConfig extends Config(
@@ -117,17 +116,14 @@ class WithSOCTConfig(config: SOCTConfig) extends Config((_, _, _) => {
 case object FastPnR extends Field[Boolean](false)
 
 /** Sets [[FastPnR]] (currently consumed by nothing - see the field's doc). */
-@unused // reserved: no generator code consumes FastPnR at present (see the field's doc)
 class WithFastPnR extends Config((_, _, _) => {
   case FastPnR => true
 })
-
 
 /*----------------- Memory ---------------*/
 
 /** Field holding the DDR4 memory ports (with resolved parts/capacities) of the design. */
 case object RegisteredMems extends Field[Seq[DDR4PortParams]](Nil)
-
 
 /** Registers several memory channels and sizes ExtMem to their summed capacity. */
 class WithMultiMemLayout(mems: Seq[DDR4PortParams]) extends Config((_, _, up) => {
@@ -144,7 +140,6 @@ class WithSingleMemLayout(mem: DDR4PortParams) extends Config((_, _, up) => {
     master = x.master.copy(size = mem.getCap.value)))
   case RegisteredMems => Seq(mem)
 })
-
 
 /*----------------- MMIO ---------------*/
 
@@ -255,7 +250,6 @@ class WithVideoPipeline(params: VideoStreamParams) extends Config((site, here, u
  * Select via `--with-config soct.WithVideoStream`; the design's outputs land in a
  * `-video`-suffixed workspace (see [[SOCTFeatureConfig]]).
  */
-@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 // 640x480@30 (~28 MB/s frame fetch): the coherent path is shared with the CPU and
 // measured to starve under load (see WithIncoherentVideoStream), so the coherent
 // variant defaults to the smallest useful console and leaves the path to the cores.
@@ -293,7 +287,6 @@ class WithVideoStream() extends SOCTFeatureConfig("video",
  * by reading a cache-sized buffer does not write every line back - the D-cache replaces
  * randomly, so some rendered pixels would reach the screen only by chance.
  */
-@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 // 1080p60: the private memory port carries it without touching the CPU's paths, so the
 // design synthesizes (and closes timing) at the maximum mode; the runtime-retunable
 // pixel clock lets software scale DOWN from there (never up - see VideoStreamFeature).
@@ -314,9 +307,7 @@ class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc",
  * and models memory as a fast in-RTL SRAM, so the L2 neither exercises its coherence role nor
  * hides any latency there.
  */
-@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class WithL2Cache() extends SOCTFeatureConfig("l2", new WithInclusiveCache())
-
 
 /** Field: whether the design has the AXI UART Lite console. */
 case object HasUART extends Field[Boolean](false)
@@ -325,7 +316,6 @@ case object HasUART extends Field[Boolean](false)
 class WithUART extends Config((site, here, up) => {
   case HasUART => true
 })
-
 
 /*----------------- Clock Speeds ---------------*/
 
@@ -381,12 +371,10 @@ class WithSingleBusClockSpeed(freq: Freq) extends Config(
  */
 case object XilinxFPGAKey extends Field[Option[FPGA]](None)
 
-
 /**
  * Field to hold the BDBuilder instance for Xilinx FPGA designs.
  */
 case object BdBuilderKey extends Field[Option[SOCTBdBuilder]](None)
-
 
 /**
  * Class to add a BDBuilder to the configuration. Used to generate Vivado block designs.
@@ -406,9 +394,7 @@ class WithXilinxFPGA(fpga: FPGA) extends Config((_, _, _) => {
   case XilinxFPGAKey => Some(fpga)
 })
 
-
 /*----------------- Reset Schemes ---------------*/
-
 
 /**
  * Class to specify the reset scheme for the design.

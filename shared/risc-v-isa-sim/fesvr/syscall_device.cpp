@@ -147,6 +147,15 @@ namespace {
 #endif
         }
 
+        // Unconditionally, where the host has the notion: what the target writes is a
+        // byte stream, never host text. Windows opens in text mode by default and
+        // rewrites \n as \r\n on the way out and back, so a file would read back longer
+        // than it was written and every offset past the first newline would be wrong.
+        // O_BINARY does not exist on POSIX, where there is no such translation.
+#ifdef O_BINARY
+        host_flags |= O_BINARY;
+#endif
+
         return host_flags;
     }
 

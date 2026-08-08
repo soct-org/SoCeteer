@@ -1,3 +1,6 @@
+// The configs in this file are `--config` entry points: users name them on the command
+// line and SOCTUtils.instantiateConfig builds them by reflection, so nothing here is
+// referenced from the repository itself.
 package soct
 
 import freechips.rocketchip.subsystem.SystemBusKey
@@ -11,26 +14,19 @@ import soct.build.BuildInfo.gemminiDir
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
-import scala.annotation.unused
-
-
 /** One big Rocket core with an FP32 4x4 Gemmini accelerator and an L2. */
-@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4Fp extends Config(
   new WithGemminiFp(4, 64).orElse(
     new WithL2Cache).orElse(
     new RocketB1)
 )
 
-
 /** One big Rocket core with an int8 4x4 Gemmini accelerator and an L2. */
-@unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
 class RocketB1Gem4 extends Config(
   new WithGemmini(4, 64).orElse(
     new RocketB1).orElse(
     new WithL2Cache)
 )
-
 
 /** Workspace plumbing shared by the Gemmini config fragments. */
 object GemminiUtils {
@@ -72,7 +68,6 @@ object GemminiUtils {
     Files.copy(srcXCustom, destXCustom, StandardCopyOption.REPLACE_EXISTING)
   }
 }
-
 
 /**
  * Adds an integer (int8) Gemmini RoCC accelerator with the given mesh size, and widens

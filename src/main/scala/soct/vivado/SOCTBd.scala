@@ -1,8 +1,9 @@
+// This is the block-design graph's library surface: the query and traversal methods are
+// part of the API whether or not the generator happens to call each one today.
 package soct.vivado
 
 import soct.vivado.abstracts.{BdBaseComp, BdPinPort}
 
-import scala.annotation.unused
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.collection.View
@@ -65,11 +66,9 @@ class SOCTBd {
   // ----------------------------
 
   /** All nodes/components (LIVE view). */
-  @unused // graph library API
   def nodesView: View[BdBaseComp] = nodes.view
 
   /** All nodes/components (snapshot). */
-  @unused // graph library API
   def nodesSnapshot: Seq[BdBaseComp] = nodes.toSeq
 
   /**
@@ -113,17 +112,14 @@ class SOCTBd {
   }
 
   /** True if at least one edge from -> to exists. */
-  @unused // graph library API
   def hasEdge(from: BdPinPort, to: BdPinPort): Boolean =
     outAdj.get(from).exists(_.contains(to))
 
   /** Number of outgoing edges from a port (out-degree). */
-  @unused // graph library API
   def outDegree(from: BdPinPort): Int =
     outAdj.get(from).fold(0)(_.size)
 
   /** Number of incoming edges to a port (in-degree). */
-  @unused // graph library API
   def inDegree(to: BdPinPort): Int =
     inAdj.get(to).fold(0)(_.size)
 
@@ -208,7 +204,6 @@ class SOCTBd {
     inAdj.get(to).map(_.toSeq).getOrElse(Seq.empty)
 
   /** Alias for [[successors]]. */
-  @unused // graph library API
   final def getSinks(source: BdPinPort): Seq[BdPinPort] = successors(source)
 
   // ----------------------------
@@ -262,7 +257,6 @@ class SOCTBd {
     outAdj.view.flatMap { case (from, tos) => tos.view.map(to => (from, to)) }
 
   /** Snapshot of all edges. */
-  @unused // graph library API
   def edges: Seq[(BdPinPort, BdPinPort)] = edgesView.toSeq
 
   // ----------------------------
@@ -273,7 +267,6 @@ class SOCTBd {
    * Filter edges by a predicate; returns snapshot Map(from -> sinks) (stable, safe).
    * Predicate sees the LIVE sinks buffer via Iterable but result snapshots it.
    */
-  @unused // graph library API
   def edgesWhere(prop: (BdPinPort, Iterable[BdPinPort]) => Boolean): Map[BdPinPort, Seq[BdPinPort]] =
     outAdj.iterator
       .filter { case (from, tos) => prop(from, tos) }
@@ -283,12 +276,10 @@ class SOCTBd {
   /**
    * Filter edges by a predicate; returns LIVE view (fast, but live).
    */
-  @unused // graph library API
   def edgesWhereView(prop: (BdPinPort, Iterable[BdPinPort]) => Boolean): View[(BdPinPort, View[BdPinPort])] =
     outAdj.view
       .filter { case (from, tos) => prop(from, tos) }
       .map { case (from, tos) => from -> tos.view }
-
 
   /**
    * All BdPinPort (from + to) as snapshot (duplicates removed).
@@ -299,7 +290,6 @@ class SOCTBd {
     (outAdj.keysIterator ++ outAdj.valuesIterator.flatten ++
       inAdj.keysIterator ++ inAdj.valuesIterator.flatten).toSeq
 
-
   /**
    * All ports of type T as snapshot.
    *
@@ -307,22 +297,18 @@ class SOCTBd {
    * @tparam T Type of port
    * @return A snapshot sequence of ports of type T.
    */
-  @unused // graph library API
   def pinPortsOfTWhere[T <: BdPinPort : ClassTag](pred: T => Boolean): Seq[T] =
     pinPortsSnapshot.collect { case p: T if pred(p) => p }
-
 
   /**
    * Convenience: all outgoing edges from a given port as snapshot pairs.
    */
-  @unused // graph library API
   def outEdges(from: BdPinPort): Seq[(BdPinPort, BdPinPort)] =
     successors(from).map(to => (from, to))
 
   /**
    * Convenience: all incoming edges to a given port as snapshot pairs.
    */
-  @unused // graph library API
   def inEdges(to: BdPinPort): Seq[(BdPinPort, BdPinPort)] =
     predecessors(to).map(from => (from, to))
 
@@ -331,7 +317,6 @@ class SOCTBd {
   // ----------------------------
 
   /** Total number of edges (including duplicates). */
-  @unused // graph library API
   def edgeCount: Int = outAdj.valuesIterator.map(_.size).sum
 
   /**
@@ -350,7 +335,6 @@ class SOCTBd {
    *
    * @throws VivadoDesignException if the design is already finalized
    */
-  @unused // graph library API
   def clearAll(): Unit = {
     requireUnlocked("Cannot clear after finalization")
     nodes.clear()

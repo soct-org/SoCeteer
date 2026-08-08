@@ -1,3 +1,4 @@
+// Part of the system's library API, callable by a concrete system that needs it.
 package soct.system.vivado
 
 import soct.vivado._
@@ -8,9 +9,6 @@ import soct.vivado.abstracts._
 import soct.vivado.components._
 import soct.vivado.fpga.DDR4PortParams
 import soct.vivado.misc.AXI4BusInfo
-
-import scala.annotation.unused
-
 
 /**
  * Information about a DDR4 memory controller and its associated AXI4 bus.
@@ -32,7 +30,6 @@ case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPort, mAxi: AXI4BusIn
    * @return the slave parameters
    * @throws VivadoDesignException if the bus carries no or multiple slaves, or is a master
    */
-  @unused // library API
   def slaveParam: AXI4SlaveParameters = mAxi.axiParams.fold(
     sp => {
       if (sp.slaves.length != 1) {
@@ -60,7 +57,6 @@ case class DDR4Info(param: DDR4PortParams, ddr4Intf: BdIntfPort, mAxi: AXI4BusIn
  */
 case class MemPath(ddr4Inst: DDR4, memSMC: AXISmartConnect)
 
-
 /**
  * Capability marker for top-level systems that support multiple memory channels
  * (a [[soct.RegisteredMems]] layout with more than one entry). The launcher checks it via
@@ -69,7 +65,6 @@ case class MemPath(ddr4Inst: DDR4, memSMC: AXISmartConnect)
  * single-channel layout.
  */
 trait SupportsMultiMem
-
 
 /**
  * Shared base of Vivado top-level systems, assembled from one trait per concern:

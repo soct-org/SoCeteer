@@ -1,10 +1,9 @@
+// Component library: offered for designs to use, so it has no caller in this repository.
 package soct.vivado.components
 
 import org.chipsalliance.cde.config.Parameters
 import soct.vivado.SOCTBdBuilder
 import soct.vivado.abstracts.{BdComp, BdPinIn, BdPinOut, ConnectOps, Xip}
-
-import scala.annotation.unused
 
 /**
  * Xilinx RAM-based Shift Register IP: delays a `width`-bit signal by `depth` cycles.
@@ -13,7 +12,6 @@ import scala.annotation.unused
  * @param width bit width of the shifted signal
  * @param depth number of delay cycles
  */
-@unused // component library
 case class RAMShiftReg (width: Int, depth: Int)
                        (implicit bd: SOCTBdBuilder, p: Parameters) extends BdComp with Xip with ConnectOps {
 
