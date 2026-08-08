@@ -21,6 +21,10 @@
 # inside), everything is unmounted and the medium can be pulled. The environment
 # image is journal-less ext2 - removing the medium while it is mounted can corrupt
 # it, so teardown is automatic rather than a separate command one can forget.
+# Two safety nets close the gaps around that contract: a session KILLED instead of
+# exited leaves the environment orphaned, and the next ramdisk login reclaims it
+# (profile.sh runs `soct --reap`); a medium PULLED while mounted leaves dead mounts
+# behind, and the next `soct` detects and detaches them instead of trusting them.
 SOCT_FS=/soct-fs
 MEDIA=/media
 SIZE_MB=${SOCT_PERSIST_MB:-64}
@@ -34,6 +38,18 @@ candidates() {
     done
 }
 
+# Whether a mounted filesystem still reaches its device: one real directory read,
+# after dropping the caches - a medium pulled while mounted leaves its mounts
+# behind, and cached metadata would answer a plain probe as if the device were
+# still there. 7, not 3: 1|2 drop the page and dentry/inode caches, and the 4 bit
+# suppresses the kernel's console message about the write, which would otherwise
+# print over the prompt. Only called on mounts NO session inhabits - the cost is
+# a cold cache, which must never be inflicted on someone working inside.
+mount_alive() {
+    echo 7 > /proc/sys/vm/drop_caches 2>/dev/null
+    ls "$1" >/dev/null 2>&1
+}
+
 # What a device holds: "env" (a soct environment), "fat" (a FAT without one), "none".
 probe_dev() {
     # A carrier that is already mounted cannot be mounted a second time with a
@@ -44,6 +60,14 @@ probe_dev() {
     while read -r _d _m _t _rest; do
         if [ "$_d" = "$1" ] && [ "$_t" = vfat ]; then _at="$_m"; break; fi
     done < /proc/mounts
+    # A mount can outlive its medium (pulled while mounted): the device node is the
+    # NEW card, the mount still the old one's dead superblock. Detach it and fall
+    # through to a fresh probe of the actual medium. stderr - stdout is the verdict.
+    if [ -n "$_at" ] && ! mount_alive "$_at"; then
+        echo "soct: dropping stale mount of $1 at $_at (medium was removed while mounted)" >&2
+        umount -l "$_at" 2>/dev/null
+        _at=""
+    fi
     if [ -n "$_at" ]; then
         if [ -f "$_at/$IMG_REL" ]; then echo env; else echo fat; fi
         return
@@ -151,6 +175,12 @@ enter_or_create() {
     _dev="$1"
     _mnt="$MEDIA/$(basename "$_dev")"
 
+    # Same stale-mount hazard as in probe_dev, reachable directly via `soct <device>`.
+    if grep -q " $_mnt " /proc/mounts && ! mount_alive "$_mnt"; then
+        echo "soct: dropping stale mount at $_mnt (medium was removed while mounted)"
+        umount -l "$_mnt" 2>/dev/null
+    fi
+
     _we_mounted=""
     if ! grep -q " $_mnt " /proc/mounts; then
         mkdir -p "$_mnt"
@@ -195,7 +225,7 @@ enter_or_create() {
         echo "soct: NOTE - this environment was created from a different image build:"
         echo "soct:   image:       $(grep SOCT_BUILD /etc/soct-release)"
         echo "soct:   environment: $(grep SOCT_BUILD "$SOCT_FS/etc/soct-release" || echo 'SOCT_BUILD=unknown')"
-        echo "soct:   refresh its tools:  cp /bin/fbmode /bin/fbimg /bin/doom $SOCT_FS/bin/ && cp /etc/soct-release $SOCT_FS/etc/"
+        echo "soct:   refresh its tools:  cp /bin/fbmode /bin/fbimg $SOCT_FS/bin/ && cp /etc/soct-release $SOCT_FS/etc/"
         echo "soct:   or recreate it:     exit, then  rm $_mnt/$IMG_REL  and re-run soct"
     fi
 
@@ -204,7 +234,7 @@ enter_or_create() {
         mkdir -p "$SOCT_FS/bin" "$SOCT_FS/etc" "$SOCT_FS/proc" "$SOCT_FS/sys" \
                  "$SOCT_FS/dev" "$SOCT_FS/tmp" "$SOCT_FS/media" "$SOCT_FS/home/soct"
         cp /bin/busybox "$SOCT_FS/bin/"
-        for _t in fbmode fbimg doom; do
+        for _t in fbmode fbimg; do
             [ -x "/bin/$_t" ] && cp "/bin/$_t" "$SOCT_FS/bin/"
         done
         [ -f /etc/soct-release ] && cp /etc/soct-release "$SOCT_FS/etc/"
@@ -237,14 +267,44 @@ if [ $# -gt 1 ]; then
     exit 2
 fi
 
+# Reaper hook, run by the ramdisk profile at every login: a session that was killed
+# (instead of exiting) leaves the environment mounted with nobody left to free it.
+# Reclaims it exactly when it is orphaned; silent in every other state, since a
+# session on the other console legitimately keeps it mounted.
+if [ "$1" = "--reap" ]; then
+    grep -q " $SOCT_FS " /proc/mounts || exit 0
+    for _p in /proc/[0-9]*; do
+        [ "$(readlink "$_p/root" 2>/dev/null)" = "$SOCT_FS" ] && exit 0
+    done
+    echo "soct: environment mounted with no session inside - unmounting"
+    leave_env
+    exit 0
+fi
+
 # An already-mounted environment keeps serving; switching devices means leaving
-# it first (exit in every session unmounts it).
+# it first (exit in every session unmounts it). Unless its medium is gone: then
+# the whole chain (loop mount, binds, carrier) is dead weight - detach it and
+# continue to a fresh probe instead of walking a corpse. An INHABITED environment
+# is never probed: a session working inside is the strongest liveness signal
+# there is, and the probe's cache drop would land on that session's working set.
 if grep -q " $SOCT_FS " /proc/mounts; then
-    if [ $# = 1 ]; then
+    _inhabited=""
+    for _p in /proc/[0-9]*; do
+        [ "$(readlink "$_p/root" 2>/dev/null)" = "$SOCT_FS" ] && { _inhabited=1; break; }
+    done
+    if [ -z "$_inhabited" ] && ! mount_alive "$SOCT_FS"; then
+        echo "soct: the mounted environment is stale (medium removed while mounted?) - detaching it"
+        umount -l "$SOCT_FS/media" 2>/dev/null
+        for _d in dev sys proc; do
+            umount -l "$SOCT_FS/$_d" 2>/dev/null
+        done
+        umount -l -d "$SOCT_FS" 2>/dev/null
+    elif [ $# = 1 ]; then
         echo "soct: an environment is already mounted at $SOCT_FS - exit it everywhere first" >&2
         exit 1
+    else
+        enter_env
     fi
-    enter_env
 fi
 
 if [ $# = 1 ]; then

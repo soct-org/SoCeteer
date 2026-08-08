@@ -17,3 +17,10 @@ esac
 # environment (/bin/soct) the prompt becomes soct@<board>. The hostname comes from
 # the design's device tree (/chosen/soct,board).
 export PS1="ramdisk@$(hostname):\w # "
+
+# A session that was killed (instead of leaving with exit) cannot run soct's own
+# teardown, and mounts do not go away with their users - the environment would stay
+# mounted with nobody left to free it. Every Ctrl-D/exit lands in a fresh login
+# shell, so this is the moment an orphaned environment gets reclaimed: silent unless
+# it actually unmounts something.
+/bin/soct --reap

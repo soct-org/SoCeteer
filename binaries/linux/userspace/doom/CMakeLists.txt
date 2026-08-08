@@ -5,58 +5,17 @@ cmake_minimum_required(VERSION 3.21)
 # implemented here in doomgeneric_soct.c (framebuffer output) and soct_evdev.c
 # (keyboard input).
 #
-# The engine is GPL-2 and therefore not committed to this repository: it is
-# fetched hash-pinned into shared/vendor/ at configure time, like busybox. This
-# program (a derivative) is GPL-2 as well, scoped to this directory.
-set(_dg_commit "dcb7a8dbc7a16ce3dda29382ac9aae9d77d21284")
-set(_dg_sha256 "1bd3f7f26220494159a38d71f2847ec81b58d6bbd7c7c8d81b08993018001148")
-set(_dg_url "https://github.com/ozkl/doomgeneric/archive/${_dg_commit}.tar.gz")
-set(_dg_home "${SOCETEER_ROOT}/shared/vendor/doomgeneric")
-set(_dg_src "${_dg_home}/src")
-if (NOT EXISTS "${_dg_src}")
-    set(_dg_tar "${_dg_home}/doomgeneric-${_dg_commit}.tar.gz")
-    if (NOT EXISTS "${_dg_tar}")
-        message(STATUS "linux: fetching doomgeneric @${_dg_commit} (github.com/ozkl, ~3 MB)")
-        file(DOWNLOAD "${_dg_url}" "${_dg_tar}" EXPECTED_HASH SHA256=${_dg_sha256} STATUS _dg_dl)
-        list(GET _dg_dl 0 _dg_dl_code)
-        if (NOT _dg_dl_code EQUAL 0)
-            file(REMOVE "${_dg_tar}")
-            message(FATAL_ERROR "linux: doomgeneric download failed (${_dg_dl})")
-        endif ()
-    endif ()
-    file(ARCHIVE_EXTRACT INPUT "${_dg_tar}" DESTINATION "${_dg_home}")
-    file(RENAME "${_dg_home}/doomgeneric-${_dg_commit}" "${_dg_src}")
-    file(REMOVE "${_dg_tar}")
-    message(STATUS "linux: doomgeneric ready at ${_dg_src}")
-endif ()
-
-# Freedoom: a libre IWAD, so the game is playable without id's data. The WAD
-# lands next to the ELFs for copying onto the SD card; the game finds it under
-# /media at runtime. A real doom WAD on the card works the same way.
-set(_fd_ver "0.13.0")
-set(_fd_sha256 "3f9b264f3e3ce503b4fb7f6bdcb1f419d93c7b546f4df3e874dd878db9688f59")
-set(_fd_url "https://github.com/freedoom/freedoom/releases/download/v${_fd_ver}/freedoom-${_fd_ver}.zip")
-set(_fd_home "${SOCETEER_ROOT}/shared/vendor/freedoom")
-set(_fd_wad "${_fd_home}/freedoom1.wad")
-if (NOT EXISTS "${_fd_wad}")
-    set(_fd_zip "${_fd_home}/freedoom-${_fd_ver}.zip")
-    if (NOT EXISTS "${_fd_zip}")
-        message(STATUS "linux: fetching Freedoom ${_fd_ver} (github.com/freedoom, ~60 MB)")
-        file(DOWNLOAD "${_fd_url}" "${_fd_zip}" EXPECTED_HASH SHA256=${_fd_sha256} STATUS _fd_dl)
-        list(GET _fd_dl 0 _fd_dl_code)
-        if (NOT _fd_dl_code EQUAL 0)
-            file(REMOVE "${_fd_zip}")
-            message(FATAL_ERROR "linux: Freedoom download failed (${_fd_dl})")
-        endif ()
-    endif ()
-    file(ARCHIVE_EXTRACT INPUT "${_fd_zip}" DESTINATION "${_fd_home}"
-            PATTERNS "*/freedoom1.wad" "*/COPYING.txt")
-    file(RENAME "${_fd_home}/freedoom-${_fd_ver}/freedoom1.wad" "${_fd_wad}")
-    file(RENAME "${_fd_home}/freedoom-${_fd_ver}/COPYING.txt" "${_fd_home}/COPYING.txt")
-    file(REMOVE_RECURSE "${_fd_home}/freedoom-${_fd_ver}")
-    file(REMOVE "${_fd_zip}")
-    message(STATUS "linux: Freedoom ready at ${_fd_wad}")
-endif ()
+# A standalone target, excluded from the default build: nothing else depends on it
+# and no image packs it - build it explicitly (`--target doom`), then copy the ELF
+# and freedoom1.wad from SOCT_ELFS_DIR onto the SD card and run it from /media.
+#
+# The engine is GPL-2 and therefore not committed to this repository: building the
+# target fetches it hash-pinned into shared/vendor/ (fetch-vendor.cmake), together
+# with the Freedoom IWAD - so a kernel-only configure and build touches neither the
+# network nor the engine. This program (a derivative) is GPL-2 as well, scoped to
+# this directory.
+set(_dg_src "${SOCETEER_ROOT}/shared/vendor/doomgeneric/src")
+set(_fd_wad "${SOCETEER_ROOT}/shared/vendor/freedoom/freedoom1.wad")
 
 # The engine sources: doomgeneric's Makefile SRC_DOOM list, minus the platform
 # main (doomgeneric_xlib.c) that this directory replaces.
@@ -75,12 +34,30 @@ foreach (_f IN LISTS _dg_engine)
     list(APPEND _dg_engine_srcs "${_dg_src}/doomgeneric/${_f}.c")
 endforeach ()
 
+# The fetch as a build step: the engine sources are OUTPUTs of this command, so
+# compiling any of them runs the fetch first, and a configure never touches the
+# network. The stamp carries the dependency for the two local sources, whose
+# doomgeneric.h include the compiler cannot know about before the tree exists.
+set(_dg_stamp "${CMAKE_CURRENT_BINARY_DIR}/vendor.stamp")
+add_custom_command(OUTPUT ${_dg_engine_srcs} "${_dg_stamp}"
+        COMMAND ${CMAKE_COMMAND} -DSOCETEER_ROOT=${SOCETEER_ROOT}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/fetch-vendor.cmake"
+        COMMAND ${CMAKE_COMMAND} -E touch "${_dg_stamp}"
+        COMMENT "Fetching doom vendor inputs (doomgeneric + Freedoom, first build only)"
+        VERBATIM)
+set_source_files_properties(
+        "${CMAKE_CURRENT_SOURCE_DIR}/doomgeneric_soct.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/soct_evdev.c"
+        PROPERTIES OBJECT_DEPENDS "${_dg_stamp}")
+
 list(APPEND CMAKE_C_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/doomgeneric_soct.c
         ${CMAKE_CURRENT_SOURCE_DIR}/soct_evdev.c
         ${_dg_engine_srcs})
 
 include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)
+
+set_target_properties(doom PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 target_include_directories(doom PRIVATE "${_dg_src}/doomgeneric")
 # The engine's own build flags, plus the native 320x200 render size - the

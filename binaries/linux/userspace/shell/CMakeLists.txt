@@ -21,7 +21,6 @@ set(SDC_KO "${CMAKE_BINARY_DIR}/modules/sdc/fpga-axi-sdc.ko")
 set(DP_KO "${CMAKE_BINARY_DIR}/modules/dp/soct-dp.ko")
 set(FBMODE_BIN "${CMAKE_BINARY_DIR}/userspace/fbmode/fbmode")
 set(FBIMG_BIN "${CMAKE_BINARY_DIR}/userspace/fbimg/fbimg")
-set(DOOM_BIN "${CMAKE_BINARY_DIR}/userspace/doom/doom")
 configure_file(initramfs.desc.in "${CMAKE_CURRENT_BINARY_DIR}/shell-initramfs.desc" @ONLY)
 
 if (EXISTS "${CMAKE_BINARY_DIR}/kernel/initramfs.desc")
@@ -34,7 +33,7 @@ soct_linux_add_boot_image(shell
         DEPENDS "${SOCT_BUSYBOX}" "${INIT_SH}" "${PROFILE_SH}" "${SOCT_SH}")
 # The initramfs packs the SD-controller module; the kernel's initramfs rules track the
 # packed files themselves, so the always-run chain just needs the build order.
-add_dependencies(shell-boot-elf sdc-driver dp-driver fbmode fbimg doom soct-release-gen)
+add_dependencies(shell-boot-elf sdc-driver dp-driver fbmode fbimg soct-release-gen)
 
 # shell-flash: JTAG-boot straight into the shell, no SD card involved (see initram.cmake
 # for how the flash handoff works). Only created when the SOCT_FLASH_* variables are set.
