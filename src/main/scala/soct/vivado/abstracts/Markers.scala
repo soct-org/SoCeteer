@@ -44,14 +44,6 @@ trait XIntf extends IsXilinx {
 
 
 /**
- * Trait for Xilinx Signal components
- */
-trait XSignal extends IsXilinx {
-  override val tpe: String = "signal"
-}
-
-
-/**
  * Trait for custom module components
  */
 trait IsModule extends HasCollaterals {

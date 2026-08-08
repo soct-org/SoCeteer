@@ -19,8 +19,6 @@ object ZCU104 extends FPGA with HasZynqUltraPS {
 
   override val tpe: String = "zcu104"
 
-  override val getPMODPorts: Seq[Int] = Seq(0, 1) // PMOD ports 0 and 1; port 2 is I2C
-
   override def extDDR4Ports: Seq[DDR4PortParams] = Seq(
     new DDR4PortParams {
       override val portName: String = "ddr4_sdram"
@@ -189,6 +187,9 @@ object ZCU104 extends FPGA with HasZynqUltraPS {
 
   override def pmod(pmodPort: Int, pmodPin: RawPMODPin): FPGAPMODPin = {
     val pin = pmodPin.pin
+    if (pin < 0 || pin > 7) {
+      throw VivadoDesignException(s"Invalid PMOD pin $pin. ZCU104 PMOD ports expose pins 0 to 7.")
+    }
     val port = pmodPort match {
       case 0 => IndexedSeq(
         ("G8", "LVCMOS33"), ("H8", "LVCMOS33"), ("G7", "LVCMOS33"), ("H7", "LVCMOS33"),

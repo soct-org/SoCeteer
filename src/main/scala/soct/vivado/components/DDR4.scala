@@ -102,8 +102,10 @@ case class DDR4(info: DDR4Info)(implicit bd: SOCTBdBuilder, p: Parameters)
           m += "CONFIG.C0_CLOCK_BOARD_INTERFACE" -> c.ref
         }
       case _ =>
-        soct.log.warn(s"DDR4 $instanceName C0_SYS_CLK is not connected to a differential clock source. Using unbuffered clock input c0_sys_clk_i instead.")
-        m += "CONFIG.System_Clock" -> "No_Buffer"
+        // No fallback: System_Clock=No_Buffer without a C0_CLOCK_BOARD_INTERFACE makes the
+        // MIG abort deep in implementation (Mig 66-99), long after generation reported
+        // success. Boards must feed the controller from a differential board clock port.
+        throw VivadoDesignException(s"DDR4 $instanceName C0_SYS_CLK must be driven by a board differential clock port (FPGADiffClockPort); this board's clock topology provides none.")
     }
 
 

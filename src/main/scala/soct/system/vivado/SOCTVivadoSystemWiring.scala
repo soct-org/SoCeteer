@@ -55,7 +55,7 @@ trait SOCTVivadoSystemWiring {
    * @return the assembled [[CommonDesign]]
    * @throws VivadoDesignException if no board is set ([[XilinxFPGAKey]]), the top does not
    *                               export exactly one MMIO and one DMA interface, the bus clock
-   *                               bundles disagree on their frequency, or HasUART is set but
+   *                               bundles disagree on their frequency, or HasAxiUartLite is set but
    *                               the board defines no UART port
    */
   protected def initCommonDesign(): CommonDesign = {

@@ -142,6 +142,9 @@ object SOCTMem {
         Seq.empty
       }
 
+      if (extMem.nonEmpty && board.intDDR4Ports.nonEmpty) {
+        throw VivadoDesignException(s"Board ${board.friendlyName} declares both external (DIMM) and internal (soldered) DDR4 ports; mixing the two in one design is unsupported.")
+      }
       extMem ++ board.intDDR4Ports
     }
 
@@ -256,7 +259,7 @@ object SOCTMemGen {
    *                               granularity, or more than one writing port (BRAM inference
    *                               would need a true-dual-port template no memory here uses)
    */
-  def parse(conf: String): Seq[MemDesc] = {
+  private def parse(conf: String): Seq[MemDesc] = {
     conf.linesIterator.map(_.trim).filter(_.nonEmpty).map { line =>
       val tokens = line.split("\\s+")
       if (tokens.length % 2 != 0) {
@@ -292,7 +295,7 @@ object SOCTMemGen {
    * registered read - the shape Vivado infers, and packed so it fills BRAM efficiently instead of
    * one wasteful primitive per lane. Unmasked memories are a single full-width array.
    */
-  def emit(m: MemDesc): String = {
+  private def emit(m: MemDesc): String = {
     val a = addrBits(m.depth) - 1
     val w = m.width - 1
 

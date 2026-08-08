@@ -106,16 +106,6 @@ object DTSExtractor {
     (base +: parts.tail.filterNot(_ == "xrocket")).mkString("_")
   }
 
-  /**
-   * Count the CPU nodes in a Device Tree Source.
-   *
-   * @param dts The content of the DTS file as a string.
-   * @return the number of `cpu@` nodes
-   */
-  def countCPUs(dts: String): Int = {
-    val pattern = """cpu@""".r
-    pattern.findAllMatchIn(dts).length
-  }
 }
 
 /** Generates the workspace's `SOCTSystem.cmake` - the design facts the software builds read. */
@@ -172,7 +162,6 @@ object SOCTSystemGenerator {
       CMakeVar("SOCT_DTB_ADDR", s"0x${dtbAddr.toLong.toHexString}", "The address of the DTB embedded in the boot ROM (pinned by the shared bootrom linker script; JTAG flashing passes it in a1)", compileDef = true, ldDef = true),
       CMakeVar("SOCT_VSRCS", rel(paths.verilogSrcDir), "The Verilog source files for this system"),
       CMakeVar("SOCT_DTS", rel(paths.dtsFile), "The device tree file for this system"),
-      CMakeVar("SOCT_DTS_HEADER", rel(paths.dtsHeaderFile), "The generated C mirror of the device tree (soct-dts.h); C code takes design addresses from it, cmake and linker scripts from the variables here"),
       CMakeVar("SOCT_DTB", rel(paths.dtbFile), "The compiled device tree blob for this system"),
       CMakeVar("SOCT_BOOTROM_IMG", rel(paths.bootromImgFile), "The bootrom image for this system"),
       CMakeVar("SOCT_ELFS_DIR", rel(paths.elfsDir), "The directory where compiled ELF files for this system are stored"),
@@ -241,14 +230,6 @@ object SOCTSystemGenerator {
         s"""####################################################
            |# Additional information for Vivado synthesis target
            |####################################################
-           |
-           |# (none for now)
-           |""".stripMargin
-
-      case Targets.Yosys =>
-        s"""###################################################
-           |# Additional information for Yosys synthesis target
-           |###################################################
            |
            |# (none for now)
            |""".stripMargin

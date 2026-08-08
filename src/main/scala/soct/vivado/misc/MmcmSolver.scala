@@ -15,9 +15,7 @@ import soct.vivado.VivadoDesignException
  * @param achieved     the exactly achieved output frequency
  */
 case class MmcmSetting(div: Int, multEighths: Int, odivEighths: Int, achieved: Freq) {
-  def multIntPart: Int = multEighths / 8
   def multThousandths: Int = (multEighths % 8) * 125
-  def odivIntPart: Int = odivEighths / 8
   def odivThousandths: Int = (odivEighths % 8) * 125
 }
 

@@ -50,7 +50,7 @@
   a <code>Field[T]</code> is a typed key, a <code>Config</code> is a layer of key&rarr;value
   bindings, and layers stack &mdash; a lookup walks the stack top-down and the first binding
   wins. &ldquo;Configuring a design&rdquo; means composing such layers; a fragment like
-  <code>WithUART</code> overrides exactly the fields it cares about and leaves the rest to the
+  <code>WithAxiUartLite</code> overrides exactly the fields it cares about and leaves the rest to the
   layers below. This is why the assembly <em>order</em> of the stack (next section) is worth
   understanding: it defines what overrides what.</p>
 
@@ -128,7 +128,7 @@
     </li>
   </ol>
   <p>At elaboration time, <code>Field</code>s from this stack gate what gets built:
-  <code>HasUART</code>/<code>HasSDCardPMOD</code> decide whether the UART and SD-card controllers
+  <code>HasAxiUartLite</code>/<code>HasSDCardPMOD</code> decide whether the UART and SD-card controllers
   (and their device-tree nodes and interrupt lines) exist; <code>XilinxFPGAKey</code>/<code>BdBuilderKey</code>
   select the board definition and collect the block design; <code>PeripheryClockDomain</code> (a
   <code>Freq</code>) sets the periphery clock; <code>RegisteredMems</code>/<code>ExtMem</code>

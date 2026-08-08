@@ -82,6 +82,17 @@ object SOCTLauncher {
     config.params = config.params.orElse(new WithXilinxFPGA(args.board.get))
     config.params = config.params.orElse(new soct.RocketVivadoBaseConfig)
 
+    // The default ROM loads BOOT.ELF from the SD card; on a design without the SD
+    // controller its build target does not even exist (the ROM's addresses come from the
+    // controller's device-tree node). Refuse before elaboration instead of dying in ninja.
+    val bootrom = args.userBootrom.getOrElse(args.target.defaultBootrom)
+    if (bootrom == "sd-boot" && config.params(HasSDCardPMOD).isEmpty) {
+      throw new IllegalArgumentException(
+        "The default boot ROM 'sd-boot' loads BOOT.ELF from the SD card, which this design does not have " +
+          "(HasSDCardPMOD is unset). Pass --bootrom explicitly - e.g. 'testchipip-boot', which parks the " +
+          "harts until an external loader (JTAG) starts them.")
+    }
+
     Transpiler.evalDesign(config, boardPaths)
 
     Transpiler.emitLowFirrtl(config, boardPaths)
@@ -105,11 +116,6 @@ object SOCTLauncher {
       case None        => SOCTVivado.generateProject(args, boardPaths, config)         // create project only (synchronous)
       case Some(built) => SOCTVivado.launchBuild(args, boardPaths, config, built)      // create + build, detached
     }
-  }
-
-  // Generate the design for Yosys synthesis
-  private def generateYosysDesign(args: SOCTArgs, yosysPaths: YosysSOCTPaths, config: SOCTConfig): Unit = {
-    throw new NotImplementedError("Yosys synthesis target has been removed for the time being.")
   }
 
   // Generate the design for simulation
@@ -198,8 +204,6 @@ object SOCTLauncher {
           new SimSOCTPaths(args, config)
         case _: VivadoTarget =>
           new VivadoSOCTPaths(args, config)
-        case Targets.Yosys =>
-          new YosysSOCTPaths(args, config)
       }
 
       config.params = config.params.orElse(new WithSOCTPaths(paths))
@@ -229,9 +233,6 @@ object SOCTLauncher {
         case v: VivadoTarget =>
           log.info(s"Targeting Vivado (${v.name}) for board ${args.board.get}")
           generateVivadoDesign(args, paths.asInstanceOf[VivadoSOCTPaths], config)
-        case Targets.Yosys =>
-          log.info("Targeting Yosys synthesis")
-          generateYosysDesign(args, paths.asInstanceOf[YosysSOCTPaths], config)
       }
 
       soct.log.info(s"Design generation complete. Output files can be found in ${paths.systemDir}")

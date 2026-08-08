@@ -65,7 +65,7 @@ trait SOCTVivadoSystemDTS {
     }
   }
 
-  /** The console UART, if the design has one ([[HasUART]]); constructing it binds its
+  /** The console UART, if the design has one ([[HasAxiUartLite]]); constructing it binds its
    * device-tree resources and claims INTC input 0. */
   protected val uartFeature: Option[UartFeature] =
     UartFeature.ifPresent(mmioBus, intcDev, irqs)

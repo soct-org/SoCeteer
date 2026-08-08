@@ -43,11 +43,6 @@ abstract class FPGA extends IsXilinx with HasFriendlyName {
   val xilinxPart: String
 
   /**
-   * The PMOD ports available on this FPGA board
-   */
-  val getPMODPorts: Seq[Int] = Seq.empty
-
-  /**
    * Get the PMOD pin corresponding to the given PMOD port and pin index.
    *
    * @param pmodPort The PMOD port number (e.g., 0, 1, 2) to which the component is connected in the block design

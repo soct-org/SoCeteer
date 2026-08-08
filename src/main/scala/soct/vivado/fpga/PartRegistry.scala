@@ -99,17 +99,6 @@ object FPGARegistry {
   def getKnownBoards: Seq[String] = registry.keys.toSeq
 
   /**
-   * Resolve a board name to its definition.
-   *
-   * @param name the board name, case-insensitive (e.g. "zcu104")
-   * @return the board definition
-   * @throws soct.vivado.VivadoDesignException if no board with this name is registered
-   */
-  def n2b(name: String): FPGA = {
-    registry.getOrElse(name.toUpperCase, throw VivadoDesignException(s"Unknown FPGA board: $name"))
-  }
-
-  /**
    * Resolve a board name to its definition, if registered.
    *
    * @param name the board name, case-insensitive
@@ -131,15 +120,5 @@ object FPGARegistry {
       case Some((name, _)) => name
       case None => throw VivadoDesignException(s"FPGA '${fpga.friendlyName}' not found in registry")
     }
-  }
-
-  /**
-   * Resolve a board definition back to its registered name, if registered.
-   *
-   * @param fpga the board definition
-   * @return the registered name, or None if the board is not registered
-   */
-  def b2nOpt(fpga: FPGA): Option[String] = {
-    registry.find(_._2 == fpga).map(_._1)
   }
 }

@@ -94,7 +94,7 @@ class SOCTVivadoSystem(implicit p: Parameters) extends SOCTVivadoSystemBase with
     // --------------------------------------------------------------------------
     // Timing constraints
     // --------------------------------------------------------------------------
-    addAsyncPortConstraints(c)
+    addAsyncPortConstraints(c, fpgaRst)
     val (coreClockObj, corePeriodProp) = registerCoreClockCapture(coreClock.ref)
     memPaths.map(_.ddr4Inst).foreach(addDdr4TimingConstraints(_, coreClockObj, corePeriodProp))
 

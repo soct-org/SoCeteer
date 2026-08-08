@@ -428,6 +428,13 @@ object VideoStreamFeature {
   def ifPresent(mmioBus: Device, intcDev: Device, irqs: IrqAllocator,
                 chosenDev: Device, reservedMemoryDev: Device)
                (implicit p: Parameters, bd: SOCTBdBuilder): Option[VideoStreamFeature] =
-    p(HasVideoStream).map(vs =>
-      new VideoStreamFeature(vs, mmioBus, intcDev, irqs, chosenDev, reservedMemoryDev))
+    p(HasVideoStream).map { vs =>
+      // The wire phase re-checks against the builder's board instance; failing here as
+      // well spares a full elaboration of a design that can never be wired.
+      if (!p(XilinxFPGAKey).exists(_.isInstanceOf[HasZynqUltraPS]))
+        throw VivadoDesignException(
+          s"Video stream requires a Zynq UltraScale+ PS (the pipeline drives its DisplayPort " +
+            s"controller), but board ${p(XilinxFPGAKey).map(_.friendlyName).getOrElse("<none>")} has none.")
+      new VideoStreamFeature(vs, mmioBus, intcDev, irqs, chosenDev, reservedMemoryDev)
+    }
 }

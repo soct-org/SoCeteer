@@ -2,7 +2,7 @@ package soct.system.vivado.features
 
 import freechips.rocketchip.resources.{Device, ResourceInt}
 import org.chipsalliance.cde.config.Parameters
-import soct.HasUART
+import soct.HasAxiUartLite
 import soct.vivado.abstracts.BdPinPort.portToBdPin
 import soct.vivado.abstracts.{BdIntfPin, BdPinOut}
 import soct.vivado.components.AXIUartLite
@@ -12,7 +12,7 @@ import soct.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.system.vivado.CommonDesign
 
 /**
- * The AXI UART Lite console ([[HasUART]]): the design's primary console, on the MMIO
+ * The AXI UART Lite console ([[HasAxiUartLite]]): the design's primary console, on the MMIO
  * path at [[VivadoMmioMap.UartBase]]. [[base]] and [[baud]] are the single source for
  * the DTS `reg` and `current-speed`, the `/chosen` boot arguments (bound by the system)
  * and the IP's C_BAUDRATE (passed to [[soct.vivado.components.AXIUartLite]]).
@@ -51,7 +51,7 @@ class UartFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
 
   override def createComponents(fpga: FPGA, axiMMIO: BdIntfPin): Unit = {
     if (fpga.uartPorts.isEmpty) {
-      throw new VivadoDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasUART is set to true in parameters.")
+      throw new VivadoDesignException(s"FPGA ${fpga.friendlyName} does not have any UART ports defined, but HasAxiUartLite is set to true in parameters.")
     }
     val uartParams = fpga.uartPorts.head
     val port = uartParams.initPort
@@ -76,8 +76,8 @@ object UartFeature {
   /** Fixed at synthesis; flows into the IP's C_BAUDRATE, the device tree and the boot arguments. */
   val Baud: Int = 115200
 
-  /** The single presence decision: `Some` iff the design has a UART ([[HasUART]]). */
+  /** The single presence decision: `Some` iff the design has a UART ([[HasAxiUartLite]]). */
   def ifPresent(mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
                (implicit p: Parameters, bd: SOCTBdBuilder): Option[UartFeature] =
-    if (p(HasUART)) Some(new UartFeature(mmioBus, intcDev, irqs)) else None
+    if (p(HasAxiUartLite)) Some(new UartFeature(mmioBus, intcDev, irqs)) else None
 }

@@ -4,7 +4,6 @@ import org.chipsalliance.cde.config.Parameters
 import soct.vivado.SOCTBdVars.k
 import soct.vivado.abstracts._
 import soct.vivado.fpga.FPGA
-import soct.vivado.misc.WantsPMODPins
 import soct.{BuildStage, HasSOCTConfig, HasSOCTPaths, VivadoSOCTPaths}
 
 import java.nio.file.Path

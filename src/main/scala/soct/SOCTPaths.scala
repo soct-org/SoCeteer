@@ -16,7 +16,6 @@ object SOCTNames {
   val LATEST_SOCT_SYSTEM_CMAKE_FILE: String = "SOCTSystem-latest.cmake"
   val SOCT_SIMULATOR_EXE = "simulator"
   val SYSCALL_TEST_BINARY = "syscall-test"
-  val DEFAULT_EXAMPLE_BINARY = "hello-hart" // Default example binary to build in README
 }
 
 
@@ -249,15 +248,6 @@ abstract class SOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPathsBa
    * Path to the generated device tree blob file
    */
   def dtbFile: Path = systemDir.resolve(s"${config.topModuleName}.dtb")
-}
-
-
-
-/** Output paths of the Yosys target (`<workspace>/<config>/system-yosys`). */
-class YosysSOCTPaths(args: SOCTArgs, config: SOCTConfig) extends SOCTPaths(args, config) {
-  protected def systemDirImpl(prefixPath: Path): Path = prefixPath.resolve(config.configName).resolve("system-yosys")
-
-  override def createSubdirsImpl(): Unit = {}
 }
 
 

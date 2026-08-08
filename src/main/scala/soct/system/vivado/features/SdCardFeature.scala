@@ -4,9 +4,9 @@ import freechips.rocketchip.resources.{Device, ResourceInt}
 import org.chipsalliance.cde.config.Parameters
 import soct.vivado.abstracts.BdPinPort.portToBdPin
 import soct.vivado.components.{SDCardPMOD, SDIOCDPort, SDIOClkPort, SDIOCmdPort, SDIODataPort}
-import soct.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq}
-import soct.vivado.{SOCTBdBuilder, StringToTCLCommand}
-import soct.{HasSDCardPMOD, PeripheryClockDomain}
+import soct.vivado.misc.{AxiSlaveBinder, DTSInfo, Irq, RawPMODPin}
+import soct.vivado.{SOCTBdBuilder, StringToTCLCommand, VivadoDesignException}
+import soct.{HasSDCardPMOD, PeripheryClockDomain, XilinxFPGAKey}
 
 /**
  * The SD-card controller on a PMOD ([[HasSDCardPMOD]] carries the PMOD port index):
@@ -16,6 +16,23 @@ import soct.{HasSDCardPMOD, PeripheryClockDomain}
 class SdCardFeature(pmodPort: Int, mmioBus: Device, intcDev: Device, irqs: IrqAllocator)
                    (implicit p: Parameters, bd: SOCTBdBuilder) extends VivadoFeature {
   override def name: String = "sd"
+
+  // Resolve every pin of the chosen PMOD port now: this validates the port index against
+  // the board before elaboration, and refuses a board whose PMOD bank cannot supply the
+  // adapter's voltage - the pin mapping (see SDCardPMOD) encodes the Digilent PmodSD, a
+  // 3.3 V module, and constraining its pins at another bank voltage produces a bitstream
+  // that cannot drive the card electrically, with nothing to report it.
+  locally {
+    val fpga = p(XilinxFPGAKey).getOrElse(
+      throw VivadoDesignException("SdCardFeature requires XilinxFPGAKey to be set."))
+    val standards = (0 to 7).map(i => fpga.pmod(pmodPort, RawPMODPin(i)).ioStandard).distinct
+    if (standards != Seq("LVCMOS33")) {
+      throw VivadoDesignException(
+        s"The SD-card PMOD mapping encodes the Digilent PmodSD, a 3.3 V (LVCMOS33) module, but " +
+          s"PMOD port $pmodPort on board ${fpga.friendlyName} uses ${standards.mkString(", ")}. " +
+          s"Use a configuration that does not enable the SD-card controller (HasSDCardPMOD), or select a 3.3 V PMOD port.")
+    }
+  }
 
   private val irq = Irq(intcDev, irqs.claim(name, edge = false))
 

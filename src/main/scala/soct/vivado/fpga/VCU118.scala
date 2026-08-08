@@ -19,19 +19,15 @@ object VCU118 extends FPGA {
 
   override val tpe: String = "vcu118"
 
-  override val getPMODPorts: Seq[Int] = Seq(0, 1)
-
   override def intDDR4Ports: Seq[DDR4PortParams] = {
     val cap = 2.GiB // But actually 512.MB * 5 - is not a multiple of two and probably wont work with alignment
     Seq(
       new DDR4PortParams {
         override val portName: String = "ddr4_sdram_c1"
-        override def getCap: Bytes = cap
-      },
+      }.withCap(cap),
       new DDR4PortParams {
         override val portName: String = "ddr4_sdram_c2"
-        override def getCap: Bytes = cap
-      }
+      }.withCap(cap)
     )
   }
 

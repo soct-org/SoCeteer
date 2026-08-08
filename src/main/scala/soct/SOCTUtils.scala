@@ -196,22 +196,8 @@ object SOCTUtils {
   /**
    * Generate a config name string based on the config class name and xlen, used for output directories
    */
-  def configName[T <: org.chipsalliance.cde.config.Config](config: T, xLen: Int): String = {
-    s"${config.getClass.getSimpleName.stripSuffix("$")}-${xLen}"
-  }
-
-  /**
-   * Generate a config name string based on the config class name and xlen, used for output directories
-   */
   def configName(config: Parameters, xLen: Int): String = {
     s"${config.getClass.getSimpleName.stripSuffix("$")}-${xLen}"
-  }
-
-  /**
-   * Generate a config name string based on the config class name and xlen, used for output directories
-   */
-  def configName(configClass: Class[_ <: Config], xLen: Int): String = {
-    s"${configClass.getSimpleName.stripSuffix("$")}-${xLen}"
   }
 
   /**
@@ -319,30 +305,6 @@ object SOCTUtils {
     }
   }
 
-  /** Returns true iff x is a positive power of two. */
-  def isPowerOfTwo(x: Long): Boolean =
-    x > 0 && (x & (x - 1)) == 0
-
-  /** Exact log2 for powers of two.
-   *
-   * Example:
-   * log2Exact(4096) == 12
-   *
-   * @throws IllegalArgumentException if x is not a positive power of two
-   */
-  def log2Exact(x: Long): Int = {
-    require(isPowerOfTwo(x), s"$x is not a positive power of two")
-    java.lang.Long.numberOfTrailingZeros(x)
-  }
-
-  /** Formats a Long as an uppercase hexadecimal literal.
-   *
-   * Example:
-   * toHex(4096) == "0x1000"
-   */
-  def toHex(x: Long): String =
-    f"0x${x}%X"
-
   /** Formats a value using the largest unit whose scale is <= value.
    *
    * Example:
@@ -368,24 +330,15 @@ object SOCTUtils {
 
 /** SOCTBytes
  *
- * Convenience constants/conversions for working with byte counts in SoC /
- * address-map contexts: KiB/MiB/GiB/TiB (binary, IEC) and KB/MB/GB/TB
- * (decimal, SI), plus helpers that are specifically useful when laying out
- * memory maps (power-of-two checks, address-bit-width derivation, hex
- * formatting). Shared low-level logic lives in SOCTUtils.
+ * Byte counts for SoC / address-map contexts: `Bytes` value class, binary (IEC)
+ * unit constants and `2.GiB`-style literal syntax.
  *
  * Usage:
  * import SOCTBytes._
  *
  * val ddrSize   = 2.GiB
  * val flashSize = 512.MiB
- * val total     = ddrSize + flashSize
- *
- * println(ddrSize.addrBits)     // 31
- * println(ddrSize.toHex)        // 0x80000000
- * println(total)                // 2.50 GiB
- *
- * val mibFromGib = ddrSize.toMiB // 2048.0
+ * println(ddrSize + flashSize)  // 2.50 GiB
  */
 object SOCTBytes {
 
@@ -395,13 +348,6 @@ object SOCTBytes {
   final val GiB: Long = 1L << 30
   final val TiB: Long = 1L << 40
   final val PiB: Long = 1L << 50
-
-  // ---- Decimal (SI) units, in bytes ----
-  final val KB: Long = 1000L
-  final val MB: Long = KB * 1000L
-  final val GB: Long = MB * 1000L
-  final val TB: Long = GB * 1000L
-  final val PB: Long = TB * 1000L
 
   /** A byte count with convenient conversions/formatting attached.
    * Backed by Long, which comfortably covers any realistic address space
@@ -424,44 +370,6 @@ object SOCTBytes {
     def >(other: Bytes): Boolean = value > other.value
 
     def >=(other: Bytes): Boolean = value >= other.value
-
-    // ---- Binary conversions (exact ratios, returned as Double for readability) ----
-    def toKiB: Double = value.toDouble / KiB
-
-    def toMiB: Double = value.toDouble / MiB
-
-    def toGiB: Double = value.toDouble / GiB
-
-    def toTiB: Double = value.toDouble / TiB
-
-    def toPiB: Double = value.toDouble / PiB
-
-    // ---- Decimal conversions ----
-    def toKB: Double = value.toDouble / KB
-
-    def toMB: Double = value.toDouble / MB
-
-    def toGB: Double = value.toDouble / GB
-
-    def toTB: Double = value.toDouble / TB
-
-    def toPB: Double = value.toDouble / PB
-
-    /** True if value is a power of two -- useful for sanity-checking
-     * address-window sizes before wiring them into an address editor.
-     */
-    def isPowerOfTwo: Boolean = SOCTUtils.isPowerOfTwo(value)
-
-    /** Number of address bits needed to span this many bytes.
-     * Only well-defined for power-of-two sizes (the common case for
-     * AXI address windows / DDR channels / MMIO apertures).
-     */
-    def addrBits: Int = SOCTUtils.log2Exact(value)
-
-    /** Bytes as a hex literal, e.g. "0x80000000" -- handy for dropping
-     * straight into an address-editor offset or a Tcl assign_bd_address call.
-     */
-    def toHex: String = SOCTUtils.toHex(value)
 
     /** Human-readable form, picking the largest binary unit that gives a
      * result >= 1.0 (e.g. "2.00 GiB", "512.00 MiB", "768.00 B").
@@ -490,7 +398,7 @@ object SOCTBytes {
 
     def fromInt(x: Int): Bytes = Bytes(x.toLong)
 
-    def parseString(str: String): Option[Bytes] = Bytes.parse(str)
+    def parseString(str: String): Option[Bytes] = None // no string form is defined for Bytes
 
     def toInt(x: Bytes): Int = x.value.toInt
 
@@ -512,69 +420,9 @@ object SOCTBytes {
 
   object Bytes {
     def apply(i: Int): Bytes = Bytes(i.toLong)
-
-    def sum(xs: Iterable[Bytes]): Bytes = Bytes(xs.foldLeft(0L)(_ + _.value))
-
-    private val stringPattern =
-      """(?i)^\s*([0-9]+(?:\.[0-9]+)?)\s*([a-z]*)\s*$""".r
-
-    private val unitSizes: Map[String, Long] = Map(
-      "" -> 1L,
-      "B" -> 1L,
-      "KIB" -> SOCTBytes.KiB,
-      "KB" -> SOCTBytes.KB,
-      "MIB" -> SOCTBytes.MiB,
-      "MB" -> SOCTBytes.MB,
-      "GIB" -> SOCTBytes.GiB,
-      "GB" -> SOCTBytes.GB,
-      "TIB" -> SOCTBytes.TiB,
-      "TB" -> SOCTBytes.TB,
-      "PIB" -> SOCTBytes.PiB,
-      "PB" -> SOCTBytes.PB
-    )
-
-    def parse(s: String): Option[Bytes] = s match {
-      case stringPattern(numStr, unitStr) =>
-        unitSizes.get(unitStr.toUpperCase).map { unitBytes =>
-          val exact = BigDecimal(numStr) * BigDecimal(unitBytes)
-          Bytes(exact.setScale(0, BigDecimal.RoundingMode.HALF_UP).toLongExact)
-        }
-      case _ => None
-    }
-
-    def apply(s: String): Bytes =
-      parse(s).getOrElse(
-        throw new IllegalArgumentException(
-          s"""Cannot parse "$s" as a byte size (expected e.g. "3.5GiB", "20000B", "512", "2GB")"""
-        )
-      )
   }
 
-  /** Implicit numeric literal extensions, e.g. `4.GiB`, `512.MiB`, `2.GB`. */
-  implicit class ByteUnitOpsLong(private val n: Long) extends AnyVal {
-    def B: Bytes = Bytes(n)
-
-    def KiB: Bytes = Bytes(n * SOCTBytes.KiB)
-
-    def MiB: Bytes = Bytes(n * SOCTBytes.MiB)
-
-    def GiB: Bytes = Bytes(n * SOCTBytes.GiB)
-
-    def TiB: Bytes = Bytes(n * SOCTBytes.TiB)
-
-    def PiB: Bytes = Bytes(n * SOCTBytes.PiB)
-
-    def KB: Bytes = Bytes(n * SOCTBytes.KB)
-
-    def MB: Bytes = Bytes(n * SOCTBytes.MB)
-
-    def GB: Bytes = Bytes(n * SOCTBytes.GB)
-
-    def TB: Bytes = Bytes(n * SOCTBytes.TB)
-
-    def PB: Bytes = Bytes(n * SOCTBytes.PB)
-  }
-
+  /** Implicit numeric literal extensions, e.g. `4.GiB`, `512.MiB`. */
   implicit class ByteUnitOpsInt(private val n: Int) extends AnyVal {
     def B: Bytes = Bytes(n.toLong)
 
@@ -587,16 +435,6 @@ object SOCTBytes {
     def TiB: Bytes = Bytes(n.toLong * SOCTBytes.TiB)
 
     def PiB: Bytes = Bytes(n.toLong * SOCTBytes.PiB)
-
-    def KB: Bytes = Bytes(n.toLong * SOCTBytes.KB)
-
-    def MB: Bytes = Bytes(n.toLong * SOCTBytes.MB)
-
-    def GB: Bytes = Bytes(n.toLong * SOCTBytes.GB)
-
-    def TB: Bytes = Bytes(n.toLong * SOCTBytes.TB)
-
-    def PB: Bytes = Bytes(n.toLong * SOCTBytes.PB)
   }
 }
 
@@ -613,12 +451,7 @@ object SOCTBytes {
  * import SOCTFreq._
  *
  * val cpuClk = 100.MHz
- * val axiClk = 250.MHz
- * val total  = cpuClk + axiClk
- *
- * println(cpuClk.periodNs)      // 10.0
  * println(cpuClk.toHz)          // 100000000.0
- * println(total)                // 350.00 MHz
  */
 object SOCTFreq {
 
@@ -654,31 +487,7 @@ object SOCTFreq {
     // ---- SI conversions ----
     def toHz: Double = value
 
-    def tokHz: Double = value / kHz
-
     def toMHz: Double = value / MHz
-
-    def toGHz: Double = value / GHz
-
-    def toTHz: Double = value / THz
-
-    /** Clock period in seconds. */
-    def periodSeconds: Double = 1.0 / value
-
-    /** Clock period in milliseconds. */
-    def periodMs: Double = 1e3 / value
-
-    /** Clock period in microseconds. */
-    def periodUs: Double = 1e6 / value
-
-    /** Clock period in nanoseconds. */
-    def periodNs: Double = 1e9 / value
-
-    /** Clock period in picoseconds. */
-    def periodPs: Double = 1e12 / value
-
-    /** Angular frequency (ω = 2πf), in rad/s. */
-    def toAngular: Double = 2.0 * math.Pi * value
 
     /** Human-readable form, choosing the largest SI unit with a value >= 1.0. */
     def humanReadable: String = SOCTUtils.scaledString(
@@ -695,31 +504,7 @@ object SOCTFreq {
     override def toString: String = humanReadable
   }
 
-  object Freq {
-    def apply(i: Int): Freq = Freq(i.toDouble)
-
-    def apply(l: Long): Freq = Freq(l.toDouble)
-
-    /** Sum a sequence of frequencies. */
-    def sum(xs: Iterable[Freq]): Freq =
-      Freq(xs.foldLeft(0.0)(_ + _.value))
-
-    implicit val ordering: Ordering[Freq] = Ordering.by(_.value)
-  }
-
   /** Implicit numeric literal extensions, e.g. `100.MHz`, `2.5.GHz`. */
-  implicit class FreqUnitOpsLong(private val n: Long) extends AnyVal {
-    def Hz: Freq = Freq(n.toDouble)
-
-    def kHz: Freq = Freq(n.toDouble * SOCTFreq.kHz)
-
-    def MHz: Freq = Freq(n.toDouble * SOCTFreq.MHz)
-
-    def GHz: Freq = Freq(n.toDouble * SOCTFreq.GHz)
-
-    def THz: Freq = Freq(n.toDouble * SOCTFreq.THz)
-  }
-
   implicit class FreqUnitOpsInt(private val n: Int) extends AnyVal {
     def Hz: Freq = Freq(n.toDouble)
 

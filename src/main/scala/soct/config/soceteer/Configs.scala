@@ -82,7 +82,7 @@ class RocketVivadoBaseConfig extends Config(
     new WithJtagDTM ++
     new WithDebugSBA ++
     new WithSDCardPMOD ++
-    new WithUART ++
+    new WithAxiUartLite ++
     new WithResetScheme(ResetSynchronousFull) ++ // io_clocks and several other resets are top-level resets
     new RocketBaseConfig
 )
@@ -157,7 +157,10 @@ class WithSDCardPMOD(pmodIdx: Int = 0) extends Config((site, here, up) => {
   case HasSDCardPMOD => Some(pmodIdx)
   case NeedsFatFS => true
 }
-)
+) {
+  // Reflection entry point: --with-config needs a zero-argument constructor.
+  def this() = this(0)
+}
 
 /**
  * Field collecting the name suffixes contributed by [[SOCTFeatureConfig]] fragments.
@@ -297,11 +300,12 @@ class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc",
 class WithL2Cache() extends SOCTFeatureConfig("l2", new WithInclusiveCache())
 
 /** Field: whether the design has the AXI UART Lite console. */
-case object HasUART extends Field[Boolean](false)
+case object HasAxiUartLite extends Field[Boolean](false)
 
-/** Adds the AXI UART Lite console (see [[HasUART]]). */
-class WithUART extends Config((site, here, up) => {
-  case HasUART => true
+/** Adds the AXI UART Lite console (see [[HasAxiUartLite]]). Named for the implementation
+ * on purpose: a future generic UART abstraction keeps the plain name free. */
+class WithAxiUartLite extends Config((site, here, up) => {
+  case HasAxiUartLite => true
 })
 
 /*----------------- Clock Speeds ---------------*/

@@ -9,7 +9,6 @@ import org.chipsalliance.diplomacy.lazymodule.LazyModule
 import soct.system.sim.SOCTSimSystem
 import soct.system.vivado.SOCTVivadoSystem
 import soct.vivado.fpga.{PartRegistry, FPGA, FPGARegistry}
-import soct.system.yosys.SOCTYosysSystem
 import freechips.rocketchip.subsystem.WithPeripheryBusFrequency
 import soct.SOCTFreq._
 import soct.SOCTNames.{LATEST_SOCT_SYSTEM_CMAKE_FILE, SOCT_SYSTEM_CMAKE_FILE}
@@ -123,16 +122,6 @@ object Targets {
   }
 
   /**
-   * Yosys target for synthesis
-   */
-  case object Yosys extends Targets {
-    val name: String = "yosys"
-    val defaultBootrom: String = "sd-boot"
-    val defaultTop: ChiselTop = Right(classOf[SOCTYosysSystem])
-    val description: String = "Emit the design for Yosys synthesis."
-  }
-
-  /**
    * Verilator: emit the simulation design, and optionally build the C++ simulator afterwards.
    * `verilator` emits only (the default); `verilator.build` also configures and builds the `sim`
    * CMake project. All variants report the canonical `SOCT_TARGET` name `verilator`.
@@ -163,7 +152,7 @@ object Targets {
   /**
    * All supported target values
    */
-  val values: Seq[Targets] = Seq(VivadoBd, VivadoSyn, VivadoBs, Yosys, Verilator, VerilatorBuild)
+  val values: Seq[Targets] = Seq(VivadoBd, VivadoSyn, VivadoBs, Verilator, VerilatorBuild)
 
   private def fromString(s: String): Option[Targets] = values.find(_.name == s.toLowerCase)
 }
@@ -269,11 +258,6 @@ object SOCTParser extends OptionParser[SOCTArgs]("SOCTLauncher") {
           log.warn("Overriding --single-verilog-file for Vivado target - We do not support a single verilog file emitted by modern Chisel versions.")
         }
         args.copy(singleVerilogFile = false)
-      case Targets.Yosys =>
-        if (!args.singleVerilogFile) {
-          log.warn("Overriding --single-verilog-file for Yosys target - Yosys requires a single verilog file.")
-        }
-        args.copy(singleVerilogFile = true)
     }
   }
 

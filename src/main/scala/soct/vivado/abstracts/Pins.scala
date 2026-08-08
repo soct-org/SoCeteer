@@ -19,27 +19,6 @@ abstract class BdPinBase(pinFn: => String, instFn: => BdComp) extends BdPinPort 
 }
 
 /**
- * Pin constructor trait - should be implemented for each generalized pin type
- * @tparam T The type of BdPinBase to construct
- */
-trait PinCtor[T <: BdPinBase] {
-  def apply(pin: => String, inst: => BdComp): T
-}
-
-
-/** Implicit [[PinCtor]] instances for the concrete pin types. */
-object PinCtor {
-  implicit val inCtor: PinCtor[BdPinIn] = (pin, inst) => new BdPinIn(pin, inst)
-
-  implicit val outCtor: PinCtor[BdPinOut] = (pin, inst) => new BdPinOut(pin, inst)
-
-  implicit val inOutCtor: PinCtor[BdPinInOut] = (pin, inst) => new BdPinInOut(pin, inst)
-
-  implicit val intfCtor: PinCtor[BdIntfPin] = (pin, inst) => new BdIntfPin(pin, inst)
-}
-
-
-/**
  * Board Design Input Pin
  */
 class BdPinIn(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, instFn) with DrivenByNet
@@ -67,9 +46,6 @@ class BdIntfPin(pinFn: => String, instFn: => BdComp) extends BdPinBase(pinFn, in
 
 /**
  * Board Design Chisel Pin (bidirectional at compile time - actual direction determined during elaboration)
- * Note: This Pin does not have a default Ctor in PinCtor - it must be constructed manually.
  */
-class BdChiselPin(pinFn: => String, instFn: => BdComp, chiselPort: => chisel3.Data) extends BdPinInOut(pinFn, instFn) {
-  def chiselPin: chisel3.Data = chiselPort
-}
+class BdChiselPin(pinFn: => String, instFn: => BdComp, chiselPort: => chisel3.Data) extends BdPinInOut(pinFn, instFn)
 

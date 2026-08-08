@@ -3,6 +3,7 @@ package soct.system.vivado
 import soct.RegisteredMems
 import soct.vivado._
 import soct.vivado.components.DDR4
+import soct.vivado.fpga.FPGAResetPortSource
 
 /**
  * The TCL timing-constraint helpers of [[SOCTVivadoSystemBase]] (one file per concern:
@@ -67,20 +68,21 @@ trait SOCTVivadoSystemConstraints {
    * and deliberately exempt", which is a claim someone can disagree with, and it keeps the
    * `check_timing` report empty enough that a genuinely unconstrained path stands out.
    *
-   * @param c the common design
+   * @param c          the common design
+   * @param boardReset the board reset input port whose name the false path targets
    */
-  protected def addAsyncPortConstraints(c: CommonDesign): Unit = {
+  protected def addAsyncPortConstraints(c: CommonDesign, boardReset: FPGAResetPortSource): Unit = {
     val uartPorts = c.fpga.uartPorts.headOption.toSeq.flatMap { u =>
       Seq(s"${u.portName}_rxd", s"${u.portName}_txd")
     }
     // -quiet throughout: a board without a UART, or a design built without one, simply has no
     // such port, and that is not an error here.
-    // Derived, not spelled: the reset output belongs to whichever DDR4 ports this design
-    // registered, and a board that names them differently (VCU118's per-channel
-    // ddr4_sdram_c1/c2) would otherwise be handed a port name that matches nothing -
-    // silently, since both the query and the constraint are -quiet.
+    // Derived, not spelled: the reset input and the DDR4 reset outputs belong to whichever
+    // ports the board and this design registered, and a board that names them differently
+    // (VCU118's per-channel ddr4_sdram_c1/c2) would otherwise be handed a port name that
+    // matches nothing - silently, since both the query and the constraint are -quiet.
     val ddr4Resets = p(RegisteredMems).map(m => s"${m.portName}_reset_n")
-    val inputs = Seq("reset") ++ uartPorts.filter(_.endsWith("_rxd"))
+    val inputs = Seq(boardReset.portName) ++ uartPorts.filter(_.endsWith("_rxd"))
     val outputs = ddr4Resets ++ uartPorts.filter(_.endsWith("_txd"))
     bd.addTimingConstraints(() => Seq(
       s"""# Asynchronous top-level ports: no clock relationship exists, so none is asserted.

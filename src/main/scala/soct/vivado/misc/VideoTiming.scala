@@ -47,7 +47,6 @@ object VideoTiming {
    */
   def cvtReducedBlanking(hActive: Int, vActive: Int, fps: Int): VideoTiming = {
     require(hActive > 0 && vActive > 0 && fps > 0, s"impossible mode ${hActive}x$vActive@$fps")
-    val RbHBlank = 160
     val RbHFrontPorch = 48
     val RbHSync = 32
     val RbHBackPorch = 80
