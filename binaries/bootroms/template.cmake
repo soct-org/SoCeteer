@@ -31,6 +31,11 @@ add_executable(${BOOTROM_ELF} ${CMAKE_CXX_SRCS} ${CMAKE_C_SRCS} ${CMAKE_ASM_SRCS
 
 add_dependencies(${BOOTROM_ELF} device_tree)
 
+set_target_properties(${BOOTROM_ELF} PROPERTIES LINK_DEPENDS "${SOCT_LD_SCRIPT}")
+if (CMAKE_ASM_SRCS)
+    set_source_files_properties(${CMAKE_ASM_SRCS} PROPERTIES OBJECT_DEPENDS "${SOCT_DTB}")
+endif ()
+
 # Define SOCT_DTB to point to the compiled DTB
 target_compile_definitions(${BOOTROM_ELF} PRIVATE DEVICE_TREE=\"${SOCT_DTB}\")
 target_include_directories(${BOOTROM_ELF} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -40,8 +40,11 @@
       tree at all and boots with the ROM copy from step 1 &mdash; the tree baked into the
       bitstream, which cannot disagree with the hardware it boots on. Because the ROM is not
       writable and the later stages <em>must write</em> to the tree,
-      <code>sd-boot</code> places a copy in DRAM (above everything it loaded, with headroom
-      grown into the blob) and passes that address instead.</li>
+      <code>sd-boot</code> places a copy in DRAM &mdash; at the top of memory, with headroom
+      grown into the blob &mdash; and passes that address instead. Deliberately not just above
+      the loaded image: an ELF describes only what is loaded from the file, while the payload's
+      runtime footprint reaches further (a kernel clears its <code>.bss</code>, which lies past
+      the image, before it ever reads the tree).</li>
     <li><strong>OpenSBI reads it&hellip;</strong> The firmware's own drivers are device-tree
       probed exactly like Linux's: the CLINT it uses for timers and IPIs and the UART behind
       its banner output come from the same nodes Linux will bind later &mdash; one description
@@ -251,12 +254,18 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
   <code>/init</code> says so instead of pretending.</p>
 
   <h3>Video (VDMA)</h3>
-  <p>In designs with the video stream, the generated VDMA node binds the kernel's Xilinx
-  DMA-engine driver as a dmaengine provider &mdash; channel, frame stores and data width
-  all described by the device tree. No framebuffer driver sits on top of it yet: the
-  DisplayPort pipeline is exercised by the bare-metal <code>dp-test</code> (see
-  <a href="video.html">DisplayPort Video</a>), and Linux framebuffer glue is future
-  work.</p>
+  <p>In designs with the video stream, the monitor is a Linux console. The out-of-tree
+  <code>soct-dp</code> module (<code>binaries/linux/drivers/dp</code>) brings the DisplayPort
+  link up and parks the VDMA on the reserved framebuffer; which driver then owns that memory
+  follows the fetch path. A coherent fetch lets the kernel's <code>simplefb</code> adopt the
+  <code>/chosen</code> framebuffer node as it is; an incoherent one cannot, so
+  <code>soct-dp</code> serves the framebuffer itself and flushes what is drawn into it before
+  the DMA reads it. Userspace reaches it through the ordinary fbdev interface
+  (<code>fbmode</code>, <code>fbimg</code>). The VDMA's own node stays
+  <code>disabled</code> on purpose: the kernel's Xilinx dmaengine driver resets every channel
+  it probes, which would halt the running scanout &mdash; the node is described in full, so
+  enabling it is all a memory-to-memory use would need. The pipeline itself is covered by
+  <a href="video.html">DisplayPort Video</a>.</p>
 
   <h2>Toolchains</h2>
   <p>Two toolchains split the work, deliberately:</p>

@@ -66,21 +66,23 @@ void fb_flip(uintptr_t vdma_base) {
  * `soct,incoherent`; the flush below writes those lines out before the DMA
  * reads them. Two mechanisms, picked from what the design actually has:
  *
- *   - an L2 (`sifive,inclusivecache0`): write each line's physical address to
- *     the Flush64 control register. The write blocks until the line is out,
- *     and because the cache is inclusive this also pulls the line from L1.
- *   - no L2: the L1 is small (16 KiB), so reading a buffer of that size
- *     evicts every framebuffer line - and without an L2 an eviction goes
- *     straight to DRAM. Crude, but it is the only lever the base ISA leaves
- *     us (this Rocket has no Zicbom cache-block instructions).
+ * The mechanism is the L2 (`sifive,inclusivecache0`): write each line's
+ * physical address to the Flush64 control register. The write blocks until the
+ * line is out, and because the cache is inclusive this also pulls the line
+ * from L1.
+ *
+ * There is no second mechanism. This Rocket has no Zicbom cache-block
+ * instructions, and reading an L1-sized buffer to provoke eviction does NOT
+ * write every line back: the D-cache replaces randomly, so a dirty line
+ * survives a capacity sweep often enough to show as stale blocks on screen.
+ * An incoherent design without an L2 is therefore refused at generation
+ * (VideoStreamFeature) and refused here, rather than displayed by luck.
  * ========================================================================= */
 
 #define L2_FLUSH64_OFFSET 0x200u /* InclusiveCache control: flush one physical address */
-#define L1_DCACHE_BYTES   (16u << 10)
 
 static int s_incoherent;                /* device tree says the frame fetch bypasses coherence */
-static volatile uint64_t *s_l2_flush;   /* Flush64 register, NULL when the design has no L2 */
-static volatile uint64_t *s_evict_buf;  /* L1-eviction scratch, used only without an L2 */
+static volatile uint64_t *s_l2_flush;   /* Flush64 register; set whenever the fetch is incoherent */
 
 void fb_coherence_init(dtb_node *vdma_node) {
     s_incoherent = dtb_find_prop(vdma_node, "soct,incoherent") != NULL;
@@ -89,21 +91,17 @@ void fb_coherence_init(dtb_node *vdma_node) {
         return;
     }
     dtb_node *l2 = dtb_find_compatible(NULL, "sifive,inclusivecache0");
-    if (l2) {
-        uintptr_t l2_base;
-        dt_require_reg(l2, &l2_base, NULL);
-        s_l2_flush = (volatile uint64_t *) (l2_base + L2_FLUSH64_OFFSET);
-        printf("Frame fetch is INCOHERENT - flushing frames via the L2 Flush64 register at %p.\n",
-               (void *) s_l2_flush);
-    } else {
-        s_evict_buf = malloc(L1_DCACHE_BYTES);
-        if (!s_evict_buf) {
-            printf("FATAL: could not allocate the L1 eviction buffer\n");
-            abort();
-        }
-        printf("Frame fetch is INCOHERENT and the design has no L2 - flushing frames by "
-               "evicting the L1.\n");
+    if (!l2) {
+        printf("FATAL: the frame fetch is incoherent but this design has no L2, so there is "
+               "no way to make rendered pixels visible to the DMA. Rebuild the design with "
+               "soct.WithL2Cache, or with the coherent pipeline (soct.WithVideoStream).\n");
+        abort();
     }
+    uintptr_t l2_base;
+    dt_require_reg(l2, &l2_base, NULL);
+    s_l2_flush = (volatile uint64_t *) (l2_base + L2_FLUSH64_OFFSET);
+    printf("Frame fetch is INCOHERENT - flushing frames via the L2 Flush64 register at %p.\n",
+           (void *) s_l2_flush);
 }
 
 /* Write back every cache line overlapping [addr, addr+len). Cost is
@@ -117,22 +115,10 @@ static void l2_flush_range(const void *addr, size_t len) {
     }
 }
 
-/* Read a cache-sized buffer: every set gets refilled, so the framebuffer lines
- * are evicted (and, with no L2 behind us, land in DRAM). Address-independent,
- * so one sweep covers any region - never call it per row. */
-static void l1_evict_all(void) {
-    volatile uint64_t sink = 0;
-    for (size_t i = 0; i < L1_DCACHE_BYTES / sizeof(uint64_t); i += 8) {
-        sink += s_evict_buf[i];
-    }
-    (void) sink;
-}
-
 void fb_flush(const void *addr, size_t len) {
     fb_fence(); /* stores complete before we push them out (or before the DMA reads them) */
     if (!s_incoherent) return;
-    if (s_l2_flush) l2_flush_range(addr, len);
-    else l1_evict_all();
+    l2_flush_range(addr, len);
     fb_fence();
 }
 
@@ -143,14 +129,10 @@ void fb_flush_draw(void) {
 void fb_flush_rect(unsigned x, unsigned y, unsigned w, unsigned h) {
     fb_fence();
     if (!s_incoherent) return;
-    if (s_l2_flush) {
-        const size_t stride = (size_t) fb_width * 3;
-        for (unsigned r = 0; r < h; r++) {
-            l2_flush_range(fb_draw + ((size_t) (y + r)) * stride + (size_t) x * 3,
-                           (size_t) w * 3);
-        }
-    } else {
-        l1_evict_all(); /* the sweep is not addressed; the region does not matter */
+    const size_t stride = (size_t) fb_width * 3;
+    for (unsigned r = 0; r < h; r++) {
+        l2_flush_range(fb_draw + ((size_t) (y + r)) * stride + (size_t) x * 3,
+                       (size_t) w * 3);
     }
     fb_fence();
 }

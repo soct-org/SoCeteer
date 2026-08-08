@@ -52,8 +52,10 @@ echo "  Kernel messages: dmesg"
 echo "==============================================================================="
 dmesg -n "${_printk:-7}"
 
-# Stop USB before the reset, like the unmounts: DMA cut off mid-flight wedges
-# the controller until a power cycle. A design without the controller skips it.
+# Stop USB before the reset: DMA cut off mid-flight wedges the controller until a
+# power cycle. Strictly AFTER the unmounts - a persistent environment can live on a
+# USB stick, and unbinding the controller first would take the block device away from
+# a filesystem that still owes it writes. A design without the controller skips it.
 usb_stop() {
     [ -e /sys/bus/platform/drivers/dwc3/7e200000.usb ] || return 0
     echo 7e200000.usb > /sys/bus/platform/drivers/dwc3/unbind 2>/dev/null
@@ -63,7 +65,7 @@ usb_stop() {
 # TERM = reboot, USR1 = halt, USR2 = poweroff) and expects init to finish the job.
 # reboot -f syncs and makes the real syscall, which lands in the SBI SRST reset; the
 # FPGA has no software power control, so halt/poweroff can only say so.
-trap 'usb_stop; umount -a -r 2>/dev/null; reboot -f' TERM
+trap 'umount -a -r 2>/dev/null; usb_stop; reboot -f' TERM
 trap 'echo "init: no power control on this SoC - use reboot"' USR1 USR2
 
 # setsid + cttyhack give the shell a session and the real console tty (found via
@@ -77,8 +79,12 @@ trap 'echo "init: no power control on this SoC - use reboot"' USR1 USR2
 # renders tty1 on the monitor and the USB keyboard types into it - a second, independent
 # shell beside the serial one. Spawned whenever the VT exists (without a display it is
 # merely invisible, not harmful).
+# `-c` makes the new session's controlling terminal its stdin, i.e. tty1 - without it
+# the monitor shell has no controlling terminal at all and Ctrl-C reaches nothing.
+# (cttyhack, which the serial shell uses, is no help here: it finds the tty through
+# /sys/class/tty/console/active and would hand this shell the serial console.)
 if [ -c /dev/tty1 ]; then
-    (while :; do setsid sh -l </dev/tty1 >/dev/tty1 2>&1; done) &
+    (while :; do setsid -c sh -l </dev/tty1 >/dev/tty1 2>&1; done) &
 fi
 
 while :; do

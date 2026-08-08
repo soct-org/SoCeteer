@@ -540,8 +540,10 @@ static int soct_dp_fb_set_par(struct fb_info *info)
 	spin_unlock_irqrestore(&fbs.lock, flags);
 
 	err = soct_dp_switch_mode(&m);
-	if (err)
+	if (err) {
+		memset(&fbs.mode, 0, sizeof(fbs.mode));
 		return err;
+	}
 
 	fbs.mode = m;
 	fbs.width = m.hactive;

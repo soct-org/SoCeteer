@@ -55,8 +55,9 @@ cmake --build &lt;build-dir&gt; --target hello-hart</code></pre>
   <div class="opt">Only when you want to inspect signals; tracing slows the simulation
   considerably and the files grow large quickly.</div>
   <p>Tracing is a build-time switch of the <code>sim/</code> project: configure it with
-  <code>-DVL_TRACE=1</code> (optionally <code>-DVL_TRACE_DEPTH=&lt;n&gt;</code> to limit the
-  hierarchy depth) and rebuild. The simulator then writes <code>dump.vcd</code> next to
+  <code>-DVL_TRACE=1</code> and rebuild. That records two levels of hierarchy;
+  <code>-DVL_TRACE_DEPTH=&lt;n&gt;</code> reaches further down, at the price of file size
+  &mdash; signals inside the core need it. The simulator then writes <code>dump.vcd</code> next to
   where it runs &mdash; <code>--vcd-file=&lt;path&gt;</code> chooses another location &mdash;
   and any VCD viewer (for example <a href="https://surfer-project.org/">Surfer</a>)
   opens it.</p>

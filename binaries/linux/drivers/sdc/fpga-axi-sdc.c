@@ -448,10 +448,15 @@ static irqreturn_t sdc_isr(int irq, void * dev_id) {
                 if (data_status & SDC_DAT_INT_STATUS_CTE) data->error = -ETIME;
             }
             if (mrq->stop) sdc_send_cmd(host, mmc, mrq->stop, NULL);
-            mmc_request_done(mmc, mrq);
+            /* Unmap BEFORE completing: the unmap is what hands the buffer back to the
+             * CPU - it copies a bounced transfer back and invalidates the caches for a
+             * non-coherent one. Completing first releases the waiter onto data the
+             * device side has not finished delivering. It also keeps every use of
+             * data->sg inside the window where this driver still owns the request. */
             dma_unmap_sg(&host->pdev->dev, data->sg, data->sg_len, mmc_get_dma_dir(data));
             host->data = NULL;
             host->mrq = NULL;
+            mmc_request_done(mmc, mrq);
         }
     }
 
@@ -531,6 +536,7 @@ static int axi_sdc_probe(struct platform_device * pdev) {
         ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(host->dma_addr_bits));
         if (ret) {
             printk(KERN_ERR "AXI-SDC: Can't set DMA mask\n");
+            free_irq(host->irq, mmc);
             mmc_free_host(mmc);
             return ret;
         }
@@ -541,6 +547,10 @@ static int axi_sdc_probe(struct platform_device * pdev) {
     ret = mmc_add_host(mmc);
     if (ret) {
         printk(KERN_ERR "AXI-SDC: Can't register device\n");
+        /* The controller already signals card insert/remove after sdc_reset, and this
+         * handler dereferences the host that mmc_free_host is about to release - the
+         * interrupt has to go first on every path that gives the host back. */
+        free_irq(host->irq, mmc);
         mmc_free_host(mmc);
         return ret;
     }

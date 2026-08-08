@@ -36,6 +36,18 @@ candidates() {
 
 # What a device holds: "env" (a soct environment), "fat" (a FAT without one), "none".
 probe_dev() {
+    # A carrier that is already mounted cannot be mounted a second time with a
+    # different read-only state - the kernel refuses that with EBUSY - and mounting
+    # the FAT by hand to copy files onto it is the normal thing to do. Look through
+    # the mountpoint it already has, instead of calling the medium unformatted.
+    _at=""
+    while read -r _d _m _t _rest; do
+        if [ "$_d" = "$1" ] && [ "$_t" = vfat ]; then _at="$_m"; break; fi
+    done < /proc/mounts
+    if [ -n "$_at" ]; then
+        if [ -f "$_at/$IMG_REL" ]; then echo env; else echo fat; fi
+        return
+    fi
     mkdir -p "$PROBE"
     if mount -t vfat -o ro "$1" "$PROBE" 2>/dev/null; then
         if [ -f "$PROBE/$IMG_REL" ]; then echo env; else echo fat; fi
@@ -81,10 +93,29 @@ leave_env() {
         esac
     done < /proc/mounts
     _ok=1
+    _devs=""
     for _m in $_carriers; do
+        while read -r _d _mp _rest; do
+            [ "$_mp" = "$_m" ] && _devs="$_devs $_d"
+        done < /proc/mounts
         umount "$_m" || { echo "soct: $_m is busy - not unmounted" >&2; _ok=""; }
     done
-    [ -n "$_ok" ] && echo "soct: unmounted - the medium can be removed"
+    [ -n "$_ok" ] || return
+    # Only this script's own mounts are gone. A carrier mounted somewhere else too
+    # still owes that filesystem its writes, so the medium is not free yet - saying
+    # otherwise is how a card gets pulled mid-write.
+    _still=""
+    for _d in $_devs; do
+        while read -r _d2 _mp2 _rest2; do
+            [ "$_d2" = "$_d" ] && _still="$_still $_mp2"
+        done < /proc/mounts
+    done
+    if [ -n "$_still" ]; then
+        echo "soct: left its own mounts, but the medium is still mounted at:$_still" >&2
+        echo "soct: unmount that before removing it" >&2
+    else
+        echo "soct: unmounted - the medium can be removed"
+    fi
 }
 
 # Bind the pseudo filesystems and the media tree into the environment, run the
@@ -106,18 +137,28 @@ enter_env() {
     exit "$_rc"
 }
 
+# Failing after the carrier was mounted must not leave it mounted: this script is
+# the only thing that would ever unmount it, and it is about to exit. Mounts the
+# caller already had are left alone.
+_bail() {
+    [ -n "$_we_mounted" ] && umount "$_mnt" 2>/dev/null
+    exit 1
+}
+
 # Mounts the carrier at /media/<device>, creates the image there when absent,
 # loop-mounts the environment at $SOCT_FS, populates a fresh one, and enters.
 enter_or_create() {
     _dev="$1"
     _mnt="$MEDIA/$(basename "$_dev")"
 
+    _we_mounted=""
     if ! grep -q " $_mnt " /proc/mounts; then
         mkdir -p "$_mnt"
         if ! mount -t vfat "$_dev" "$_mnt"; then
             echo "soct: mounting $_dev at $_mnt failed" >&2
             exit 1
         fi
+        _we_mounted=1
     fi
     echo "soct: medium $_dev at $_mnt"
 
@@ -129,12 +170,12 @@ enter_or_create() {
         if ! dd if=/dev/zero of="$_img" bs=1M count="$SIZE_MB" 2>/dev/null; then
             echo "soct: creating the image failed (medium full or read-only?)" >&2
             rm -f "$_img"
-            exit 1
+            _bail
         fi
         if ! mke2fs -F "$_img" >/dev/null 2>&1; then
             echo "soct: formatting the image failed" >&2
             rm -f "$_img"
-            exit 1
+            _bail
         fi
         _fresh=1
     fi
@@ -143,7 +184,7 @@ enter_or_create() {
     if ! grep -q " $SOCT_FS " /proc/mounts; then
         if ! mount -o loop -t ext2 "$_img" "$SOCT_FS"; then
             echo "soct: mounting $_img failed (corrupt? move it away and re-run soct)" >&2
-            exit 1
+            _bail
         fi
     fi
     echo "soct: environment at $SOCT_FS (also reachable from this shell)"
@@ -167,7 +208,16 @@ enter_or_create() {
             [ -x "/bin/$_t" ] && cp "/bin/$_t" "$SOCT_FS/bin/"
         done
         [ -f /etc/soct-release ] && cp /etc/soct-release "$SOCT_FS/etc/"
+        # busybox finds its own path through /proc/self/exe while it writes the applet
+        # links. With no /proc in the fresh environment every link points at that literal
+        # path instead of at busybox, and then resolves only while a busybox process
+        # happens to be the one looking it up - the environment would not work when
+        # chrooted into by hand, or read on another machine. init.sh mounts /proc before
+        # its own --install for the same reason.
+        mount -t proc proc "$SOCT_FS/proc" ||
+            echo "soct: no /proc for the applet install - the links will be indirect" >&2
         chroot "$SOCT_FS" /bin/busybox --install -s /bin
+        umount "$SOCT_FS/proc" 2>/dev/null
         # The tty keeps the console profile's settings across chroot; $(hostname)
         # resolves at LOGIN, when the medium knows which board it woke up on.
         cat > "$SOCT_FS/etc/profile" <<'PROFILE'
@@ -234,5 +284,6 @@ elif [ "$_n_fat" -gt 1 ]; then
     echo "soct: several possible homes - pick one: soct <device>" >&2
     exit 1
 else
+    echo "soct: no medium with a FAT filesystem to put an environment on" >&2
     exit 1
 fi

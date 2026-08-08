@@ -32,7 +32,9 @@ endif ()
 # Homebrew (Apple silicon + Intel; opt/ keg aliases exist even when unlinked), newest first
 foreach (_prefix /opt/homebrew /usr/local)
     file(GLOB _llvmriscv_kegs "${_prefix}/opt/llvm*/bin")
-    list(SORT _llvmriscv_kegs ORDER DESCENDING)
+    # NATURAL like the versioned trees below: a plain sort compares digit by digit,
+    # which ranks llvm@9 above llvm@22 and picks the oldest keg on the machine.
+    list(SORT _llvmriscv_kegs COMPARE NATURAL ORDER DESCENDING)
     list(APPEND _llvmriscv_dirs ${_llvmriscv_kegs})
 endforeach ()
 # Debian/Ubuntu versioned trees, newest first; MacPorts

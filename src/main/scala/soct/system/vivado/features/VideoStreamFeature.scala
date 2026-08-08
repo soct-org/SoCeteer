@@ -1,6 +1,7 @@
 package soct.system.vivado.features
 
 import freechips.rocketchip.resources.{Description, Device, FixedClockResource, Resource, ResourceAddress, ResourceBinding, ResourceBindings, ResourceInt, ResourceString, SimpleDevice}
+import freechips.rocketchip.subsystem.InclusiveCacheKey
 import org.chipsalliance.cde.config.Parameters
 import soct.SOCTFreq._
 import soct._
@@ -170,6 +171,31 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
     compatibles = Seq("soct,video-status", "xlnx,xps-gpio-1.00.a")
   )
   AxiSlaveBinder.bindSimpleDevice(devname = "vidstat0", dts = vidStatusDts, perms = AxiSlaveBinder.mmioPerms)
+
+  // Every fragment offering a pipeline records itself, so asking for two different ones
+  // is a fact about the parameters rather than a guess from the design's name: whichever
+  // won HasVideoStream would be built, silently, while the other still contributed its
+  // name suffix. Report what was actually asked for.
+  locally {
+    val requested = p(VideoStreamRequests).distinct
+    if (requested.size > 1)
+      throw VivadoDesignException(
+        s"The design configures the video pipeline more than once (${requested.mkString("; ")}). " +
+          "The video fragments are alternatives - exactly one belongs in a design.")
+  }
+
+  // An incoherent frame fetch shifts the visibility of rendered pixels onto software, and
+  // the ONLY mechanism this core offers is the L2's Flush64 register - it has no
+  // cache-maintenance instructions. Without an L2 the best software can do is read enough
+  // addresses to provoke eviction, which a randomly-replaced cache does not guarantee:
+  // some dirty lines stay behind and scan out as stale blocks. Refuse the combination
+  // here rather than generate a design whose display is correct only by chance.
+  if (vs.incoherent && p.lift(InclusiveCacheKey).isEmpty)
+    throw VivadoDesignException(
+      "Incoherent video (soct.WithIncoherentVideoStream) needs an L2: software must flush " +
+        "rendered frames before the private frame fetch reads them, and the L2's Flush64 " +
+        "register is the only way to do that on this core. Add --with-config soct.WithL2Cache, " +
+        "or use the coherent pipeline (soct.WithVideoStream), which needs no flushing.")
 
   // The framebuffer carve-out is fixed; a mode that does not fit it can never scan out.
   if (vs.width.toLong * vs.height * 3 > ZynqUltraPS.VideoFbSize.toLong)

@@ -125,7 +125,8 @@ int main(const int argc, char *argv[]) {
         timepop();
     } while (!contextp->gotFinish());
 
-    logging::fesvr::info << "Simulation complete with exit code " << globals::dtm->exitcode() << "\n";
+    const int exitcode = globals::dtm->exitcode();
+    logging::fesvr::info << "Simulation complete with exit code " << exitcode << "\n";
     timepop();
 
     topp->final();
@@ -134,4 +135,8 @@ int main(const int argc, char *argv[]) {
 #ifdef VL_TRACE
     tfp->close();
 #endif
+    // The simulated program's exit code is this process's: a target that fails must fail
+    // the run hosting it, which is all a script or CI ever sees. A target that never
+    // exited has none, and the -1 that stands in for it is a failure too.
+    return exitcode;
 }

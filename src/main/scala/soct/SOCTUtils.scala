@@ -8,6 +8,7 @@ import soct.SOCTUtils.MAX_MEM_SIZE_32_BIT
 import soct.vivado.VivadoDesignException
 import soct.vivado.fpga.{PartRegistry, DDR4PortParams}
 
+import java.lang.reflect.InvocationTargetException
 import java.nio.file.{Path, Paths}
 import scala.util.Try
 
@@ -173,11 +174,22 @@ object SOCTUtils {
     try {
       Class.forName(configName).getDeclaredConstructor().newInstance().asInstanceOf[Config]
     } catch {
-      case _: Exception =>
-        val configs = findConfigSubclasses()
-        val names = configs.map(_.getName)
-        val closest = names.minBy(n => editDistance(n, configName))
-        throw new RuntimeException(s"Failed to instantiate config: $configName. Did you mean: $closest?")
+      case e: ClassNotFoundException =>
+        // Only a name that resolves to nothing can be a typo; the suggestion needs
+        // candidates to compare against, which a packaged run may not be able to scan.
+        val names = findConfigSubclasses().map(_.getName)
+        val hint = if (names.isEmpty) "" else s" Did you mean: ${names.minBy(n => editDistance(n, configName))}?"
+        throw new RuntimeException(s"No config class named '$configName'.$hint", e)
+      case e: Exception =>
+        // The class exists and its own construction failed. That failure is the whole
+        // diagnostic, so it is reported and kept as the cause - a spelling suggestion
+        // here would name the config back at the user and throw the real error away.
+        val cause = e match {
+          case i: InvocationTargetException if i.getCause != null => i.getCause
+          case other => other
+        }
+        throw new RuntimeException(
+          s"Config '$configName' failed while being constructed: ${cause.getMessage}", cause)
     }
   }
 

@@ -53,12 +53,15 @@ object Transpiler {
     var loweringOptions = mutable.Seq("disallowPortDeclSharing")
 
     // Other firtool args
-    var otherArgs = if (c.args.singleVerilogFile) {
+    // The parentheses are load-bearing: `else` swallows the longest expression, so
+    // without them the shared options below would append to the else branch alone and
+    // the single-file path would run firtool without them.
+    var otherArgs = (if (c.args.singleVerilogFile) {
       val outFile = paths.verilogSrcDir.resolve(s"${c.topModuleName}.sv")
       mutable.Seq(s"-o=${outFile.toString}", "--verilog", "--disable-layers=Verification")
     } else {
       mutable.Seq(s"-o=${paths.verilogSrcDir.toString}", "--split-verilog")
-    } ++ Seq("--disable-annotation-unknown", "--format=fir", "-O=release")
+    }) ++ Seq("--disable-annotation-unknown", "--format=fir", "-O=release")
 
     if (!c.args.includeLocationInfo) {
       loweringOptions +:= "locationInfoStyle=none"

@@ -2,6 +2,7 @@
 
 #include <disasm.h>
 #include <iostream>
+#include <stdexcept>
 
 namespace soct::logging {
 
@@ -20,7 +21,14 @@ namespace soct::logging {
     }
 
     void init_logging(const std::string& file) {
-        globals::log_stream = std::ofstream(file);
+        std::ofstream stream(file);
+        if (!stream.is_open()) {
+            // Every later write would go to a stream nobody can read, and the run would
+            // look normal while producing no log at all - say so while the option that
+            // asked for the file is still the obvious culprit.
+            throw std::runtime_error("cannot open log file: " + file);
+        }
+        globals::log_stream = std::move(stream);
     }
 
     void close_logging() {

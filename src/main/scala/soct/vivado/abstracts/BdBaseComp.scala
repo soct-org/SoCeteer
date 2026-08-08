@@ -54,7 +54,18 @@ abstract class BdComp(implicit bd: SOCTBdBuilder, p: Parameters) extends BdBaseC
    * @return The instance name
    */
   lazy val instanceName: String = {
-    customNameOpt.getOrElse(camelToSnake.replaceAllIn(friendlyName, "$1_$2").toLowerCase + s"_$index")
+    customNameOpt.getOrElse {
+      // An anonymous subclass has no class name to derive from, so this would produce a
+      // bare "_<index>" - and the next anonymous component, counted separately, would
+      // claim the same one. Naming it belongs to whoever wrote the subclass; guessing
+      // here would only move the collision into the generated design.
+      if (friendlyName.isEmpty) {
+        throw VivadoDesignException(
+          s"An anonymous ${getClass.getSuperclass.getSimpleName} subclass needs an explicit " +
+            "withInstanceName(...): without a class name there is nothing to derive an instance name from.")
+      }
+      camelToSnake.replaceAllIn(friendlyName, "$1_$2").toLowerCase + s"_$index"
+    }
   }
 
 

@@ -80,25 +80,30 @@ object DTSExtractor {
   /**
    * Extract the RISC-V architecture string from a Device Tree Source (DTS) content.
    *
-   * @param dts     The content of the DTS file as a string.
-   * @param key     The key to search for in the DTS (default is "riscv,isa").
-   * @param invalid A sequence of invalid substrings to remove from the extracted architecture string.
-   *                Default is "b" which represents big-endian and "_xrocket" which is specific to Rocket cores ("CEASE" instruction).
+   * Two parts of the device tree's ISA string cannot go into a `-march` flag: the
+   * `xrocket` vendor extension, which no toolchain knows (it marks the core's `CEASE`
+   * instruction), and the single-letter `b` in the base extensions, which the toolchains
+   * spell through its `Zb*` members instead. Both are dropped - the `b` only where it IS
+   * a base extension letter, never inside the `z*`/`x*` names that follow, where removing
+   * it would turn `zba` into `za` and leave an ISA string the assembler rejects.
+   *
+   * @param dts The content of the DTS file as a string.
+   * @param key The key to search for in the DTS (default is "riscv,isa").
    * @return the cleaned march string (e.g. "rv64imafdc")
-   * @throws IllegalArgumentException if the key is not found in the DTS or the extracted string is empty
+   * @throws IllegalArgumentException if the key is not found in the DTS or names no extensions
    */
-  def extractMarch(dts: String, key: String = "riscv,isa", invalid: Seq[String] = Seq("b", "_xrocket")): String = {
+  def extractMarch(dts: String, key: String = "riscv,isa"): String = {
     val pattern = s"""(?s)$key = "(.*?)"""".r
     val matches = pattern.findAllMatchIn(dts).toSeq
     if (matches.isEmpty) {
       throw new IllegalArgumentException(s"Key '$key' not found in DTS")
     }
-    var march = matches.head.group(1)
-    invalid.foreach(invalidKey => march = march.replaceFirst(invalidKey, ""))
-    if (march.isEmpty) {
-      throw new IllegalArgumentException(s"Key '$key' not found in DTS")
+    val parts = matches.head.group(1).split("_").toSeq
+    val base = parts.head.replace("b", "") // literal, and only over the base letters
+    if (base.isEmpty) {
+      throw new IllegalArgumentException(s"Key '$key' holds no base ISA extensions in DTS")
     }
-    march
+    (base +: parts.tail.filterNot(_ == "xrocket")).mkString("_")
   }
 
   /**

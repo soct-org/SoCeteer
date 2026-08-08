@@ -142,12 +142,22 @@ int main(void) {
     uintptr_t usb_base, usb_size;
     dt_require_reg(usb, &usb_base, &usb_size);
 
+    /* dma-ranges belongs on the node ABOVE the controller: an operating system reads it
+     * from the device's parent (Linux's of_dma_configure does), which is why the design
+     * interposes a bus node to carry it. Look there when the controller has none of its
+     * own, so this test reads the window the same way its consumers do. */
     dtb_prop *ranges = dtb_find_prop(usb, "dma-ranges");
+    if (!ranges) {
+        dtb_node *bus = dtb_get_parent(usb);
+
+        if (bus)
+            ranges = dtb_find_prop(bus, "dma-ranges");
+    }
     dtb_triplet layout = {1, 1, 1};
     dtb_triplet dma = {0, 0, 0};
     if (!ranges || dtb_read_prop_3(ranges, layout, &dma) < 1) {
-        printf("FATAL: the usb node has no readable dma-ranges; without it there is no way to "
-               "know which memory the controller can address\n");
+        printf("FATAL: neither the usb node nor its parent bus has a readable dma-ranges; "
+               "without it there is no way to know which memory the controller can address\n");
         abort();
     }
     /* dma-ranges is <bus-address cpu-address size>. Addresses written into the controller are

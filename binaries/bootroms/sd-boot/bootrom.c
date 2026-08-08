@@ -527,20 +527,29 @@ static int download(void) {
     /* The ELF gets the ROM device tree in a1 (the RISC-V boot convention): the
      * tree baked into this bitstream, which cannot disagree with the hardware.
      * Firmware patches the FDT in place, which ROM cannot take, so a copy lands
-     * in RAM above everything loaded, with headroom grown into its totalsize
-     * (the ROM blob is packed tight). Images carrying their own embedded FDT
-     * ignore a1. */
+     * in RAM, with headroom grown into its totalsize (the ROM blob is packed
+     * tight). Images carrying their own embedded FDT ignore a1.
+     *
+     * The copy sits at the TOP of RAM, below this ROM's relocation scratch -
+     * deliberately not just above the loaded image: the ELF describes only the
+     * payload's file image, and the runtime footprint reaches further (a kernel
+     * clears its BSS, which lies beyond the image, before it ever reads the
+     * tree). The top of RAM stays untouched until the payload runs, and an OS
+     * reserves the tree's region when it parses it. */
     {
         extern char _dtb[], _dtb_end[];
         size_t dtb_size = (size_t)(_dtb_end - _dtb);
         size_t dtb_slack = 0x1000;
-        uintptr_t dst = (load_end + 0x1FFFFF) & ~(uintptr_t)0x1FFFFF;
+        uintptr_t dst = ((uintptr_t)BOOTROM_MEM_ALT - dtb_size - dtb_slack) &
+                        ~(uintptr_t)0xFFF;
         uint8_t * h;
         uint32_t total;
         size_t n;
 
-        if (dst + dtb_size + dtb_slack >
-            (uint64_t)SOCT_MEM_BASE_ADDR + SOCT_EXT_MEM_SIZE) {
+        /* Loaded segments are RAM-checked above, so load_end below the RAM base
+         * means the ELF had no loadable segment at all; one reaching up to dst
+         * means RAM is essentially full. */
+        if (load_end < SOCT_MEM_BASE_ADDR || load_end > dst) {
             errno = ERR_SEGMENT_ADDR;
             return -1;
         }

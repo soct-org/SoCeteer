@@ -3,7 +3,7 @@ package soct.system.vivado.features
 import freechips.rocketchip.resources.{Description, Device, Resource, ResourceAddress, ResourceBinding, ResourceBindings, ResourceInt, ResourceReference, ResourceString, SimpleDevice}
 import org.chipsalliance.cde.config.Parameters
 import soct.vivado.abstracts.BdPinPort.portToBdPin
-import soct.vivado.components.ZynqUltraPS
+import soct.vivado.components.{InlineSlice, ZynqUltraPS}
 import soct.vivado.fpga.HasZynqUltraPS
 import soct.vivado.misc.{AddressSets, AxiSlaveBinder, DTSInfo, Irq}
 import soct.vivado.{SOCTBdBuilder, StringToTCLCommand, VivadoDesignException}
@@ -118,7 +118,9 @@ class UsbHostFeature(mmioBus: Device, intcDev: Device, irqs: IrqAllocator, reser
         s" [get_bd_addr_segs ${c.axiDMA.ref}/reg0]").tcl
     ))
 
-    ps.PS_PL_IRQ_USB3_0_HOST --> c.interruptConcat.IN(irq.index)
+    val irqBit = InlineSlice(4, 0, 0, 1).withInstanceName("usb_irq_slice")
+    ps.PS_PL_IRQ_USB3_0_HOST --> irqBit.DIN
+    irqBit.DOUT --> c.interruptConcat.IN(irq.index)
   }
 }
 

@@ -227,18 +227,40 @@ case class VideoStreamParams(width: Int = 1280, height: Int = 720, fps: Int = 60
 case object HasVideoStream extends Field[Option[VideoStreamParams]](None)
 
 /**
+ * Every video-pipeline fragment the design applied, in composition order.
+ *
+ * [[HasVideoStream]] holds ONE configuration, so two fragments that both set it resolve
+ * to a single pipeline and the loser leaves no trace. This field accumulates instead of
+ * overwriting, which turns "the design was told to build video twice" into an ordinary
+ * parameter the generator can read (see
+ * [[soct.system.vivado.features.VideoStreamFeature]]) rather than something only the
+ * workspace name hints at.
+ */
+case object VideoStreamRequests extends Field[Seq[VideoStreamParams]](Nil)
+
+/**
+ * Configures the video pipeline: the one place [[HasVideoStream]] is set, so that every
+ * fragment offering a pipeline also records itself in [[VideoStreamRequests]].
+ *
+ * @param params the pipeline this fragment asks for
+ */
+class WithVideoPipeline(params: VideoStreamParams) extends Config((site, here, up) => {
+  case HasVideoStream => Some(params)
+  case VideoStreamRequests => up(VideoStreamRequests) :+ params
+})
+
+/**
  * Adds the DisplayPort video pipeline (see [[HasVideoStream]]) with a coherent frame fetch
  * at its default 640x480@30 mode (the inline comment explains the small default).
  * Select via `--with-config soct.WithVideoStream`; the design's outputs land in a
  * `-video`-suffixed workspace (see [[SOCTFeatureConfig]]).
  */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
-class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, here, up) => {
-  // 640x480@30 (~28 MB/s frame fetch): the coherent path is shared with the CPU and
-  // measured to starve under load (see WithIncoherentVideoStream), so the coherent
-  // variant defaults to the smallest useful console and leaves the path to the cores.
-  case HasVideoStream => Some(VideoStreamParams(width = 640, height = 480, fps = 30))
-}))
+// 640x480@30 (~28 MB/s frame fetch): the coherent path is shared with the CPU and
+// measured to starve under load (see WithIncoherentVideoStream), so the coherent
+// variant defaults to the smallest useful console and leaves the path to the cores.
+class WithVideoStream() extends SOCTFeatureConfig("video",
+  new WithVideoPipeline(VideoStreamParams(width = 640, height = 480, fps = 30)))
 
 /**
  * The video pipeline with an INCOHERENT frame fetch: the VDMA masters the memory-side
@@ -265,14 +287,18 @@ class WithVideoStream() extends SOCTFeatureConfig("video", new Config((site, her
  * without an L2 the coherent pipeline ([[WithVideoStream]]) already sustains 720p60 under load -
  * this fragment earns its keep when combining video WITH an L2, or at timings whose bandwidth
  * the coherent path cannot guarantee.
+ *
+ * REQUIRES [[WithL2Cache]], and generation fails without it: the flush this contract demands
+ * has no other implementation on this core (no Zicbom instructions), and provoking evictions
+ * by reading a cache-sized buffer does not write every line back - the D-cache replaces
+ * randomly, so some rendered pixels would reach the screen only by chance.
  */
 @unused // --config entry point, instantiated by name via reflection (see SOCTUtils.instantiateConfig)
-class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc", new Config((site, here, up) => {
-  // 1080p60: the private memory port carries it without touching the CPU's paths, so the
-  // design synthesizes (and closes timing) at the maximum mode; the runtime-retunable
-  // pixel clock lets software scale DOWN from there (never up - see VideoStreamFeature).
-  case HasVideoStream => Some(VideoStreamParams(width = 1920, height = 1080, fps = 60, incoherent = true))
-}))
+// 1080p60: the private memory port carries it without touching the CPU's paths, so the
+// design synthesizes (and closes timing) at the maximum mode; the runtime-retunable
+// pixel clock lets software scale DOWN from there (never up - see VideoStreamFeature).
+class WithIncoherentVideoStream() extends SOCTFeatureConfig("video-nc",
+  new WithVideoPipeline(VideoStreamParams(width = 1920, height = 1080, fps = 60, incoherent = true)))
 
 /**
  * Adds a banked inclusive L2 (SiFive InclusiveCache) as the coherence manager in place of the

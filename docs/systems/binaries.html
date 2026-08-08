@@ -82,7 +82,7 @@ shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall lay
     <tr><td><code>SOCETEER_ROOT</code></td><td>Absolute path to the SoCeteer checkout</td></tr>
     <tr><td><code>SOCETEER_VERSION</code></td><td>Version string checked by soctglue</td></tr>
     <tr><td><code>SOCT_ARCH</code> / <code>SOCT_ABI</code></td><td>RISC-V march/mabi flags (e.g. <code>rv64gc</code> / <code>lp64d</code>)</td></tr>
-    <tr><td><code>SOCT_TARGET</code></td><td>Build target (<code>verilator</code>, <code>fpga</code>, &hellip;)</td></tr>
+    <tr><td><code>SOCT_TARGET</code></td><td>Build target the design was generated for (<code>verilator</code> or <code>vivado</code>)</td></tr>
     <tr><td><code>SOCT_COMPILE_DEFS</code></td><td>Extra compiler definitions from the SoC config</td></tr>
     <tr><td><code>SOCT_DTS</code> / <code>SOCT_DTB</code></td><td>Path to the device-tree source/blob</td></tr>
     <tr><td><code>SOCT_DTS_HEADER</code></td><td>Path to <code>soct-dts.h</code>, the generated C mirror of the device tree</td></tr>
@@ -115,14 +115,16 @@ shared/soctglue/                   # Runtime library: soct.ld, crt0, syscall lay
   SoCeteer creates automatically.</p>
 
   <h2>Building</h2>
-<pre><code>cmake -S binaries -B build \
-  -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake \
-  -DCMAKE_TOOLCHAIN_FILE=shared/cmake/toolchain-riscv.cmake
+<pre><code>cmake -S binaries -B build -DSOCT_SYSTEM=/path/to/SOCTSystem.cmake
 cmake --build build -j$(nproc)</code></pre>
-  <p>ELF files land in <code>SOCT_ELFS_DIR</code> (set by the system file). The
-  <code>binaries/linux</code> project configures the same way &mdash; a separate build tree
-  against the same <code>-DSOCT_SYSTEM</code>, no toolchain file (it discovers its own
-  toolchains; see <a href="linux.html">Booting Linux</a> for host requirements and targets).</p>
+  <p>The project selects the checkout's own RISC-V toolchain
+  (<code>shared/cmake/toolchain-riscv.cmake</code>) unless
+  <code>-DCMAKE_TOOLCHAIN_FILE</code> names another one &mdash; as an absolute path, since
+  CMake resolves a relative one against the build tree. ELF files land in
+  <code>SOCT_ELFS_DIR</code> (set by the system file). The <code>binaries/linux</code>
+  project configures the same way &mdash; a separate build tree against the same
+  <code>-DSOCT_SYSTEM</code>, and discovers its own toolchains (see
+  <a href="linux.html">Booting Linux</a> for host requirements and targets).</p>
 
   <h2>Flashing to an FPGA</h2>
   <p>The bare-metal template ends by including

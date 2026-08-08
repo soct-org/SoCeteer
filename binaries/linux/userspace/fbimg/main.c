@@ -27,6 +27,7 @@
  * such post-input phases, and its first tick is what enables drawing at all -
  * decodes shorter than one tick show nothing.
  */
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/kd.h>
@@ -159,7 +160,10 @@ static void wait_dismiss(void) {
 
         if (n > 0)
             break;
-        if (n == 0) /* stdin at EOF (redirected): only a signal ends the show */
+        /* EOF (stdin redirected) or a broken stdin: either way no keypress will ever
+         * arrive, so wait for a signal instead of spinning on read() forever - the
+         * image stays up and Ctrl-C from the other console still ends it. */
+        if (n == 0 || errno != EINTR)
             pause();
     }
     if (cooked)

@@ -418,15 +418,15 @@ int soct_dp_switch_mode(const struct soct_dp_mode *m)
 	 * reset needs all of its clocks, and the retune stops the pixel clock. */
 	err = vdma_halt();
 	if (err)
-		return err;
+		goto halted;
 	if (retune) {
 		err = pixclk_retune(&set);
 		if (err)
-			return err; /* scanout stays halted - an honest, visible failure */
+			goto halted; /* scanout stays halted - an honest, visible failure */
 	}
 	err = vdma_start(s.fb, want.hactive, want.vactive);
 	if (err)
-		return err;
+		goto halted;
 	vtc_start(&want);
 	dp_start_stream(&want);
 	s.cur = want;
@@ -445,6 +445,15 @@ int soct_dp_switch_mode(const struct soct_dp_mode *m)
 		want.hactive, want.vactive, want.fps, want.pixel_clock_hz,
 		flags & 1u, (flags >> 1) & 1u);
 	return 0;
+
+halted:
+	/* The pipeline is stopped and no longer matches the cached mode, so the cache
+	 * is now a lie that would block the way out: asking again for the mode that was
+	 * running is how a user recovers, and the equality check above would dismiss it
+	 * as already current. Forgetting the mode also forces the clock comparison to
+	 * re-drive the MMCM rather than assume it still holds the old frequency. */
+	memset(&s.cur, 0, sizeof(s.cur));
+	return err;
 }
 
 /* Parses the retunable-pixel-clock node's budget; absent node = static design

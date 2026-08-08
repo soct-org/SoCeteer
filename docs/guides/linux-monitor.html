@@ -77,10 +77,11 @@ cmake --build build-linux --target shell-boot-elf</code></pre>
   serial terminal, and the monitor, which renders the Linux console. The USB keyboard types
   into its own independent shell on the monitor. The prompt reads
   <code>ramdisk@ZCU104</code>: the system is RAM-only, nothing survives a reboot yet.</p>
-  <div class="note">Warm reboots (<code>reboot</code>, the reset button) reset the SoC but
-  <em>not</em> the processing system, which keeps running with live state &mdash; USB may
-  come back dead, and a power cycle plus <code>psu_init</code> is the cure. The boot
-  banner lists the known quirks of whatever hardware the image finds itself on.</div>
+  <div class="note">Warm reboots reset the SoC but <em>not</em> the processing system, which
+  keeps running with live state. <code>reboot</code> therefore shuts the USB controller down
+  first &mdash; DMA cut off mid-flight leaves it wedged until the next power cycle &mdash;
+  the same reason it unmounts before restarting. The reset button and a crash skip that step,
+  so USB can come back dead; a power cycle plus <code>psu_init</code> is then the cure.</div>
   <p>The shell is BusyBox &mdash; the usual commands (<code>ls</code>, <code>mount</code>,
   <code>vi</code>, <code>dmesg</code>) &mdash; plus SoCeteer's own helper programs; the
   banner lists them. Steps 5&ndash;7 are those helpers.</p>

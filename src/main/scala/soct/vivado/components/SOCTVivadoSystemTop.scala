@@ -90,11 +90,15 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
    */
   lazy val ioClocksMapping: Map[ClockBundle, ClkDesc] = {
     // The AXI4 interfaces associated with each clock bundle, if any. We use this information to add the appropriate Vivado annotations to the top-level ports.
+    // Grouped, not keyed: one clock bundle drives SEVERAL interfaces whenever they share
+    // a bus - every memory channel is exported from the same mbus, and two buses can be
+    // driven by one clock group. Keeping only the last one per clock would leave the
+    // others without the annotation that tells Vivado their clock domain and frequency.
     val axi4IfByClock = axi4BusMapping.flatten.map { assocBusIf =>
       val cb = s.clockBundleForBus(assocBusIf.bus)
         .getOrElse(throw new VivadoDesignException(s"Could not find clock bundle for bus ${assocBusIf.bus} associated with AXI4 interface ${assocBusIf.bdPin}"))
       cb -> assocBusIf
-    }.toMap
+    }.groupBy(_._1).map { case (cb, pairs) => cb -> pairs.map(_._2) }
 
     s.io_clocks.get.getWrappedValue.data.toSeq.map {
       cb =>
@@ -102,7 +106,7 @@ class SOCTVivadoSystemTop(val s: SOCTSystem)(implicit p: Parameters, bd: SOCTBdB
         val desc = ClkDesc(
           clkPin = portToBdPin(cb.clock),
           assocRstPin = portToBdPin(cb.reset),
-          assocAXI4Ifs = axi4IfByClock.get(cb).toSeq,
+          assocAXI4Ifs = axi4IfByClock.getOrElse(cb, Seq.empty),
           buses = buses
         )
         cb -> desc.copy(freq = freqMapping(cb, desc))

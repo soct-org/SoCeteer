@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Runs on the Gemmini accelerator; its datatype contract is the gemmini-rocc-tests copy
+# the generator places in Gemmini designs' workspaces. Without it there is no accelerator
+# to target - skipped rather than breaking that design's `all` build.
+if (NOT EXISTS "${SOCT_SYSTEM_ROOT}/gemmini-rocc-tests/include/gemmini_params.h")
+    message(STATUS "gemmini-detect: design has no Gemmini (no gemmini-rocc-tests in the workspace) - target skipped")
+    return()
+endif ()
+
 # Digit detection on the monitor: the shared MNIST model (matmuls on Gemmini)
 # slides over a generated scene, detections become bounding boxes via soctfb.
 # Needs an FP Gemmini video design (e.g. soct.RocketB1Gem4Fp with

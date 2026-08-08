@@ -126,7 +126,7 @@
       <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/ZynqUltraPS.scala"><code>ZynqUltraPS</code></a>
       live video pins &mdash; detailed port by port below.</li>
     <li>An <a href="https://github.com/soct-org/SoCeteer/blob/main/src/main/scala/soct/vivado/components/AxiAddrOffset.scala"><code>AxiAddrOffset</code></a>
-      window makes the PS register space reachable from the MMIO port: a 16&nbsp;MiB window maps
+      window makes the PS register space reachable from the MMIO port: a 64&nbsp;MiB window maps
       onto the PS-fixed addresses of the DP controller, its SERDES and the AV buffer manager.
       Rocket's MMIO decode cannot cover those addresses directly without colliding with the DRAM
       decode.</li>
@@ -440,7 +440,7 @@ psu_ps_pl_reset_config</code></pre>
   structures for the common geometries and computes VESA CVT reduced blanking for anything
   else:</p>
 <pre><code>fbmode                        # current mode + the well-known list
-fbmode 4                      # switch to list entry 4 (720p60)
+fbmode 8                      # switch to list entry 8 (720p60)
 fbmode --custom 1600 900 45   # any geometry and refresh, CVT-RB timing</code></pre>
   <p>Because a wrong guess can leave the monitor dark, a switch must be confirmed: unless
   <code>-y</code> is given, <code>fbmode</code> waits ten seconds for a <code>y</code>

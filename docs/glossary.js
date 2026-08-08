@@ -39,7 +39,7 @@ const SOCT_GLOSSARY = [
     entries: [
       { t: ["AXI", "AXI4", "AXI4-Lite", "AXI4-Stream"], d: "Advanced eXtensible Interface - the ARM AMBA bus family used throughout: AXI4 for memory-mapped burst traffic, AXI4-Lite for simple register access, AXI4-Stream for unidirectional data streams (like the pixel stream)." },
       { t: ["MMIO"], d: "Memory-Mapped I/O - peripheral registers reached with ordinary loads and stores; Rocket exposes a dedicated MMIO port for this address range." },
-      { t: ["DMA"], d: "Direct Memory Access - a device reading/writing memory without the CPU. SoCeteer's DMA masters (SD card, video) reach memory coherently through the Rocket L2 frontend, so no cache flushing is needed." },
+      { t: ["DMA"], d: "Direct Memory Access - a device reading/writing memory without the CPU. SoCeteer's DMA masters reach memory through the Rocket L2 frontend, which keeps them coherent with the caches; the exception is the incoherent video variant, whose frame fetch takes a private port to the memory controller and so requires software to flush what it draws." },
       { t: ["VDMA"], d: "The Xilinx AXI Video DMA IP - fetches framebuffers from memory and emits them as an AXI4-Stream; supports multiple frame stores and a park pointer for tear-free buffer flips." },
       { t: ["SmartConnect"], d: "Xilinx AXI interconnect IP: a crossbar that also performs clock-domain crossing and data-width conversion between its ports." },
       { t: ["SAXIGP6"], d: "Slave AXI General-Purpose port 6 - the hardware name of the PS's S_AXI_LPD slave port the design uses. The preset's other PS ports (HP = High Performance, HPM = High-Performance Master) are disabled." },

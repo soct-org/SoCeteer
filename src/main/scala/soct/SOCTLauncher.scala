@@ -213,6 +213,17 @@ object SOCTLauncher {
       config.params = config.params.orElse(new WithSOCTPaths(paths))
 
       if (paths.systemDir.toFile.exists()) {
+        // Generation replaces the whole system directory, Vivado project included, so
+        // the run that promises to leave an existing project alone must stop here -
+        // deleting it and then telling the generated TCL not to overwrite it would
+        // destroy exactly what the flag protects.
+        paths match {
+          case v: VivadoSOCTPaths if !args.overrideVivadoProject && v.vivadoProjectDir.toFile.exists() =>
+            throw new IllegalArgumentException(
+              s"--no-override-vivado-project was given, but a Vivado project already exists at ${v.vivadoProjectDir}. " +
+                s"Generating rewrites ${paths.systemDir} as a whole: move the project elsewhere, or omit the flag to replace it.")
+          case _ =>
+        }
         paths.systemDir.toFile.deleteRecursively()
         log.info(s"Removed existing files in ${paths.systemDir}")
       }

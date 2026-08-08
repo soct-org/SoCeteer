@@ -34,6 +34,7 @@
  * freedoom1.wad (fetched next to the ELFs) or a real doom WAD onto the card.
  */
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/kd.h>
@@ -212,8 +213,17 @@ static void spawn_workers(void) {
     pthread_barrier_init(&bar_start, NULL, nworkers + 1);
     pthread_barrier_init(&bar_mid, NULL, nworkers);
     pthread_barrier_init(&bar_done, NULL, nworkers + 1);
-    for (unsigned i = 0; i < nworkers; i++)
-        pthread_create(&wk[i].thread, NULL, worker_main, (void *)(uintptr_t)i);
+    for (unsigned i = 0; i < nworkers; i++) {
+        int err = pthread_create(&wk[i].thread, NULL, worker_main, (void *)(uintptr_t)i);
+
+        if (err) {
+            /* The barriers above already count this worker in. One that never starts
+             * does not degrade the pipeline, it parks it: the first frame would wait
+             * forever on a thread that does not exist. */
+            fprintf(stderr, "doom: cannot start blit worker %u: %s\n", i, strerror(err));
+            exit(1);
+        }
+    }
 }
 
 void DG_Init() {
@@ -268,8 +278,15 @@ void DG_Init() {
 
     if (want_mmap) {
         fbmap = mmap(NULL, fix.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
-        if (fbmap == MAP_FAILED)
-            fbmap = NULL; /* the write() path below works everywhere */
+        if (fbmap == MAP_FAILED) {
+            /* The write() path works everywhere, so this is a fallback rather than a
+             * failure - but page flipping was given up for the mapping that did not
+             * happen, and silently tearing is not what -mmap asked for. */
+            fbmap = NULL;
+            fprintf(stderr, "doom: mmap of the framebuffer failed (%s) - drawing through write()\n",
+                    strerror(errno));
+            flip = var.yres_virtual >= 2 * var.yres;
+        }
     }
 
     sa.sa_handler = on_signal;
@@ -398,7 +415,12 @@ int DG_GetKey(int *pressed, unsigned char *doomKey) {
     case SK_ALT: *doomKey = KEY_LALT; break;
     default:
         if (sym <= SK_F1 && sym > SK_F1 - 12) {
-            *doomKey = KEY_F1 + (SK_F1 - sym);
+            unsigned int n = (unsigned int)(SK_F1 - sym); /* 0 = F1 */
+
+            /* Only F1..F10 are contiguous in doom's key numbering: F11 and F12 sit
+             * beyond NUMLOCK and SCRLCK, so counting up from F1 would send those. */
+            *doomKey = n < 10 ? (unsigned char)(KEY_F1 + n)
+                              : (unsigned char)(n == 10 ? KEY_F11 : KEY_F12);
             break;
         }
         return DG_GetKey(pressed, doomKey); /* unmapped: try the next event */

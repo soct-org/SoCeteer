@@ -69,15 +69,17 @@ endif ()
 ############################
 set(VL_ARGS "--vpi" "--O3" "-timing")
 
-# The number of threads to use in verilator
+# The number of threads to use in verilator. Stated outright rather than derived from the
+# host: this was computed from a variable nothing ever set, which made every simulator
+# built so far single-threaded - so one stays the default, and raising it
+# (-DVL_THREADS=<n>) is a deliberate choice to be measured against that baseline.
 if (NOT DEFINED VL_THREADS)
-    # For now, set it to SOCT_NCPUS + 1 but at we should find a sensible upper limit
-    math(EXPR VL_THREADS "${SOCT_NCPUS} + 1")
-    message(STATUS "Using ${VL_THREADS} threads in verilator")
+    set(VL_THREADS 1)
 endif ()
+message(STATUS "Using ${VL_THREADS} thread(s) in verilator")
 list(APPEND VL_ARGS "--threads" "${VL_THREADS}")
 
-if (DEFINED VL_TRACE)
+if (VL_TRACE)
     message(STATUS "Enabling verilator trace")
     list(APPEND VL_ARGS "--trace")
 endif ()
@@ -85,7 +87,7 @@ endif ()
 if (DEFINED VL_TRACE_DEPTH)
     message(STATUS "Setting verilator trace depth to ${VL_TRACE_DEPTH}")
     list(APPEND VL_ARGS "--trace-depth" "${VL_TRACE_DEPTH}")
-elseif (DEFINED VL_TRACE)
+elseif (VL_TRACE)
     set(VL_TRACE_DEPTH 2)
     message(STATUS "Setting default verilator trace depth to ${VL_TRACE_DEPTH}")
     list(APPEND VL_ARGS "--trace-depth" "${VL_TRACE_DEPTH}")

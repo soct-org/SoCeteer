@@ -6,6 +6,8 @@ import soct.vivado.{SOCTBdBuilder, VivadoDesignException}
 import soct.vivado.abstracts.{BdPinIn, HasIndexedPins, _}
 import soct.vivado.fpga.{FPGADiffClockPort, FPGAResetPortSource, FPGASingleEndedClockPort}
 
+import java.util.Locale
+
 import scala.collection.mutable
 
 
@@ -69,14 +71,14 @@ case class ClkWiz(inputDom: Option[ClockDomain] = None, dynReconfig: Boolean = f
     val clkouts = CLK_OUT.all
     clkouts.foreach {
       case (idx, clkout) =>
-        m += s"CONFIG.CLKOUT${idx}_REQUESTED_OUT_FREQ" -> f"${clkout.dom.freq.toMHz}%.3f" // braces are added automatically
+        m += s"CONFIG.CLKOUT${idx}_REQUESTED_OUT_FREQ" -> "%.3f".formatLocal(Locale.ROOT, clkout.dom.freq.toMHz) // braces are added automatically
         m += s"CONFIG.CLKOUT${idx}_USED" -> "true"
         // Only non-default requests are emitted; the IP's own defaults (50% duty,
         // 0 degrees) stay implicit so a plain domain leaves the configuration untouched.
         if (clkout.dom.dutyCycle != 0.5)
-          m += s"CONFIG.CLKOUT${idx}_REQUESTED_DUTY_CYCLE" -> f"${clkout.dom.dutyCycle * 100}%.3f"
+          m += s"CONFIG.CLKOUT${idx}_REQUESTED_DUTY_CYCLE" -> "%.3f".formatLocal(Locale.ROOT, clkout.dom.dutyCycle * 100)
         if (clkout.dom.phaseDeg != 0.0)
-          m += s"CONFIG.CLKOUT${idx}_REQUESTED_PHASE" -> f"${clkout.dom.phaseDeg}%.3f"
+          m += s"CONFIG.CLKOUT${idx}_REQUESTED_PHASE" -> "%.3f".formatLocal(Locale.ROOT, clkout.dom.phaseDeg)
     }
     m += "CONFIG.NUM_OUT_CLKS" -> clkouts.size.toString
 
@@ -98,7 +100,7 @@ case class ClkWiz(inputDom: Option[ClockDomain] = None, dynReconfig: Boolean = f
         // BD-internal clock net (e.g. a DDR4 additional clock output): no buffer, and the
         // input frequency cannot be inferred from a board file - it comes from the parameter.
         m += "CONFIG.PRIM_SOURCE" -> "No_buffer"
-        m += "CONFIG.PRIM_IN_FREQ" -> f"${inputDom.get.freq.toMHz}%.3f"
+        m += "CONFIG.PRIM_IN_FREQ" -> "%.3f".formatLocal(Locale.ROOT, inputDom.get.freq.toMHz)
       case (None, Some(_)) =>
         throw VivadoDesignException(s"ClkWiz $instanceName clk_in1 is driven by a BD-internal net; pass inputDom so the input frequency is known.")
       case _ =>

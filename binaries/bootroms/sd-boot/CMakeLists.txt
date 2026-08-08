@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 
+# This ROM loads BOOT.ELF from the SD card and logs on the UART; both are compile-time
+# facts (soct-dts.h base addresses), so on a design without the SD controller there is
+# nothing to build - skipped rather than breaking that design's `all` build.
+if (NOT DEFINED SOCT_NEEDS_FATFS)
+    message(STATUS "sd-boot: design has no SD-card controller - bootrom skipped")
+    return()
+endif ()
+
 file(GLOB CMAKE_ASM_SRCS ${CMAKE_CURRENT_LIST_DIR}/*.S)
 file(GLOB CMAKE_C_SRCS ${CMAKE_CURRENT_LIST_DIR}/*.c)
 

@@ -12,6 +12,16 @@ set(_busybox_url "https://snapshot.debian.org/archive/debian/20260712T202631Z/po
 set(SOCT_BUSYBOX "${SOCETEER_ROOT}/shared/vendor/busybox/busybox")
 if (NOT EXISTS "${SOCT_BUSYBOX}")
     set(_busybox_deb "${SOCETEER_ROOT}/shared/vendor/busybox/${_busybox_deb_name}")
+    # An archive left behind by an interrupted or hash-rejected download would otherwise
+    # be taken on trust by the next configure, which skips the download because the file
+    # is there - a pin only means something when it is checked against what is on disk.
+    if (EXISTS "${_busybox_deb}")
+        file(SHA256 "${_busybox_deb}" _bb_have)
+        if (NOT _bb_have STREQUAL _busybox_sha256)
+            message(STATUS "linux: discarding ${_busybox_deb_name}, it does not match the pinned hash")
+            file(REMOVE "${_busybox_deb}")
+        endif ()
+    endif ()
     if (NOT EXISTS "${_busybox_deb}")
         message(STATUS "linux: fetching ${_busybox_deb_name} (snapshot.debian.org, ~1 MB)")
         file(DOWNLOAD "${_busybox_url}" "${_busybox_deb}"
