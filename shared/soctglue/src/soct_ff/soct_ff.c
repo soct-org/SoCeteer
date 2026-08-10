@@ -129,6 +129,15 @@ FILE *__wrap_fopen(const char *path, const char *mode) {
         return NULL;
     }
 
+    // Only volume-prefixed paths belong to FatFs. Everything else goes to the real
+    // fopen, whose _open lands in the syscall dispatch (HTIF-proxied on the simulator,
+    // a loud failure where no handler exists) - without this, a path missing its /VOL
+    // prefix fell into FatFs drive 0 and died as a misleading EIO.
+    if (!is_ff_path(path)) {
+        extern FILE *__real_fopen(const char *p, const char *m);
+        return __real_fopen(path, mode);
+    }
+
     BYTE flags = parse_ff_mode(mode);
     if (!flags) {
         errno = EINVAL;

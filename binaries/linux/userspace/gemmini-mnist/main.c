@@ -5,8 +5,8 @@
  *
  * Consumes the same on-disk layout the bare-metal variant reads from the SD card:
  * a directory holding image_paths.txt, labels.bin and the raw elem_t image files
- * (produced by shared/mnist/generate.py). Default directory: /mnt/data - mount the
- * SD card's FAT partition on /mnt first, or pass another directory as argv[1].
+ * (produced by shared/mnist/generate.py). The data directory is the required
+ * argument - inside soct the SD card is already mounted under /media/<device>.
  *
  * Gemmini's RoCC instructions execute directly from userspace, but only when the
  * kernel enables the extension context for user threads - that is
@@ -25,7 +25,6 @@
 #include "mnist_common.h"
 #include "model.h"
 
-#define DEFAULT_DATA_DIR "/mnt/data"
 
 static elem_t image[1][MNIST_PIXELS];
 static elem_t scores[1][MNIST_CLASSES];
@@ -54,7 +53,7 @@ static uint64_t now_us(void) {
 }
 
 int main(int argc, char **argv) {
-    const char *dir = argc > 1 ? argv[1] : DEFAULT_DATA_DIR;
+    const char *dir = argv[1];
     char path[512];
     unsigned char labels[4096];
     size_t num = 0, correct = 0;
@@ -63,8 +62,8 @@ int main(int argc, char **argv) {
     long labels_len;
     FILE *lf;
 
-    if (argc > 2) {
-        fprintf(stderr, "usage: %s [data directory]   (default %s)\n", argv[0], DEFAULT_DATA_DIR);
+    if (argc != 2) {
+        fprintf(stderr, "usage: %s <data directory>   (e.g. /media/mmcblk0p1/data)\n", argv[0]);
         return 2;
     }
 
@@ -82,7 +81,7 @@ int main(int argc, char **argv) {
     lf = fopen(path, "rb");
     if (!lf) {
         perror(path);
-        fprintf(stderr, "hint: mount the SD card first (mount -t vfat /dev/mmcblk0p1 /mnt) or pass the data directory\n");
+        fprintf(stderr, "hint: inside soct the SD card is under /media/<device>; the data directory is <mount>/data\n");
         return 1;
     }
     fseek(lf, 0, SEEK_END);
