@@ -270,20 +270,18 @@
   also what makes an L2 affordable in a video design: <code>soct.WithL2Cache</code> can be added
   for CPU performance without the frame fetch paying for it. Both variants suffix the workspace
   directory (<code>-video</code> / <code>-video-nc</code>, plus <code>-l2</code>).</p>
-  <p>Two mechanisms cover the flush, picked from what the design has &mdash; there is no Zicbom
-  on this Rocket, so neither is a cache-block instruction:</p>
-  <ul>
-    <li>With an L2, write each line's physical address to the InclusiveCache
-      <code>Flush64</code> register. The write blocks until the line is out, and because the
-      cache is inclusive it also pulls the line from L1.</li>
-    <li>Without one, read a buffer the size of the L1 (16&nbsp;KiB): every set gets refilled, so
-      the framebuffer lines are evicted, and with no L2 behind them they land in DRAM.</li>
-  </ul>
+  <p>One mechanism covers the flush: write each line's physical address to the InclusiveCache
+  <code>Flush64</code> register. The write blocks until the line is out, and because the cache
+  is inclusive it also pulls the line from L1. It is the <em>only</em> mechanism this core
+  offers &mdash; there is no Zicbom, and provoking L1 eviction by reading a cache-sized buffer
+  does not work against the D-cache's random replacement (a dirty line can survive any sweep).
+  That is why the incoherent pipeline requires an L2: generation refuses
+  <code>soct.WithIncoherentVideoStream</code> without <code>soct.WithL2Cache</code>.</p>
   <p>The <code>Flush64</code> cost is proportional to the region, and that matters more than it
   looks: a 720p frame is 43,200 cache lines, while an animation usually redraws a small part of
   one. Flush the <em>dirty rectangle</em>, not the frame &mdash; for <code>dp-test</code>'s
   teapot that is a 288&times;288 box, about 4,000 lines, an order of magnitude less work per
-  frame. The whole-cache fallback is address-independent, so it is a single sweep either way.</p>
+  frame.</p>
 
   <h2>The software contract</h2>
   <p><a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test"><code>dp-test</code></a>
@@ -292,9 +290,9 @@
   <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/main.c"><code>main.c</code></a>
   holds the program's flow &mdash; discovery, bring-up, then the demo loop &mdash; and the stages
   it drives sit beside it:
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/video.c"><code>video.c</code></a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/soctfb/video.c"><code>video.c</code></a>
   for the whole PL side (framebuffers, VDMA, timing generator),
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/dp.c"><code>dp.c</code></a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/soctfb/dp.c"><code>dp.c</code></a>
   for the PS side,
   <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/render.c"><code>render.c</code></a>
   for the test pattern and the teapot, and
@@ -334,7 +332,7 @@ psu_ps_pl_reset_config</code></pre>
   <em>park</em> mode: its frame stores point at CPU-drawn framebuffers, and retargeting the park
   pointer to another store flips the displayed buffer at the next frame boundary &mdash; that is
   the tear-free page flip. Three caveats all live in
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/video.c"><code>video.c</code></a>'s
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/soctfb/video.c"><code>video.c</code></a>'s
   comments:</p>
   <ul>
     <li>Frame stores are latched when <code>VSIZE</code> is written; rewriting <code>VSIZE</code>
@@ -352,7 +350,7 @@ psu_ps_pl_reset_config</code></pre>
   <a href="https://github.com/soct-org/SoCeteer/tree/main/shared/vendor/xilinx-dp">shared/vendor/xilinx-dp</a>
   (dppsu for the DP controller, avbuf for the AV buffer manager), kept byte-for-byte unmodified.
   The shim layer in
-  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/dp-test/soct_xil">dp-test/soct_xil</a>
+  <a href="https://github.com/soct-org/SoCeteer/blob/main/binaries/baremetal/soctfb/soct_xil">soctfb/soct_xil</a>
   provides the BSP headers they include by name &mdash; crucially <code>Xil_In32/Out32</code>,
   which translate the drivers' hardcoded PS addresses through the window &mdash; so the drivers
   never know they are running on a RISC-V. The sequence: select the live input and the PL video

@@ -12,7 +12,12 @@ on:
       test_name:
         required: true
         type: string
-        description: "Config name to test, e.g. RocketB2-64. Runs '<test_name> should run without errors'."
+        description: "Config name to test, e.g. RocketB2-64. Runs '<test_name> should run without errors'. Empty runs no simulation test (see generation_spec)."
+      generation_spec:
+        required: false
+        type: boolean
+        default: false
+        description: "Additionally run the board-generation suite (soct.tests.VivadoGenerationSpec)."
 
 jobs:
   test-native:
@@ -38,6 +43,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # A tag's committed tree still carries the PREVIOUS release's VERSION (the bump lands
+      # on main after tagging - see update-version.yml), so tag builds stamp the working
+      # tree from the tag itself before anything reads VERSION. Inert on branch builds.
+      - name: Stamp VERSION from the release tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
 
       - name: Set up JDK 22+
         uses: actions/setup-java@v5
@@ -91,6 +104,7 @@ jobs:
           fi
 
       - name: Run test — ${{ inputs.test_name }}
+        if: inputs.test_name != ''
         env:
           SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
           JAVA_TOOL_OPTIONS: >-
@@ -101,3 +115,10 @@ jobs:
             -XX:GCTimeRatio=4
         run: |
           sbt "testOnly soct.tests.SimulationSpec -- -t \"${{ inputs.test_name }} should run without errors\""
+
+      - name: Run board-generation spec
+        if: inputs.generation_spec
+        env:
+          SOCT_CHISEL_VERSION: ${{ inputs.chisel }}
+        run: |
+          sbt "testOnly soct.tests.VivadoGenerationSpec"

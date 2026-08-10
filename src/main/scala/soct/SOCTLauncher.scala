@@ -71,10 +71,6 @@ object SOCTLauncher {
 
   // Generate the design for Vivado synthesis
   private def generateVivadoDesign(args: SOCTArgs, boardPaths: VivadoSOCTPaths, config: SOCTConfig): Unit = {
-    if (args.board.isEmpty) {
-      throw new IllegalArgumentException("No board provided for Vivado synthesis target. Please provide a board using the --board argument.")
-    }
-
     val memConfig = SOCTMem.genMemConfig(args, hasMultiMemSupport(config.topModule))
     if (memConfig.isDefined) {
       config.params = config.params.orElse(memConfig.get)
@@ -187,10 +183,10 @@ object SOCTLauncher {
 
       if (args.syncFromRemote) {
         if (args.remoteDir.isEmpty) {
-          throw new IllegalArgumentException("Remote directory must be provided when using --sync-from-remote")
+          throw new IllegalArgumentException("Remote directory (--remote-dir) must be provided when using --sfr")
         }
         if (args.openSSHConfig.isEmpty) {
-          throw new IllegalArgumentException("OpenSSH config file must be provided when using --sync-from-remote")
+          throw new IllegalArgumentException("OpenSSH config (--ssh-config) must be provided when using --sfr")
         }
         SOCTRemote.pullDir(args.workspaceDir, args)
         return
@@ -203,6 +199,11 @@ object SOCTLauncher {
         case _: VerilatorTarget =>
           new SimSOCTPaths(args, config)
         case _: VivadoTarget =>
+          // Checked before the paths object, whose constructor would otherwise turn a
+          // missing --board into an InternalBugException.
+          if (args.board.isEmpty) {
+            throw new IllegalArgumentException("No board provided for the Vivado target. Please provide one with --board.")
+          }
           new VivadoSOCTPaths(args, config)
       }
 

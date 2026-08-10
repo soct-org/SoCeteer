@@ -15,7 +15,12 @@ set(_dg_sha256 "1bd3f7f26220494159a38d71f2847ec81b58d6bbd7c7c8d81b08993018001148
 set(_dg_url "https://github.com/ozkl/doomgeneric/archive/${_dg_commit}.tar.gz")
 set(_dg_home "${SOCETEER_ROOT}/shared/vendor/doomgeneric")
 set(_dg_src "${_dg_home}/src")
-if (NOT EXISTS "${_dg_src}")
+# The guard is a file the build DECLARES as an output, not the directory: the clean
+# target deletes declared outputs (the engine .c files) while the directory and its
+# headers survive, and a directory-existence guard would then skip the re-fetch
+# forever. The tarball is kept after extraction for the same reason - recovery from
+# a clean must not need the network.
+if (NOT EXISTS "${_dg_src}/doomgeneric/doomgeneric.c")
     set(_dg_tar "${_dg_home}/doomgeneric-${_dg_commit}.tar.gz")
     if (NOT EXISTS "${_dg_tar}")
         message(STATUS "doom: fetching doomgeneric @${_dg_commit} (github.com/ozkl, ~3 MB)")
@@ -26,9 +31,9 @@ if (NOT EXISTS "${_dg_src}")
             message(FATAL_ERROR "doom: doomgeneric download failed (${_dg_dl})")
         endif ()
     endif ()
+    file(REMOVE_RECURSE "${_dg_src}")
     file(ARCHIVE_EXTRACT INPUT "${_dg_tar}" DESTINATION "${_dg_home}")
     file(RENAME "${_dg_home}/doomgeneric-${_dg_commit}" "${_dg_src}")
-    file(REMOVE "${_dg_tar}")
     message(STATUS "doom: doomgeneric ready at ${_dg_src}")
 endif ()
 

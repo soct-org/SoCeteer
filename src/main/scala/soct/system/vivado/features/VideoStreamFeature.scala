@@ -68,8 +68,9 @@ class VideoStreamFeature(vs: VideoStreamParams, mmioBus: Device, intcDev: Device
       // The frame master reaches DRAM through its own memory-controller port, bypassing the
       // coherent fabric (soct.WithIncoherentVideoStream): DRAM is NOT coherent with the CPU
       // caches for these frames, so software must make rendered pixels visible before the
-      // DMA reads them (L2 Flush64 where an L2 exists, an L1 eviction otherwise). Marked so
-      // a driver can select that contract instead of assuming coherent DMA.
+      // DMA reads them via the L2's Flush64 register - the same requirement that makes the
+      // L2 mandatory here (see the incoherent-needs-L2 check below). Marked so a driver can
+      // select that contract instead of assuming coherent DMA.
       "soct,incoherent" -> Nil
     ))
   )

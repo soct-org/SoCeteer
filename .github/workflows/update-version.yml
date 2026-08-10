@@ -42,4 +42,7 @@ jobs:
 
           git add VERSION
           git commit -m "chore: update VERSION to ${{ steps.version.outputs.version }} [skip ci]"
+          # main may have moved since the checkout at trigger time; replay on top of it
+          # instead of failing the whole release chain on a non-fast-forward push.
+          git pull --rebase origin main
           git push origin HEAD:main

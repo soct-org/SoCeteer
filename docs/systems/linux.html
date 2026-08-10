@@ -106,8 +106,10 @@ include(${CMAKE_CURRENT_LIST_DIR}/../userspace.cmake)  # ELF only
       at configure time when missing, shared across build trees under
       <code>shared/vendor/</code>); see <em>Userspace programs</em> above.</li>
     <li><code>boot-dtb</code> &mdash; the design DTS compiled with fixup padding; it is embedded
-      into the firmware, so boot images do not depend on the ROM copy of the DTB
-      (but must match the flashed hardware).</li>
+      into the firmware, so <code>&lt;name&gt;.BOOT.ELF</code> images do not depend on the ROM
+      copy of the DTB (but must match the flashed hardware). The <code>.board.BOOT.ELF</code>
+      flavor is the opposite trade: it embeds no FDT and boots with the device tree the boot
+      ROM hands over, so it follows the flashed bitstream instead.</li>
     <li><code>&lt;name&gt;-boot-elf</code> &mdash; for every program that includes
       <code>initram.cmake</code>: <code>&lt;name&gt;.BOOT.ELF</code> in
       <code>SOCT_ELFS_DIR</code>, a kernel with that program as <code>/init</code>. The kernel

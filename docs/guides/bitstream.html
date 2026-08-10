@@ -25,7 +25,10 @@
   <div class="hint">Filling in the placeholders:
   <ul>
     <li><code>--board</code> &mdash; a registered board name (currently <code>ZCU104</code>,
-      <code>VCU118</code>; the README lists them).</li>
+      <code>VCU118</code>; the README lists them). The VCU118 has no 3.3&nbsp;V PMOD bank
+      for the SD card, so it needs a configuration without the SD controller and an
+      explicit <code>--bootrom msip-boot</code> &mdash; generation says so when either is
+      missing.</li>
     <li><code>--ext-mem-part</code> &mdash; the part number, read off the label of the
       memory module inserted in the board's DIMM slot. If omitted, the board's factory
       module is assumed; unknown parts must be added to the registry &mdash; see
@@ -49,7 +52,7 @@
 <pre><code>sbt "runMain soct.SOCTLauncher --target vivado.bs --board ZCU104 ... --vivado-parallel 8"</code></pre>
   <table>
     <tr><th>Target</th><th>Result</th></tr>
-    <tr><td><code>vivado</code> / <code>vivado.bd</code></td><td>project + block design only</td></tr>
+    <tr><td><code>vivado.bd</code></td><td>project + block design only</td></tr>
     <tr><td><code>vivado.syn</code></td><td>&hellip;then synthesis</td></tr>
     <tr><td><code>vivado.bs</code></td><td>&hellip;then the bitstream</td></tr>
   </table>

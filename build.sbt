@@ -5,7 +5,7 @@ enablePlugins(BuildInfoPlugin)
 //***************************
 // CHANGE CHISEL VERSION HERE
 //***************************
-val supportedChiselVersions = Seq("7.13.0", "3.6.1") // parsed in .github/workflows/scripts/ci/extract-chisel-versions.py, don't change structure without updating that script
+val supportedChiselVersions = Seq("7.13.0", "3.6.1") // parsed in .github/scripts/ci/extract-chisel-versions.py, don't change structure without updating that script
 val fallbackChiselVersion = supportedChiselVersions.head
 
 val chiselVersion = sys.env.get("SOCT_CHISEL_VERSION") match {

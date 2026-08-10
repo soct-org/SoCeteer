@@ -27,6 +27,14 @@ jobs:
         with:
           submodules: recursive
 
+      # A tag's committed tree still carries the PREVIOUS release's VERSION (the bump lands
+      # on main after tagging - see update-version.yml), so tag builds stamp the working
+      # tree from the tag itself before anything reads VERSION. Inert on branch builds.
+      - name: Stamp VERSION from the release tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
+
       - name: Pull docker image
         run: |
           docker pull "${{ inputs.docker_image }}"

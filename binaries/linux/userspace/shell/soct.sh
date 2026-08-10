@@ -38,16 +38,47 @@ candidates() {
     done
 }
 
-# Whether a mounted filesystem still reaches its device: one real directory read,
-# after dropping the caches - a medium pulled while mounted leaves its mounts
-# behind, and cached metadata would answer a plain probe as if the device were
-# still there. 7, not 3: 1|2 drop the page and dentry/inode caches, and the 4 bit
-# suppresses the kernel's console message about the write, which would otherwise
-# print over the prompt. Only called on mounts NO session inhabits - the cost is
-# a cold cache, which must never be inflicted on someone working inside.
+# Whether a mounted filesystem still reaches its device: read real file DATA through
+# it, after dropping the caches - a medium pulled while mounted leaves its mounts
+# behind, and cached state would answer a plain probe as if the device were there.
+# Two specifics matter. The drop is 4-then-3: the kernel bounds this sysctl to 1..4
+# (a combined "silent 3" of 7 is rejected as a whole), where 4 turns off the console
+# message for every LATER write and 3 does the actual page+dentry/inode drop. And the
+# probe must be a file-data read with its status checked: directory listings cannot
+# fail here - vfat skips unreadable directory blocks and busybox ls swallows readdir
+# errors - so $1 is a FILE that must exist on a live mount (a missing file counts as
+# dead). Only called on mounts NO session inhabits - the cost is a cold cache, never
+# inflicted on someone working inside.
 mount_alive() {
-    echo 7 > /proc/sys/vm/drop_caches 2>/dev/null
-    ls "$1" >/dev/null 2>&1
+    # sync first: drop_caches evicts only CLEAN pages, and the loop mount keeps the
+    # image's superblock page dirty - on a live medium the sync cleans it, on a dead
+    # one the failed writeback clears the dirty state either way, so the read below
+    # really reaches the device.
+    sync 2>/dev/null
+    echo 4 > /proc/sys/vm/drop_caches 2>/dev/null
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+    dd if="$1" of=/dev/null bs=4096 count=1 2>/dev/null
+}
+
+# Whether another soct process is running (the shebang interpreter owns comm, so the
+# script shows up in cmdline; the caller itself is skipped by pid). An entering
+# session holds the environment mounted for seconds before its first process is
+# rooted inside (mount, populate, then chroot) - during that window it is an owner,
+# not an orphan, and neither the reaper nor another entry's stale check may touch
+# the mounts.
+soct_running() {
+    for _p in /proc/[0-9]*; do
+        [ "$_p" = "/proc/$$" ] && continue
+        # Exact interpreter+script shape, so an unrelated argv merely mentioning the
+        # path (vi /bin/soct) does not count; other REAPERS do not count either -
+        # they own nothing, and counting them would make simultaneous logins on both
+        # consoles abort each other's reap.
+        case "$(tr '\0' ' ' < "$_p/cmdline" 2>/dev/null)" in
+            *"/bin/sh /bin/soct --reap"*) ;;
+            *"/bin/sh /bin/soct"*) return 0 ;;
+        esac
+    done
+    return 1
 }
 
 # What a device holds: "env" (a soct environment), "fat" (a FAT without one), "none".
@@ -61,16 +92,24 @@ probe_dev() {
         if [ "$_d" = "$1" ] && [ "$_t" = vfat ]; then _at="$_m"; break; fi
     done < /proc/mounts
     # A mount can outlive its medium (pulled while mounted): the device node is the
-    # NEW card, the mount still the old one's dead superblock. Detach it and fall
-    # through to a fresh probe of the actual medium. stderr - stdout is the verdict.
-    if [ -n "$_at" ] && ! mount_alive "$_at"; then
-        echo "soct: dropping stale mount of $1 at $_at (medium was removed while mounted)" >&2
-        umount -l "$_at" 2>/dev/null
-        _at=""
-    fi
+    # NEW card, the mount still the old one's dead superblock. When the mount shows an
+    # environment, its image file is the file a live mount must be able to read - a dead
+    # chain is detached (stderr: stdout is the verdict) and the actual medium probed
+    # fresh below. A FAT without an environment offers no such file, and a directory
+    # listing proves nothing (see mount_alive), so it is taken at face value; a stale
+    # one surfaces loudly when creating the environment on it fails.
     if [ -n "$_at" ]; then
-        if [ -f "$_at/$IMG_REL" ]; then echo env; else echo fat; fi
-        return
+        if [ -f "$_at/$IMG_REL" ]; then
+            if mount_alive "$_at/$IMG_REL"; then
+                echo env
+                return
+            fi
+            echo "soct: dropping stale mount of $1 at $_at (medium was removed while mounted)" >&2
+            umount -l "$_at" 2>/dev/null
+        else
+            echo fat
+            return
+        fi
     fi
     mkdir -p "$PROBE"
     if mount -t vfat -o ro "$1" "$PROBE" 2>/dev/null; then
@@ -91,7 +130,13 @@ leave_env() {
     grep -q " $SOCT_FS " /proc/mounts || return
     _inuse=""
     for _p in /proc/[0-9]*; do
-        [ "$(readlink "$_p/root" 2>/dev/null)" = "$SOCT_FS" ] || continue
+        # Rooted inside (a chroot session), or merely standing inside from the ramdisk
+        # (cwd under /soct-fs - the advertised outer-shell workflow): both keep the
+        # root umount busy, and must be found BEFORE the binds are taken down.
+        case "$(readlink "$_p/root" 2>/dev/null):$(readlink "$_p/cwd" 2>/dev/null)" in
+            "$SOCT_FS":*|*":$SOCT_FS"|*":$SOCT_FS/"*) ;;
+            *) continue ;;
+        esac
         if [ -z "$_inuse" ]; then
             _inuse=1
             echo "soct: environment left mounted, still in use by:"
@@ -155,6 +200,13 @@ enter_env() {
     # carries only the directory - the mountpoints would appear empty inside.
     grep -q " $SOCT_FS/media " /proc/mounts || mount -o rbind "$MEDIA" "$SOCT_FS/media"
     cd /
+    # The scans above are snapshots: a reaper that raced this entry may have torn the
+    # environment down between them and here. Entering the bare mountpoint directory
+    # would LOOK like a session while persisting nothing - refuse it by name instead.
+    if ! grep -q " $SOCT_FS " /proc/mounts; then
+        echo "soct: the environment vanished while entering (reaped concurrently?) - re-run soct" >&2
+        exit 1
+    fi
     env HOME=/home/soct TERM="${TERM:-linux}" chroot "$SOCT_FS" /bin/sh -l
     _rc=$?
     leave_env
@@ -176,7 +228,7 @@ enter_or_create() {
     _mnt="$MEDIA/$(basename "$_dev")"
 
     # Same stale-mount hazard as in probe_dev, reachable directly via `soct <device>`.
-    if grep -q " $_mnt " /proc/mounts && ! mount_alive "$_mnt"; then
+    if grep -q " $_mnt " /proc/mounts && [ -f "$_mnt/$IMG_REL" ] && ! mount_alive "$_mnt/$IMG_REL"; then
         echo "soct: dropping stale mount at $_mnt (medium was removed while mounted)"
         umount -l "$_mnt" 2>/dev/null
     fi
@@ -273,6 +325,7 @@ fi
 # session on the other console legitimately keeps it mounted.
 if [ "$1" = "--reap" ]; then
     grep -q " $SOCT_FS " /proc/mounts || exit 0
+    soct_running && exit 0
     for _p in /proc/[0-9]*; do
         [ "$(readlink "$_p/root" 2>/dev/null)" = "$SOCT_FS" ] && exit 0
     done
@@ -292,7 +345,7 @@ if grep -q " $SOCT_FS " /proc/mounts; then
     for _p in /proc/[0-9]*; do
         [ "$(readlink "$_p/root" 2>/dev/null)" = "$SOCT_FS" ] && { _inhabited=1; break; }
     done
-    if [ -z "$_inhabited" ] && ! mount_alive "$SOCT_FS"; then
+    if [ -z "$_inhabited" ] && ! soct_running && ! mount_alive "$SOCT_FS/bin/busybox"; then
         echo "soct: the mounted environment is stale (medium removed while mounted?) - detaching it"
         umount -l "$SOCT_FS/media" 2>/dev/null
         for _d in dev sys proc; do

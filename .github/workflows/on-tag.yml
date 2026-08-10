@@ -18,16 +18,9 @@ jobs:
     name: Prepare matrices
     uses: ./.github/workflows/prepare-matrix.yml
 
-  update-version:
-    name: Update VERSION on main from tag
-    needs: prepare
-    uses: ./.github/workflows/update-version.yml
-    secrets:
-      ACTIONS_PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH_TOKEN }}
-
   docker:
     name: Build docker (multi-arch) + manifest
-    needs: [ prepare, update-version ]
+    needs: prepare
     permissions:
       contents: read
       packages: write
@@ -50,6 +43,17 @@ jobs:
       os: ${{ matrix.os }}
       chisel: ${{ matrix.chisel }}
       test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
+
+
+  generation-spec:
+    name: "[ubuntu] board-generation spec"
+    needs: prepare
+    uses: ./.github/workflows/test-native.yml
+    with:
+      os: ubuntu-latest
+      chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json)[0] }}
+      test_name: ""
+      generation_spec: true
 
   fast-docker:
     name: "[docker:${{ needs.prepare.outputs.image_tag }}, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
@@ -79,4 +83,14 @@ jobs:
       os: macos-latest
       chisel: ${{ matrix.chisel }}
       test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
+
+  # Last on purpose: main starts claiming the new version only once the release
+  # matrix is green - a failed release then leaves main untouched. The artifacts
+  # themselves never read main's VERSION (tag builds stamp it from the tag).
+  update-version:
+    name: Update VERSION on main from tag
+    needs: [ fast-native, fast-docker, full-macos, generation-spec ]
+    uses: ./.github/workflows/update-version.yml
+    secrets:
+      ACTIONS_PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH_TOKEN }}
 

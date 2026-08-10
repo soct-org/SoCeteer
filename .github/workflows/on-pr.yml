@@ -33,6 +33,17 @@ jobs:
       chisel: ${{ matrix.chisel }}
       test_name: "${{ matrix.config.name }}-${{ matrix.config.xlen }}"
 
+
+  generation-spec:
+    name: "[ubuntu] board-generation spec"
+    needs: prepare
+    uses: ./.github/workflows/test-native.yml
+    with:
+      os: ubuntu-latest
+      chisel: ${{ fromJson(needs.prepare.outputs.chisel_versions_json)[0] }}
+      test_name: ""
+      generation_spec: true
+
   fast-docker:
     name: "[docker:latest, chisel-${{ matrix.chisel }}] ${{ matrix.config.name }}-${{ matrix.config.xlen }}"
     needs: prepare

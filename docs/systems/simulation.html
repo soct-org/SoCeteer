@@ -57,14 +57,14 @@
   <code>SOCT_SYSTEM</code> variable &mdash; the <code>SOCTSystem.cmake</code> file every launcher
   run emits &mdash; or falls back to the <code>SOCTSystem-latest.cmake</code> symlink at the
   project root, warning with the system file it resolved to. The quick-start commands are in
-  the README.</p>
+  the <a href="../guides/simulation.html">simulation guide</a>.</p>
   <p>Build-time knobs worth knowing (see
   <a href="https://github.com/soct-org/SoCeteer/blob/main/sim/CMakeLists.txt"><code>sim/CMakeLists.txt</code></a>
   for the rest): <code>-DVL_TRACE=1</code> compiles in VCD waveform tracing
   (<code>VL_TRACE_DEPTH</code> limits the traced hierarchy, default 2 &mdash; tracing slows the
-  simulation considerably, so it's off by default), and <code>VL_THREADS</code> overrides the
-  Verilator thread count (default: the simulated SoC's CPU count + 1, <em>not</em> the host's
-  core count).</p>
+  simulation considerably, so it's off by default), and <code>VL_THREADS</code> sets the
+  Verilator thread count (default 1; raising it, e.g. <code>-DVL_THREADS=4</code>, is a
+  deliberate choice worth benchmarking for the design at hand).</p>
 
   <h2>Running programs</h2>
   <p>The simulator takes the ELF as its first positional argument; everything else is optional

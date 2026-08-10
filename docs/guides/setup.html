@@ -62,7 +62,7 @@ cd SoCeteer</code></pre>
       keep one configuration per design you work on.</li>
   </ul>
   <p>Run the launcher once <em>without</em> options to verify the setup: a new
-  <code>workspace/&lt;design&gt;/&lt;target&gt;/</code> directory appears in the
+  <code>workspace/&lt;design&gt;/&lt;board|sim&gt;/</code> directory appears in the
   repository. The file to remember in there is <code>SOCTSystem.cmake</code>: it describes
   the generated system (memory map, cores, devices), and every software build in the next
   step is pointed at it. <code>--help</code> lists all launcher options.</p>
@@ -97,7 +97,7 @@ cd SoCeteer</code></pre>
       <code>cmake --build &lt;build-dir&gt; --target &lt;name&gt;</code>.</li>
   </ul>
   <div class="hint"><code>&lt;workspace&gt;</code> is the directory step 3 created:
-  <code>workspace/&lt;design&gt;/&lt;target&gt;/</code> under the repo root. Each generated
+  <code>workspace/&lt;design&gt;/&lt;board|sim&gt;/</code> under the repo root. Each generated
   design has its own, so the software projects follow whichever design you point them at.
   With several designs generated, prefer the explicit option over the
   <code>SOCTSystem-latest.cmake</code> fallback &mdash; the fallback follows whichever

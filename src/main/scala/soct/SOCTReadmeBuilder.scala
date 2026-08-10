@@ -75,10 +75,12 @@ object SOCTReadmeBuilder {
    * @return the README markdown
    */
   def emit(): String = {
+    val chiselBadgeText = chiselVersions.mkString(" | ")
+      .replace(" ", "%20").replace("|", "%7C")
     s"""<p align="center">SoCeteer - A framework for designing and running RISC-V-based SoCs on FPGA and in Simulation, built on top of Chisel.<br/>From a Scala design to a Linux shell on your board.</p>
        |
        |<p align="center">
-       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml/badge.svg?branch=main" alt="CI" /></a><a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml/badge.svg?branch=main" alt="Release Workflow" /></a><a href="https://github.com/orgs/soct-org/packages/container/package/soceteer"><img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" /></a>
+       |  <a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-pr.yml/badge.svg?branch=main" alt="CI" /></a><a href="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml"><img src="https://github.com/soct-org/SoCeteer/actions/workflows/on-tag.yml/badge.svg?branch=main" alt="Release Workflow" /></a><a href="https://github.com/orgs/soct-org/packages/container/package/soceteer"><img src="https://img.shields.io/badge/GHCR-soceteer-blue?logo=docker" alt="GHCR Package" /></a><a href="https://github.com/soct-org/SoCeteer/tags"><img src="https://img.shields.io/github/v/tag/soct-org/SoCeteer?sort=semver&label=release" alt="Latest release" /></a><a href="https://github.com/soct-org/SoCeteer/blob/main/LICENSE"><img src="https://img.shields.io/github/license/soct-org/SoCeteer" alt="License" /></a><img src="https://img.shields.io/badge/Chisel-$chiselBadgeText-blue" alt="Supported Chisel versions" />
        |</p>
        |
        |> [!IMPORTANT]

@@ -262,8 +262,8 @@ class WithVideoStream() extends SOCTFeatureConfig("video",
  *
  * The cost is that DRAM is no longer coherent with the CPU's caches for the framebuffer:
  * software must make freshly rendered pixels visible before the DMA reads them - via the L2's
- * `Flush64` control register when an L2 is present ([[WithL2Cache]], which flushes the L1 too
- * because the cache is inclusive), or by evicting the L1 otherwise. The generated device tree
+ * `Flush64` control register, which flushes the L1 too because the cache is inclusive (the
+ * only flush this core offers; hence the L2 requirement below). The generated device tree
  * marks the pipeline `soct,incoherent` so software can tell which contract applies.
  *
  * Select via `--with-config soct.WithIncoherentVideoStream`; outputs land in a `-video-nc`
